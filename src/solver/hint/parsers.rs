@@ -10,7 +10,7 @@ use nom::{IResult, Parser as _};
 
 use crate::solver::{Column, Judgment, Name, Row};
 
-use super::{Hint, Quantity, Set};
+use super::{HintRecipe as Hint, Quantity, SetRecipe as Set};
 
 type SResult<'str, O> = IResult<&'str str, O>;
 

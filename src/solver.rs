@@ -1,17 +1,20 @@
 mod card;
 mod hint;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::iter::successors;
 use std::ops::{Index, IndexMut};
 
 use anyhow::{Result, anyhow, bail};
 use inquire::Editor;
 use itertools::Itertools as _;
+use mitsein::iter1::IntoIterator1 as _;
 use select::document::Document;
 use select::predicate::{Attr, Predicate as _};
 
 use crate::html::{Class, ClassName, Div, NodeExt as _};
+use crate::solver::hint::{Direction, HintRecipe, Set, SetRecipe};
 
 use card::Card;
 use hint::Hint;
@@ -45,25 +48,28 @@ impl Puzzle {
     }
 
     fn new(grid: Grid) -> Result<Self> {
-        let hints = grid
+        let hints: Vec<HintRecipe> = grid
             .iter()
             .filter_map(|card| card.hint())
-            .map(Hint::parse)
+            .map(HintRecipe::parse)
             .flatten_ok()
-            .map(|hint| grid.verify_context(hint?))
             .try_collect()?;
 
-        Ok(Self {
+        let mut puzzle = Self {
             grid,
-            hints,
+            hints: Vec::new(),
             solutions: Vec::new(),
-        })
+        };
+
+        hints
+            .into_iter()
+            .try_for_each(|hint| puzzle.add_parsed_hint(hint))?;
+
+        Ok(puzzle)
     }
 
     fn validate(&self, solution: &Solution) -> bool {
-        self.hints
-            .iter()
-            .all(|hint| self.grid.evaluate(hint, solution))
+        self.hints.iter().all(|hint| hint.evaluate(solution))
     }
 
     fn format(self) -> String {
@@ -76,6 +82,7 @@ impl Puzzle {
 
     pub(crate) fn infer(&mut self) -> Result<Vec<(Name, Judgment)>> {
         let (first, rest): (Solution, &[Solution]) = loop {
+            // TODO move to initialization (and then make the type Vec1?)
             if let Some((&first, rest)) = self.solutions.split_first() {
                 break (first, rest);
             }
@@ -115,10 +122,15 @@ impl Puzzle {
     }
 
     pub(crate) fn add_hint(&mut self, hint: &str) -> Result<()> {
-        let hints = Hint::parse(hint)?;
-        self.solutions
-            .retain(|solution| hints.iter().all(|hint| self.grid.evaluate(hint, solution)));
-        self.hints.extend(hints);
+        HintRecipe::parse(hint)?
+            .into_iter()
+            .try_for_each(|hint| self.add_parsed_hint(hint))
+    }
+
+    fn add_parsed_hint(&mut self, hint: HintRecipe) -> Result<()> {
+        let hint = hint.contextualize(&self.grid)?;
+        self.solutions.retain(|solution| hint.evaluate(solution));
+        self.hints.push(hint);
         Ok(())
     }
 }
@@ -157,18 +169,8 @@ impl Grid {
         self.cards.iter()
     }
 
-    fn verify_context(&self, hint: Hint) -> Result<Hint> {
-        let issue = match &hint {
-            Hint::Member(name, _) => {
-                (!self.coordinates.contains_key(name)).then_some(name.to_owned())
-            }
-            Hint::Count(..) => None,
-        };
-        issue.map_or(Ok(hint), |name| Err(anyhow!("{name} is unknown")))
-    }
-
-    fn coord(&self, name: &str) -> Coordinate {
-        self.coordinates[name]
+    fn coord(&self, name: &Name) -> Option<Coordinate> {
+        self.coordinates.get(name).copied()
     }
 
     fn solved(&self) -> bool {
@@ -181,13 +183,6 @@ impl Grid {
 
     fn set_new(&mut self, index: usize, judgment: Judgment) -> Option<&Card> {
         self.cards[index].set(judgment)
-    }
-
-    fn evaluate(&self, hint: &Hint, solution: &Solution) -> bool {
-        match hint {
-            Hint::Member(name, set) => set.contains(self.coord(name), solution),
-            Hint::Count(set, quantity) => quantity.matches(set.all_members(solution).len()),
-        }
     }
 }
 
@@ -254,6 +249,28 @@ impl Coordinate {
     fn column_all(col: Column) -> impl Iterator<Item = Self> {
         Row::ALL.into_iter().map(move |row| Self { row, col })
     }
+
+    fn connected(set: &HashSet<Self>) -> bool {
+        todo!()
+    }
+
+    fn direction(start: Self, direction: Direction) -> Vec<Self> {
+        let Self { row, col } = start;
+        match direction {
+            Direction::Above => successors(row.prev(), |row| row.prev())
+                .map(|row| Self { row, col })
+                .collect(),
+            Direction::Below => successors(row.next(), |row| row.next())
+                .map(|row| Self { row, col })
+                .collect(),
+            Direction::Left => successors(col.prev(), |col| col.prev())
+                .map(|col| Self { row, col })
+                .collect(),
+            Direction::Right => successors(col.next(), |col| col.next())
+                .map(|col| Self { row, col })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -287,6 +304,26 @@ impl Row {
             Self::Five => 4,
         }
     }
+
+    const fn prev(self) -> Option<Self> {
+        match self {
+            Self::One => None,
+            Self::Two => Some(Self::One),
+            Self::Three => Some(Self::Two),
+            Self::Four => Some(Self::Three),
+            Self::Five => Some(Self::Four),
+        }
+    }
+
+    const fn next(self) -> Option<Self> {
+        match self {
+            Self::One => Some(Self::Two),
+            Self::Two => Some(Self::Three),
+            Self::Three => Some(Self::Four),
+            Self::Four => Some(Self::Five),
+            Self::Five => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -316,6 +353,24 @@ impl Column {
             Self::B => 1,
             Self::C => 2,
             Self::D => 3,
+        }
+    }
+
+    const fn prev(self) -> Option<Self> {
+        match self {
+            Self::A => None,
+            Self::B => Some(Self::A),
+            Self::C => Some(Self::B),
+            Self::D => Some(Self::C),
+        }
+    }
+
+    const fn next(self) -> Option<Self> {
+        match self {
+            Self::A => Some(Self::B),
+            Self::B => Some(Self::C),
+            Self::C => Some(Self::D),
+            Self::D => None,
         }
     }
 }
@@ -378,4 +433,61 @@ impl Iterator for SolutionIterator {
             .try_into()
             .map_or((usize::MAX, None), |remaining| (remaining, Some(remaining)))
     }
+}
+
+trait Recipe {
+    type Output;
+
+    fn contextualize(self, grid: &Grid) -> Result<Self::Output>;
+}
+
+impl Recipe for SetRecipe {
+    type Output = Set;
+
+    fn contextualize(self, grid: &Grid) -> Result<Self::Output> {
+        let set = match self {
+            Self::Judgment(judgment) => Set::Judgment(judgment),
+            Self::Row(row) => Set::Coord(Coordinate::row_all(row).collect()),
+            Self::Column(column) => Set::Coord(Coordinate::column_all(column).collect()),
+            Self::Direction(name, direction) => {
+                let start = grid.coord(&name).ok_or_else(|| not_in_grid(&name))?;
+                Set::Coord(HashSet::from_iter(Coordinate::direction(start, direction)))
+            }
+            Self::And(recipes) => {
+                let sets = recipes
+                    .into_iter1()
+                    .map(|recipe| recipe.contextualize(grid))
+                    .coalesce(|a, b| match (a, b) {
+                        (e @ Err(_), _) | (_, e @ Err(_)) => Ok(e),
+                        (Ok(Set::Coord(a)), Ok(Set::Coord(b))) => {
+                            Ok(Ok(Set::Coord(a.union(&b).copied().collect())))
+                        }
+                        (Ok(b @ Set::Coord(_)), Ok(a)) | (Ok(a), Ok(b)) => Err((Ok(a), Ok(b))),
+                    })
+                    .collect1::<Result<_>>()?;
+                Set::And(sets)
+            }
+        };
+        Ok(set)
+    }
+}
+
+impl Recipe for HintRecipe {
+    type Output = Hint;
+
+    fn contextualize(self, grid: &Grid) -> Result<Self::Output> {
+        let hint = match self {
+            Self::Member(name, set) => {
+                let coordinate = grid.coord(&name).ok_or_else(|| not_in_grid(&name))?;
+                Hint::Member(coordinate, set.contextualize(grid)?)
+            }
+            Self::Count(set, quantity) => Hint::Count(set.contextualize(grid)?, quantity),
+            Self::Connected(set) => Hint::Connected(set.contextualize(grid)?),
+        };
+        Ok(hint)
+    }
+}
+
+fn not_in_grid(name: &Name) -> anyhow::Error {
+    anyhow!("{name} not in grid")
 }

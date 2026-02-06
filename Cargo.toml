@@ -8,7 +8,9 @@ anyhow = "1.0.101"
 clap = { version = "4.5.57", features = ["derive"] }
 inquire = { version = "0.9.3", features = ["editor"] }
 itertools = "0.14.0"
-mitsein = "0.9.0"
+mitsein = { version = "0.9.0", features = [
+    "itertools",
+], git = "https://github.com/ronnodas/mitsein.git", branch = "coalesce" }
 nom = "8.0.0"
 select = "0.6.1"
 

@@ -11,11 +11,29 @@ use parsers::Sentence;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) enum Hint {
-    Member(Name, Set),
+    Member(Coordinate, Set),
     Count(Set, Quantity),
+    Connected(Set),
 }
 
 impl Hint {
+    pub(crate) fn evaluate(&self, solution: &Solution) -> bool {
+        match self {
+            Self::Member(card, set) => set.contains(*card, solution),
+            Self::Count(set, quantity) => quantity.matches(set.all_members(solution).len()),
+            Self::Connected(set) => Coordinate::connected(&set.all_members(solution)),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) enum HintRecipe {
+    Member(Name, SetRecipe),
+    Count(SetRecipe, Quantity),
+    Connected(SetRecipe),
+}
+
+impl HintRecipe {
     pub(crate) fn parse(hint: &str) -> Result<Vec<Self>> {
         Ok(Sentence::parse(hint)?.collate())
     }
@@ -24,29 +42,15 @@ impl Hint {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) enum Set {
     Judgment(Judgment),
-    Row(Row),
-    Column(Column),
+    Coord(HashSet<Coordinate>),
     And(Vec1<Self>),
 }
 
 impl Set {
-    fn and(mut self, mut other: Self) -> Self {
-        if let Self::And(vec) = &mut self {
-            vec.push(other);
-            self
-        } else if let Self::And(vec) = &mut other {
-            vec.push(self);
-            other
-        } else {
-            Self::And(vec1![self, other])
-        }
-    }
-
     pub(crate) fn contains(&self, coord: Coordinate, solution: &Solution) -> bool {
         match self {
             &Self::Judgment(judgment) => solution[coord.to_index()] == judgment,
-            &Self::Row(row) => coord.row == row,
-            &Self::Column(column) => coord.col == column,
+            Self::Coord(coordinates) => coordinates.contains(&coord),
             Self::And(sets) => sets.iter().all(|set| set.contains(coord, solution)),
         }
     }
@@ -58,12 +62,34 @@ impl Set {
                 .positions(|judgment| judgment == target)
                 .map(Coordinate::from_index)
                 .collect(),
-            &Self::Row(row) => Coordinate::row_all(row).collect(),
-            &Self::Column(column) => Coordinate::column_all(column).collect(),
+            Self::Coord(set) => set.clone(),
             Self::And(sets) => sets
                 .iter1()
                 .map(|set| set.all_members(solution))
                 .reduce(|a, b| a.intersection(&b).copied().collect()),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) enum SetRecipe {
+    Judgment(Judgment),
+    Row(Row),
+    Column(Column),
+    Direction(Name, Direction),
+    And(Vec1<Self>),
+}
+
+impl SetRecipe {
+    fn and(mut self, mut other: Self) -> Self {
+        if let Self::And(vec) = &mut self {
+            vec.push(other);
+            self
+        } else if let Self::And(vec) = &mut other {
+            vec.push(self);
+            other
+        } else {
+            Self::And(vec1![self, other])
         }
     }
 }
@@ -81,24 +107,46 @@ impl Quantity {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Direction {
+    Above,
+    Below,
+    Left,
+    Right,
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Hint, Quantity, Set};
+    use super::{Direction, HintRecipe, Quantity, SetRecipe};
     use crate::solver::{Judgment, Row};
 
     #[test]
     fn sample_26_02_05_alice() {
         assert_eq!(
-            Hint::parse("Tina is one of 3 criminals in row\u{A0}4").unwrap(),
+            HintRecipe::parse("Tina is one of 3 criminals in row\u{A0}4").unwrap(),
             [
-                Hint::Member(
+                HintRecipe::Member(
                     "Tina".to_owned(),
-                    Set::Judgment(Judgment::Criminal).and(Set::Row(Row::Four))
+                    SetRecipe::Judgment(Judgment::Criminal).and(SetRecipe::Row(Row::Four))
                 ),
-                Hint::Count(
-                    Set::Judgment(Judgment::Criminal).and(Set::Row(Row::Four)),
+                HintRecipe::Count(
+                    SetRecipe::Judgment(Judgment::Criminal).and(SetRecipe::Row(Row::Four)),
                     Quantity::Exact(3)
                 )
+            ]
+        );
+    }
+
+    #[test]
+    fn sample_26_02_05_tina() {
+        assert_eq!(
+            HintRecipe::parse("Both criminals above Xavi are connected").unwrap(),
+            [
+                HintRecipe::Count(
+                    SetRecipe::Direction("Xavi".to_owned(), Direction::Above),
+                    Quantity::Exact(2)
+                ),
+                HintRecipe::Connected(SetRecipe::Direction("Xavi".to_owned(), Direction::Above))
             ]
         );
     }
