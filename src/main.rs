@@ -13,7 +13,7 @@ use solver::Puzzle;
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let puzzle = match args.html {
+    let mut puzzle = match args.html {
         Some(path) => {
             let html = fs::read_to_string(path)?;
             Puzzle::parse(&html)?

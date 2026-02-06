@@ -90,6 +90,19 @@ impl Card {
     pub(crate) const fn is_judged(&self) -> bool {
         self.status.is_some()
     }
+
+    pub(crate) fn status(&self) -> Option<Judgment> {
+        self.status
+    }
+
+    pub(crate) fn set(&mut self, judgment: Judgment) -> Option<&Self> {
+        if self.status != Some(judgment) {
+            self.status = Some(judgment);
+            Some(self)
+        } else {
+            None
+        }
+    }
 }
 
 fn parse_hint(hint: Node<'_>) -> Result<String> {

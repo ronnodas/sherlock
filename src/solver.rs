@@ -3,6 +3,7 @@ mod hint;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::iter::zip;
 use std::ops::{Index, IndexMut};
 
 use anyhow::{Result, anyhow, bail};
@@ -22,6 +23,7 @@ type Name = String;
 pub(crate) struct Puzzle {
     grid: Grid,
     hints: Vec<Hint>,
+    solutions: Vec<Solution>,
 }
 
 type Solution = [Judgment; 20];
@@ -52,7 +54,11 @@ impl Puzzle {
             .map(|hint| grid.verify_context(hint?))
             .try_collect()?;
 
-        Ok(Self { grid, hints })
+        Ok(Self {
+            grid,
+            hints,
+            solutions: Vec::new(),
+        })
     }
 
     fn validate(&self, solution: &Solution) -> bool {
@@ -82,8 +88,41 @@ impl Puzzle {
         self.grid.solved()
     }
 
-    pub(crate) fn infer(&self) -> Vec<(Name, Judgment)> {
-        unimplemented!()
+    pub(crate) fn infer(&mut self) -> Vec<(Name, Judgment)> {
+        let (first, rest): (Solution, &[Solution]) = loop {
+            if let Some((&first, rest)) = self.solutions.split_first() {
+                break (first, rest);
+            }
+            let old = self.grid.fixed();
+            let fixed_values = old
+                .iter()
+                .enumerate()
+                .filter_map(|(index, &judgment)| Some((index, judgment?)));
+            self.solutions = SolutionIterator::new(fixed_values)
+                .filter(|solution| self.validate(solution))
+                .collect();
+        };
+
+        let mut fixed = first.map(Some);
+        for solution in rest {
+            for i in 0..20 {
+                let fixed = &mut fixed[i];
+                if let Some(val) = *fixed
+                    && val != solution[i]
+                {
+                    *fixed = None;
+                }
+            }
+        }
+        fixed
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, fixed)| {
+                let fixed = fixed?;
+                let name = self.grid.set_new(index, fixed)?.name().to_owned();
+                Some((name, fixed))
+            })
+            .collect()
     }
 
     pub(crate) fn add_hint(&self, hint: String) -> Result<()> {
@@ -140,7 +179,15 @@ impl Grid {
     }
 
     fn solved(&self) -> bool {
-        self.cards.iter().all(|card| card.is_judged())
+        self.cards.iter().all(Card::is_judged)
+    }
+
+    fn fixed(&self) -> [Option<Judgment>; 20] {
+        self.cards.each_ref().map(Card::status)
+    }
+
+    fn set_new(&mut self, index: usize, judgment: Judgment) -> Option<&Card> {
+        self.cards[index].set(judgment)
     }
 }
 
@@ -293,7 +340,7 @@ impl SolutionIterator {
 }
 
 impl Iterator for SolutionIterator {
-    type Item = [Judgment; 20];
+    type Item = Solution;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.counter >= self.max_counter() {
@@ -315,7 +362,6 @@ impl Iterator for SolutionIterator {
         Some(current)
     }
 
-    // Since we know the exact count, we can provide an accurate size hint
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.max_counter() - self.counter)
             .try_into()
