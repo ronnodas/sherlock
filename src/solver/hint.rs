@@ -1,8 +1,12 @@
 mod parsers;
 
-use anyhow::Result;
+use std::collections::HashSet;
 
-use super::{Column, Judgment, Name, Row};
+use anyhow::Result;
+use itertools::Itertools as _;
+use mitsein::vec1::{Vec1, vec1};
+
+use super::{Column, Coordinate, Judgment, Name, Row, Solution};
 use parsers::Sentence;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -22,7 +26,7 @@ pub(crate) enum Set {
     Judgment(Judgment),
     Row(Row),
     Column(Column),
-    And(Vec<Self>),
+    And(Vec1<Self>),
 }
 
 impl Set {
@@ -34,7 +38,32 @@ impl Set {
             vec.push(self);
             other
         } else {
-            Self::And(vec![self, other])
+            Self::And(vec1![self, other])
+        }
+    }
+
+    pub(crate) fn contains(&self, coord: Coordinate, solution: &Solution) -> bool {
+        match self {
+            &Self::Judgment(judgment) => solution[coord.to_index()] == judgment,
+            &Self::Row(row) => coord.row == row,
+            &Self::Column(column) => coord.col == column,
+            Self::And(sets) => sets.iter().all(|set| set.contains(coord, solution)),
+        }
+    }
+
+    pub(crate) fn all_members(&self, solution: &[Judgment; 20]) -> HashSet<Coordinate> {
+        match self {
+            Self::Judgment(target) => solution
+                .iter()
+                .positions(|judgment| judgment == target)
+                .map(Coordinate::from_index)
+                .collect(),
+            &Self::Row(row) => Coordinate::row_all(row).collect(),
+            &Self::Column(column) => Coordinate::column_all(column).collect(),
+            Self::And(sets) => sets
+                .iter1()
+                .map(|set| set.all_members(solution))
+                .reduce(|a, b| a.intersection(&b).copied().collect()),
         }
     }
 }
@@ -45,7 +74,7 @@ pub(crate) enum Quantity {
 }
 
 impl Quantity {
-    pub(crate) fn matches(&self, len: usize) -> bool {
+    pub(crate) const fn matches(&self, len: usize) -> bool {
         match self {
             &Self::Exact(value) => len == value,
         }

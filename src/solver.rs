@@ -1,9 +1,8 @@
 mod card;
 mod hint;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt;
-use std::iter::zip;
 use std::ops::{Index, IndexMut};
 
 use anyhow::{Result, anyhow, bail};
@@ -15,7 +14,7 @@ use select::predicate::{Attr, Predicate as _};
 use crate::html::{Class, ClassName, Div, NodeExt as _};
 
 use card::Card;
-use hint::{Hint, Set};
+use hint::Hint;
 
 type Name = String;
 
@@ -71,17 +70,9 @@ impl Puzzle {
 
     fn evaluate(&self, hint: &Hint, solution: &Solution) -> bool {
         match hint {
-            Hint::Member(name, set) => self.is_in(self.grid.coord(name), set),
-            Hint::Count(set, quantity) => quantity.matches(self.all_members(set).len()),
+            Hint::Member(name, set) => set.contains(self.grid.coord(name), solution),
+            Hint::Count(set, quantity) => quantity.matches(set.all_members(solution).len()),
         }
-    }
-
-    fn is_in(&self, coord: Coordinate, set: &Set) -> bool {
-        unimplemented!()
-    }
-
-    fn all_members(&self, set: &Set) -> HashSet<Coordinate> {
-        unimplemented!()
     }
 
     pub(crate) fn solved(&self) -> bool {
@@ -229,7 +220,7 @@ impl fmt::Display for Judgment {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct Coordinate {
     row: Row,
     col: Column,
@@ -246,9 +237,17 @@ impl Coordinate {
     const fn to_index(self) -> usize {
         4 * self.row.to_index() + self.col.to_index()
     }
+
+    fn row_all(row: Row) -> impl Iterator<Item = Self> {
+        Column::ALL.into_iter().map(move |col| Self { row, col })
+    }
+
+    fn column_all(col: Column) -> impl Iterator<Item = Self> {
+        Row::ALL.into_iter().map(move |row| Self { row, col })
+    }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 enum Row {
     One,
     Two,
@@ -258,6 +257,7 @@ enum Row {
 }
 
 impl Row {
+    const ALL: [Self; 5] = [Self::One, Self::Two, Self::Three, Self::Four, Self::Five];
     fn from_index(index: usize) -> Self {
         match index {
             0 => Self::One,
@@ -280,7 +280,7 @@ impl Row {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 enum Column {
     A,
     B,
@@ -289,6 +289,8 @@ enum Column {
 }
 
 impl Column {
+    const ALL: [Self; 4] = [Self::A, Self::B, Self::C, Self::D];
+
     fn from_index(index: usize) -> Self {
         match index {
             0 => Self::A,
