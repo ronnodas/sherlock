@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     let mut pending = vec![];
     while !pending.is_empty() || !puzzle.solved() {
         let Some((name, judgment)) = pending.pop() else {
-            pending.extend(puzzle.infer());
+            pending.extend(puzzle.infer()?);
             if pending.is_empty() {
                 bail!("Stuck! Puzzle state: {puzzle:?}")
             }
@@ -39,7 +39,7 @@ fn main() -> Result<()> {
             HintKind::Flavor => continue,
         }
         let hint = Text::new("Enter new hint").prompt()?;
-        puzzle.add_hint(hint)?;
+        puzzle.add_hint(&hint)?;
     }
     Ok(())
 }

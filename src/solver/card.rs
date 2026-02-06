@@ -91,17 +91,15 @@ impl Card {
         self.status.is_some()
     }
 
-    pub(crate) fn status(&self) -> Option<Judgment> {
+    pub(crate) const fn status(&self) -> Option<Judgment> {
         self.status
     }
 
     pub(crate) fn set(&mut self, judgment: Judgment) -> Option<&Self> {
-        if self.status != Some(judgment) {
+        (self.status != Some(judgment)).then(|| {
             self.status = Some(judgment);
-            Some(self)
-        } else {
-            None
-        }
+            &*self
+        })
     }
 }
 

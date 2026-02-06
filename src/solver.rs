@@ -61,25 +61,20 @@ impl Puzzle {
     }
 
     fn validate(&self, solution: &Solution) -> bool {
-        self.hints.iter().all(|hint| self.evaluate(hint, solution))
+        self.hints
+            .iter()
+            .all(|hint| self.grid.evaluate(hint, solution))
     }
 
     fn format(self) -> String {
         unimplemented!()
     }
 
-    fn evaluate(&self, hint: &Hint, solution: &Solution) -> bool {
-        match hint {
-            Hint::Member(name, set) => set.contains(self.grid.coord(name), solution),
-            Hint::Count(set, quantity) => quantity.matches(set.all_members(solution).len()),
-        }
-    }
-
     pub(crate) fn solved(&self) -> bool {
         self.grid.solved()
     }
 
-    pub(crate) fn infer(&mut self) -> Vec<(Name, Judgment)> {
+    pub(crate) fn infer(&mut self) -> Result<Vec<(Name, Judgment)>> {
         let (first, rest): (Solution, &[Solution]) = loop {
             if let Some((&first, rest)) = self.solutions.split_first() {
                 break (first, rest);
@@ -92,6 +87,9 @@ impl Puzzle {
             self.solutions = SolutionIterator::new(fixed_values)
                 .filter(|solution| self.validate(solution))
                 .collect();
+            if self.solutions.is_empty() {
+                bail!("no solutions!")
+            }
         };
 
         let mut fixed = first.map(Some);
@@ -105,7 +103,7 @@ impl Puzzle {
                 }
             }
         }
-        fixed
+        Ok(fixed
             .into_iter()
             .enumerate()
             .filter_map(|(index, fixed)| {
@@ -113,11 +111,15 @@ impl Puzzle {
                 let name = self.grid.set_new(index, fixed)?.name().to_owned();
                 Some((name, fixed))
             })
-            .collect()
+            .collect())
     }
 
-    pub(crate) fn add_hint(&self, hint: String) -> Result<()> {
-        unimplemented!()
+    pub(crate) fn add_hint(&mut self, hint: &str) -> Result<()> {
+        let hints = Hint::parse(hint)?;
+        self.solutions
+            .retain(|solution| hints.iter().all(|hint| self.grid.evaluate(hint, solution)));
+        self.hints.extend(hints);
+        Ok(())
     }
 }
 
@@ -179,6 +181,13 @@ impl Grid {
 
     fn set_new(&mut self, index: usize, judgment: Judgment) -> Option<&Card> {
         self.cards[index].set(judgment)
+    }
+
+    fn evaluate(&self, hint: &Hint, solution: &Solution) -> bool {
+        match hint {
+            Hint::Member(name, set) => set.contains(self.coord(name), solution),
+            Hint::Count(set, quantity) => quantity.matches(set.all_members(solution).len()),
+        }
     }
 }
 
@@ -336,7 +345,7 @@ impl SolutionIterator {
         }
     }
 
-    fn max_counter(&self) -> u32 {
+    const fn max_counter(&self) -> u32 {
         1_u32 << self.free_indices.len()
     }
 }
