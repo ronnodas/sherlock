@@ -7,7 +7,7 @@ use crate::html::{Class, ClassName, Div, H3, NodeExt as _, Paragraph};
 
 use super::Judgment;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Card {
     name: String,
     profession: String,
@@ -82,7 +82,7 @@ impl Card {
     pub(crate) fn hint(&self) -> Option<&str> {
         self.hint.as_deref()
     }
-    
+
     pub(crate) fn name(&self) -> &str {
         &self.name
     }

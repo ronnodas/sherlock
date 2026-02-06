@@ -1,10 +1,11 @@
 mod card;
 mod hint;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::ops::{Index, IndexMut};
 
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use inquire::Editor;
 use itertools::Itertools as _;
 use select::document::Document;
@@ -13,15 +14,17 @@ use select::predicate::{Attr, Predicate as _};
 use crate::html::{Class, ClassName, Div, NodeExt as _};
 
 use card::Card;
-use hint::Hint;
+use hint::{Hint, Set};
 
 type Name = String;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Puzzle {
     grid: Grid,
     hints: Vec<Hint>,
 }
+
+type Solution = [Judgment; 20];
 
 impl Puzzle {
     pub(crate) fn prompt() -> Result<Self> {
@@ -46,17 +49,49 @@ impl Puzzle {
             .filter_map(|card| card.hint())
             .map(Hint::parse)
             .flatten_ok()
+            .map(|hint| grid.verify_context(hint?))
             .try_collect()?;
 
         Ok(Self { grid, hints })
     }
 
+    fn validate(&self, solution: &Solution) -> bool {
+        self.hints.iter().all(|hint| self.evaluate(hint, solution))
+    }
+
     fn format(self) -> String {
+        todo!()
+    }
+
+    fn evaluate(&self, hint: &Hint, solution: &Solution) -> bool {
+        match hint {
+            Hint::Member(name, set) => self.is_in(self.grid.coord(name), set),
+            Hint::Count(set, quantity) => quantity.matches(self.all_members(set).len()),
+        }
+    }
+
+    fn is_in(&self, coord: Coordinate, set: &Set) -> bool {
+        todo!()
+    }
+
+    fn all_members(&self, set: &Set) -> HashSet<Coordinate> {
+        todo!()
+    }
+
+    pub(crate) fn solved(&self) -> bool {
+        todo!()
+    }
+
+    pub(crate) fn infer(&self) -> Vec<(Name, Judgment)> {
+        todo!()
+    }
+
+    pub(crate) fn add_hint(&self, hint: String) -> Result<()> {
         todo!()
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Grid {
     cards: [Card; 20],
     coordinates: HashMap<Name, Coordinate>,
@@ -89,6 +124,20 @@ impl Grid {
     fn iter(&self) -> impl Iterator<Item = &Card> {
         self.cards.iter()
     }
+
+    fn verify_context(&self, hint: Hint) -> Result<Hint> {
+        let issue = match &hint {
+            Hint::Member(name, _) => {
+                (!self.coordinates.contains_key(name)).then_some(name.to_owned())
+            }
+            Hint::Count(..) => None,
+        };
+        issue.map_or(Ok(hint), |name| Err(anyhow!("{name} is unknown")))
+    }
+
+    fn coord(&self, name: &str) -> Coordinate {
+        self.coordinates[name]
+    }
 }
 
 impl Index<Coordinate> for Grid {
@@ -105,8 +154,8 @@ impl IndexMut<Coordinate> for Grid {
     }
 }
 
-#[derive(Clone, Copy)]
-enum Judgment {
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Judgment {
     Innocent,
     Criminal,
 }
@@ -120,7 +169,16 @@ impl Judgment {
     }
 }
 
-#[derive(Clone, Copy)]
+impl fmt::Display for Judgment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Innocent => write!(f, "Innocent"),
+            Self::Criminal => write!(f, "Criminal"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 struct Coordinate {
     row: Row,
     col: Column,
@@ -139,7 +197,7 @@ impl Coordinate {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Row {
     One,
     Two,
@@ -171,7 +229,7 @@ impl Row {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Column {
     A,
     B,
@@ -197,5 +255,66 @@ impl Column {
             Self::C => 2,
             Self::D => 3,
         }
+    }
+}
+
+struct SolutionIterator {
+    counter: u32,
+    template: [Judgment; 20],
+    free_indices: Vec<usize>,
+}
+
+impl SolutionIterator {
+    fn new(fixed_values: impl IntoIterator<Item = (usize, Judgment)>) -> Self {
+        let mut template = [Judgment::Innocent; 20];
+        let mut fixed_mask = [false; 20];
+
+        for (idx, val) in fixed_values {
+            template[idx] = val;
+            fixed_mask[idx] = true;
+        }
+
+        let free_indices: Vec<usize> = (0..20).filter(|i| !fixed_mask[*i]).collect();
+
+        Self {
+            counter: 0,
+            template,
+            free_indices,
+        }
+    }
+
+    fn max_counter(&self) -> u32 {
+        1_u32 << self.free_indices.len()
+    }
+}
+
+impl Iterator for SolutionIterator {
+    type Item = [Judgment; 20];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.counter >= self.max_counter() {
+            return None;
+        }
+
+        let mut current = self.template;
+
+        for (bit_pos, &target_idx) in self.free_indices.iter().enumerate() {
+            // Check if the nth bit of the counter is set
+            if (self.counter >> bit_pos) & 1 == 1 {
+                current[target_idx] = Judgment::Criminal;
+            } else {
+                current[target_idx] = Judgment::Innocent;
+            }
+        }
+
+        self.counter += 1;
+        Some(current)
+    }
+
+    // Since we know the exact count, we can provide an accurate size hint
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.max_counter() - self.counter)
+            .try_into()
+            .map_or((usize::MAX, None), |remaining| (remaining, Some(remaining)))
     }
 }
