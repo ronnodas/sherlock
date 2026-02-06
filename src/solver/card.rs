@@ -86,6 +86,10 @@ impl Card {
     pub(crate) fn name(&self) -> &str {
         &self.name
     }
+
+    pub(crate) const fn is_judged(&self) -> bool {
+        self.status.is_some()
+    }
 }
 
 fn parse_hint(hint: Node<'_>) -> Result<String> {

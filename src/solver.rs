@@ -60,7 +60,7 @@ impl Puzzle {
     }
 
     fn format(self) -> String {
-        todo!()
+        unimplemented!()
     }
 
     fn evaluate(&self, hint: &Hint, solution: &Solution) -> bool {
@@ -71,23 +71,23 @@ impl Puzzle {
     }
 
     fn is_in(&self, coord: Coordinate, set: &Set) -> bool {
-        todo!()
+        unimplemented!()
     }
 
     fn all_members(&self, set: &Set) -> HashSet<Coordinate> {
-        todo!()
+        unimplemented!()
     }
 
     pub(crate) fn solved(&self) -> bool {
-        todo!()
+        self.grid.solved()
     }
 
     pub(crate) fn infer(&self) -> Vec<(Name, Judgment)> {
-        todo!()
+        unimplemented!()
     }
 
     pub(crate) fn add_hint(&self, hint: String) -> Result<()> {
-        todo!()
+        unimplemented!()
     }
 }
 
@@ -137,6 +137,10 @@ impl Grid {
 
     fn coord(&self, name: &str) -> Coordinate {
         self.coordinates[name]
+    }
+
+    fn solved(&self) -> bool {
+        self.cards.iter().all(|card| card.is_judged())
     }
 }
 
