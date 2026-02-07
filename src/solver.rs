@@ -251,7 +251,26 @@ impl Coordinate {
     }
 
     fn connected(set: &HashSet<Self>) -> bool {
-        todo!()
+        if set.len() == 1 {
+            return true;
+        }
+        let Some(&start) = set.iter().next() else {
+            return true;
+        };
+        let mut seen = HashSet::new();
+        let mut frontier = vec![start];
+        while let Some(node) = frontier.pop() {
+            if !seen.insert(node) {
+                continue;
+            }
+            frontier.extend(
+                Direction::ALL
+                    .into_iter()
+                    .filter_map(|dir| node.step(dir))
+                    .filter(|node| set.contains(node)),
+            );
+        }
+        seen.len() == set.len()
     }
 
     fn step(self, direction: Direction) -> Option<Self> {
