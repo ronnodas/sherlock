@@ -139,14 +139,13 @@ mod tests {
 
     #[test]
     fn sample_26_02_05_tina() {
+        let set = SetRecipe::Judgment(Judgment::Criminal)
+            .and(SetRecipe::Direction("Xavi".to_owned(), Direction::Above));
         assert_eq!(
             HintRecipe::parse("Both criminals above Xavi are connected").unwrap(),
             [
-                HintRecipe::Count(
-                    SetRecipe::Direction("Xavi".to_owned(), Direction::Above),
-                    Quantity::Exact(2)
-                ),
-                HintRecipe::Connected(SetRecipe::Direction("Xavi".to_owned(), Direction::Above))
+                HintRecipe::Count(set.clone(), Quantity::Exact(2)),
+                HintRecipe::Connected(set)
             ]
         );
     }

@@ -8,6 +8,7 @@ use nom::error::Error;
 use nom::sequence::pair;
 use nom::{IResult, Parser as _};
 
+use crate::solver::hint::Direction;
 use crate::solver::{Column, Judgment, Name, Row};
 
 use super::{HintRecipe as Hint, Quantity, SetRecipe as Set};
@@ -17,10 +18,19 @@ type SResult<'str, O> = IResult<&'str str, O>;
 #[derive(PartialEq, Eq, Debug)]
 pub(super) enum Sentence {
     IsOneOf(Name, Quantity, Set),
+    Connected(Quantity, Set),
 }
 
 impl Sentence {
     pub(super) fn parse(hint: &str) -> anyhow::Result<Self> {
+        Self::parse_cased(hint).or_else(|e| {
+            let mut hint = hint.to_owned();
+            hint.get_mut(..1).ok_or(e)?.make_ascii_lowercase();
+            Self::parse_cased(&hint)
+        })
+    }
+
+    fn parse_cased(hint: &str) -> anyhow::Result<Self> {
         let (rest, sentence) = sentence
             .parse_complete(hint)
             .map_err(nom::Err::<Error<&str>>::to_owned)?;
@@ -36,18 +46,29 @@ impl Sentence {
             Self::IsOneOf(name, quantity, set) => {
                 vec![Hint::Member(name, set.clone()), Hint::Count(set, quantity)]
             }
+            Self::Connected(quantity, set) => {
+                vec![Hint::Count(set.clone(), quantity), Hint::Connected(set)]
+            }
         }
     }
 }
 
 pub(super) fn sentence(input: &str) -> SResult<'_, Sentence> {
-    alt((is_one_of,)).parse(input)
+    alt((is_one_of, connected)).parse(input)
 }
 
 fn is_one_of(input: &str) -> SResult<'_, Sentence> {
     map(
         (name, tag(" is one of "), quantity, multispace0(), set),
         |(name, _, quantity, _, set)| Sentence::IsOneOf(name, quantity, set),
+    )
+    .parse(input)
+}
+
+fn connected(input: &str) -> SResult<'_, Sentence> {
+    map(
+        (quantity, multispace0(), set, tag(" are connected")),
+        |(quantity, _, set, _)| Sentence::Connected(quantity, set),
     )
     .parse(input)
 }
@@ -64,7 +85,11 @@ fn name(input: &str) -> SResult<'_, String> {
 }
 
 fn quantity(input: &str) -> SResult<'_, Quantity> {
-    alt((map(u8, |count: u8| Quantity::Exact(count.into())),)).parse(input)
+    alt((
+        map(tag("both"), |_| Quantity::Exact(2)),
+        map(u8, |count: u8| Quantity::Exact(count.into())),
+    ))
+    .parse(input)
 }
 
 fn set(input: &str) -> SResult<'_, Set> {
@@ -72,6 +97,12 @@ fn set(input: &str) -> SResult<'_, Set> {
         map(
             (judgment_plural, tag(" in "), line),
             |(judgment, _, line)| Set::Judgment(judgment).and(line.into()),
+        ),
+        map(
+            (judgment_plural, direction, name),
+            |(judgement, direction, name)| {
+                Set::Judgment(judgement).and(Set::Direction(name, direction))
+            },
         ),
         map(judgment_plural, Set::Judgment),
         map(row, Set::Row),
@@ -138,21 +169,59 @@ fn column(input: &str) -> SResult<'_, Column> {
     .parse(input)
 }
 
+fn direction(input: &str) -> SResult<'_, Direction> {
+    alt((
+        map(tag(" above "), |_| Direction::Above),
+        map(tag(" below "), |_| Direction::Below),
+        map(tag(" left of "), |_| Direction::Left),
+        map(tag(" right of "), |_| Direction::Right),
+    ))
+    .parse(input)
+}
+
 #[cfg(test)]
 mod tests {
+    use std::fmt;
+
+    use nom::Parser;
+
     use super::*;
 
     #[test]
     fn sample_26_02_05_alice() {
-        let (remainder, sentence) = sentence("Tina is one of 3 criminals in row\u{A0}4").unwrap();
-        assert_eq!(remainder, "");
-        assert_eq!(
-            sentence,
-            Sentence::IsOneOf(
-                "Tina".to_owned(),
-                Quantity::Exact(3),
-                Set::Judgment(Judgment::Criminal).and(Set::Row(Row::Four))
-            )
+        let input = "Tina is one of 3 criminals in row\u{A0}4";
+        let expected = Sentence::IsOneOf(
+            "Tina".to_owned(),
+            Quantity::Exact(3),
+            Set::Judgment(Judgment::Criminal).and(Set::Row(Row::Four)),
         );
+        parse_complete(input, sentence, &expected);
+    }
+
+    #[test]
+    fn sample_26_02_05_tina() {
+        parse_complete(
+            "criminals above Xavi",
+            set,
+            &Set::Judgment(Judgment::Criminal)
+                .and(Set::Direction("Xavi".to_owned(), Direction::Above)),
+        );
+        let input = "both criminals above Xavi are connected";
+        let expected = Sentence::Connected(
+            Quantity::Exact(2),
+            Set::Judgment(Judgment::Criminal)
+                .and(Set::Direction("Xavi".to_owned(), Direction::Above)),
+        );
+        parse_complete(input, sentence, &expected);
+    }
+
+    fn parse_complete<'input, T: PartialEq + fmt::Debug>(
+        input: &'input str,
+        mut parser: impl Parser<&'input str, Output = T, Error: fmt::Debug>,
+        expected: &T,
+    ) {
+        let (remainder, sentence) = parser.parse(input).unwrap();
+        assert_eq!(remainder, "");
+        assert_eq!(&sentence, expected);
     }
 }

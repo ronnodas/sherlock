@@ -254,22 +254,30 @@ impl Coordinate {
         todo!()
     }
 
-    fn direction(start: Self, direction: Direction) -> Vec<Self> {
-        let Self { row, col } = start;
-        match direction {
-            Direction::Above => successors(row.prev(), |row| row.prev())
-                .map(|row| Self { row, col })
-                .collect(),
-            Direction::Below => successors(row.next(), |row| row.next())
-                .map(|row| Self { row, col })
-                .collect(),
-            Direction::Left => successors(col.prev(), |col| col.prev())
-                .map(|col| Self { row, col })
-                .collect(),
-            Direction::Right => successors(col.next(), |col| col.next())
-                .map(|col| Self { row, col })
-                .collect(),
-        }
+    fn step(self, direction: Direction) -> Option<Self> {
+        let coord = match direction {
+            Direction::Above => Self {
+                row: self.row.prev()?,
+                col: self.col,
+            },
+            Direction::Below => Self {
+                row: self.row.next()?,
+                col: self.col,
+            },
+            Direction::Left => Self {
+                row: self.row,
+                col: self.col.prev()?,
+            },
+            Direction::Right => Self {
+                row: self.row,
+                col: self.col.next()?,
+            },
+        };
+        Some(coord)
+    }
+
+    fn direction(start: Self, direction: Direction) -> impl Iterator<Item = Self> {
+        successors(start.step(direction), move |coord| coord.step(direction))
     }
 }
 
@@ -451,7 +459,7 @@ impl Recipe for SetRecipe {
             Self::Column(column) => Set::Coord(Coordinate::column_all(column).collect()),
             Self::Direction(name, direction) => {
                 let start = grid.coord(&name).ok_or_else(|| not_in_grid(&name))?;
-                Set::Coord(HashSet::from_iter(Coordinate::direction(start, direction)))
+                Set::Coord(Coordinate::direction(start, direction).collect())
             }
             Self::And(recipes) => {
                 let sets = recipes
