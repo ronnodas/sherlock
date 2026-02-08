@@ -14,8 +14,6 @@ winnow = "0.7.14"
 
 
 [lints.rust]
-dead_code = "allow"
-
 unsafe_code = "deny"
 
 ambiguous_negative_literals = "warn"
@@ -126,7 +124,7 @@ suspicious_xor_used_as_pow = "warn"
 tests_outside_test_module = "warn"
 todo = "warn"
 try_err = "warn"
-# unimplemented = "warn"
+unimplemented = "warn"
 unnecessary_self_imports = "warn"
 unneeded_field_pattern = "warn"
 unseparated_literal_suffix = "warn"

@@ -121,6 +121,12 @@ impl From<Line> for Unit {
     }
 }
 
+impl From<Row> for Unit {
+    fn from(row: Row) -> Self {
+        Self::Line(Line::Row(row))
+    }
+}
+
 impl Unit {
     fn and(self, other: Self) -> SetRecipe {
         SetRecipe::Intersection(vec1![self, other])
@@ -146,6 +152,18 @@ impl Line {
             Self::Row(row) => row.others().map(Self::Row).collect(),
             Self::Column(column) => column.others().map(Self::Column).collect(),
         }
+    }
+}
+
+impl From<Row> for Line {
+    fn from(v: Row) -> Self {
+        Self::Row(v)
+    }
+}
+
+impl From<Column> for Line {
+    fn from(v: Column) -> Self {
+        Self::Column(v)
     }
 }
 
