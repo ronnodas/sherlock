@@ -1,227 +1,401 @@
+use std::iter::once;
+
 use anyhow::anyhow;
-use nom::branch::alt;
-use nom::bytes::complete::{tag, take_while};
-use nom::character::complete::u8;
-use nom::character::{multispace0, satisfy};
-use nom::combinator::{map, recognize};
-use nom::error::Error;
-use nom::sequence::pair;
-use nom::{IResult, Parser as _};
+use winnow::combinator::{alt, delimited, opt, preceded, separated_pair, terminated};
+use winnow::error::StrContext;
+use winnow::{Parser as _, Result};
 
-use crate::solver::hint::Direction;
-use crate::solver::{Column, Judgment, Name, Row};
+use crate::solver::hint::{
+    Direction, HintRecipe as Hint, Line, LineKind, Profession, Quantity, Unit,
+};
+use crate::solver::{Judgment, Name};
 
-use super::{HintRecipe as Hint, Quantity, SetRecipe as Set};
-
-type SResult<'str, O> = IResult<&'str str, O>;
-
-#[derive(PartialEq, Eq, Debug)]
-pub(super) enum Sentence {
-    IsOneOf(Name, Quantity, Set),
-    Connected(Quantity, Set),
+pub(crate) enum Sentence {
+    AllTraitsAreNeighborsInUnit(Unit, Judgment),
+    HasMostTraits(Line, Judgment),
+    IsOneOfNTraitsInUnit(Unit, Name, Judgment, Quantity),
+    MoreTraitsInUnitThanUnit {
+        big: Unit,
+        small: Unit,
+        judgment: Judgment,
+    },
+    NProfessionsHaveTraitInDir(Profession, Judgment, Direction, Quantity),
+    NumberOfTraitsInUnit(Unit, Judgment, Quantity),
+    OnlyOnePersonInUnitHasExactlyNTraitNeighbors(Unit, Judgment, Quantity),
+    OnlyOneLineHasExactlyNTraits(LineKind, Judgment, Quantity),
+    OnlyLineHasExactlyNTraits(Line, Judgment, Quantity),
+    UnitSharesNOutOfNTraitsWithUnit {
+        quantity: Quantity,
+        quantified: Unit,
+        other: Unit,
+        judgment: Judgment,
+        intersection: Quantity,
+    },
+    UnitsShareNTraits(Unit, Unit, Judgment, Quantity),
 }
 
 impl Sentence {
-    pub(super) fn parse(hint: &str) -> anyhow::Result<Self> {
+    //TODO take Cow?
+    pub(crate) fn parse(hint: &str) -> anyhow::Result<Self> {
         Self::parse_cased(hint).or_else(|e| {
             let mut hint = hint.to_owned();
-            hint.get_mut(..1).ok_or(e)?.make_ascii_lowercase();
+            let Some(first) = hint.get_mut(..1) else {
+                return Err(e);
+            };
+            first.make_ascii_lowercase();
             Self::parse_cased(&hint)
         })
     }
 
-    fn parse_cased(hint: &str) -> anyhow::Result<Self> {
-        let (rest, sentence) = sentence
-            .parse_complete(hint)
-            .map_err(nom::Err::<Error<&str>>::to_owned)?;
-        if rest.is_empty() {
-            Ok(sentence)
-        } else {
-            Err(anyhow!(r#"cannot parse "{hint}""#))
-        }
-    }
-
-    pub(super) fn collate(self) -> Vec<Hint> {
+    pub(crate) fn collate(self) -> Vec<Hint> {
         match self {
-            Self::IsOneOf(name, quantity, set) => {
-                vec![Hint::Member(name, set.clone()), Hint::Count(set, quantity)]
+            Self::AllTraitsAreNeighborsInUnit(unit, judgment) => {
+                vec![Hint::Connected(unit, judgment)]
             }
-            Self::Connected(quantity, set) => {
-                vec![Hint::Count(set.clone(), quantity), Hint::Connected(set)]
+            Self::HasMostTraits(line, judgment) => line
+                .others()
+                .into_iter()
+                .map(|other| Hint::Bigger {
+                    big: line.into(),
+                    small: other.into(),
+                    judgment,
+                })
+                .collect(),
+            Self::IsOneOfNTraitsInUnit(unit, name, judgment, quantity) => {
+                vec![
+                    Hint::Count(unit.clone().into(), judgment, quantity),
+                    Hint::Member(name, unit, judgment),
+                ]
+            }
+            Self::MoreTraitsInUnitThanUnit {
+                big,
+                small,
+                judgment,
+            } => vec![Hint::Bigger {
+                big,
+                small,
+                judgment,
+            }],
+            Self::NProfessionsHaveTraitInDir(profession, judgment, direction, quantity) => {
+                vec![Hint::Count(
+                    Unit::ProfessionShift(profession, direction).into(),
+                    judgment,
+                    quantity,
+                )]
+            }
+            Self::NumberOfTraitsInUnit(unit, judgment, quantity) => {
+                vec![Hint::Count(unit.into(), judgment, quantity)]
+            }
+            Self::OnlyOnePersonInUnitHasExactlyNTraitNeighbors(unit, judgment, quantity) => {
+                vec![Hint::UniqueWithNeighbors(unit, judgment, quantity)]
+            }
+            Self::OnlyOneLineHasExactlyNTraits(line_kind, judgment, quantity) => {
+                vec![Hint::UniqueLine(line_kind, judgment, quantity)]
+            }
+            Self::OnlyLineHasExactlyNTraits(line, judgment, quantity) => {
+                let equal = Hint::Count(line.into(), judgment, quantity);
+                line.others()
+                    .into_iter()
+                    .map(|other| Hint::Count(other.into(), judgment, quantity).not())
+                    .chain(once(equal))
+                    .collect()
+            }
+            Self::UnitSharesNOutOfNTraitsWithUnit {
+                quantity,
+                quantified,
+                other,
+                judgment,
+                intersection,
+            } => vec![
+                Hint::Count(quantified.clone().into(), judgment, quantity),
+                Hint::Count(quantified.and(other), judgment, intersection),
+            ],
+            Self::UnitsShareNTraits(a, b, judgment, quantity) => {
+                vec![Hint::Count(a.and(b), judgment, quantity)]
             }
         }
     }
-}
 
-pub(super) fn sentence(input: &str) -> SResult<'_, Sentence> {
-    alt((is_one_of, connected)).parse(input)
-}
+    fn parse_cased(hint: &str) -> anyhow::Result<Self> {
+        Self::any.parse(hint).map_err(|e| anyhow!("{e}"))
+    }
 
-fn is_one_of(input: &str) -> SResult<'_, Sentence> {
-    map(
-        (name, tag(" is one of "), quantity, multispace0(), set),
-        |(name, _, quantity, _, set)| Sentence::IsOneOf(name, quantity, set),
-    )
-    .parse(input)
-}
+    fn any(input: &mut &str) -> Result<Self> {
+        alt((
+            Self::all_traits_are_neighbors_in_unit,
+            Self::has_most_traits,
+            Self::is_one_of_n_traits_in_unit,
+            Self::more_traits_in_unit_than_unit,
+            Self::n_professions_have_trait_in_dir,
+            Self::number_of_traits_in_unit,
+            Self::only_one_person_in_unit_has_exactly_n_trait_neighbors,
+            Self::only_one_line_has_exactly_n_traits,
+            Self::only_line_has_exactly_n_traits,
+            Self::unit_shares_n_out_of_n_traits_with_unit,
+            Self::units_share_n_traits,
+        ))
+        .parse_next(input)
+    }
 
-fn connected(input: &str) -> SResult<'_, Sentence> {
-    map(
-        (quantity, multispace0(), set, tag(" are connected")),
-        |(quantity, _, set, _)| Sentence::Connected(quantity, set),
-    )
-    .parse(input)
-}
+    fn all_traits_are_neighbors_in_unit(input: &mut &str) -> Result<Self> {
+        // "All criminals in row 2 are connected"
+        delimited("All ", judged_unit, " are connected")
+            .map(|(judgment, unit)| Self::AllTraitsAreNeighborsInUnit(unit, judgment))
+            .parse_next(input)
+    }
 
-fn name(input: &str) -> SResult<'_, String> {
-    map(
-        recognize(pair(
-            satisfy(|c| c.is_ascii_uppercase()),
-            take_while(|c: char| c.is_ascii() && !c.is_ascii_whitespace()),
-        )),
-        str::to_owned,
-    )
-    .parse(input)
-}
+    fn has_most_traits(input: &mut &str) -> Result<Self> {
+        // "Row 5 has more innocents than any other row"
+        (
+            line,
+            " has more ",
+            judgment_plural,
+            " than any other ",
+            line_kind,
+        )
+            .verify(|&(line, _, _, _, kind)| line.kind() == kind)
+            .map(|(line, _, judgment, _, _)| Self::HasMostTraits(line, judgment))
+            .parse_next(input)
+    }
 
-fn quantity(input: &str) -> SResult<'_, Quantity> {
-    alt((
-        map(tag("both"), |_| Quantity::Exact(2)),
-        map(u8, |count: u8| Quantity::Exact(count.into())),
-    ))
-    .parse(input)
-}
+    fn is_one_of_n_traits_in_unit(input: &mut &str) -> Result<Self> {
+        // "#NAME is one of #NAMES #N innocent neighbors"
+        separated_pair(name, " is one of ", quantified_judged_unit)
+            .map(|(name, (count, judgment, unit))| {
+                Self::IsOneOfNTraitsInUnit(unit, name, judgment, count)
+            })
+            .parse_next(input)
+    }
 
-fn set(input: &str) -> SResult<'_, Set> {
-    alt((
-        map(
-            (judgment_plural, tag(" in "), line),
-            |(judgment, _, line)| Set::Judgment(judgment).and(line.into()),
-        ),
-        map(
-            (judgment_plural, direction, name),
-            |(judgement, direction, name)| {
-                Set::Judgment(judgement).and(Set::Direction(name, direction))
+    fn more_traits_in_unit_than_unit(input: &mut &str) -> Result<Self> {
+        // "There are more innocent #PROFS than innocent #PROFS"
+        preceded(
+            "There are more ",
+            separated_pair(judged_unit, " than ", judged_unit),
+        )
+        .verify_map(|((judgment_big, big), (judgement_small, small))| {
+            (judgment_big == judgement_small).then_some(Self::MoreTraitsInUnitThanUnit {
+                big,
+                small,
+                judgment: judgment_big,
+            })
+        })
+        .parse_next(input)
+    }
+
+    fn n_professions_have_trait_in_dir(input: &mut &str) -> Result<Self> {
+        // "Exactly 1 #PROF has a criminal directly above them"
+        (
+            quantified_profession,
+            " has a ",
+            judgment_singular,
+            " directly ",
+            direction,
+            "them",
+        )
+            .map(|((count, profession), _, judgment, _, direction, _)| {
+                Self::NProfessionsHaveTraitInDir(profession, judgment, direction, count)
+            })
+            .parse_next(input)
+    }
+
+    fn number_of_traits_in_unit(input: &mut &str) -> Result<Self> {
+        // #NAME has exactly 2 innocent neighbors
+        // There's an odd number of innocents neighboring #NAME
+        // There's an odd number of innocents on the edges
+        // There's an odd number of criminals neighboring #NAME
+        // There's an odd number of criminals in row #R
+        // There are exactly 2 innocents #BETWEEN
+        // There is only one innocent #BETWEEN
+        alt((
+            preceded(
+                alt(("There is ", "There are ", "There's ")),
+                quantified_judged_unit,
+            ),
+            separated_pair(name, " has ", terminated(quantified_judgment, " neighbors"))
+                .map(|(name, (quantity, judgment))| (quantity, judgment, Unit::Neighbor(name))),
+        ))
+        .map(|(count, judgment, unit)| Self::NumberOfTraitsInUnit(unit, judgment, count))
+        .parse_next(input)
+    }
+
+    fn only_one_person_in_unit_has_exactly_n_trait_neighbors(input: &mut &str) -> Result<Self> {
+        // Only one #PROF has exactly 4 criminal neighbors
+        // Only one of us 2 #PROFS has exactly 2 criminal neighbors
+        // Only one person in a corner has exactly 2 innocent neighbors
+        separated_pair(
+            preceded(
+                alt(("Only one ", delimited("Only one of ", determiner, " "))),
+                unit,
+            ),
+            " has exactly ",
+            terminated((count, judgment_singular), "neighbors"),
+        )
+        .map(|(unit, (count, judgment))| {
+            Self::OnlyOnePersonInUnitHasExactlyNTraitNeighbors(unit, judgment, count)
+        })
+        .parse_next(input)
+    }
+
+    fn only_one_line_has_exactly_n_traits(input: &mut &str) -> Result<Self> {
+        //"Only one column has exactly 2 innocents"
+        separated_pair(
+            preceded("Only one ", line_kind),
+            " has ",
+            quantified_judgment,
+        )
+        .map(|(kind, (count, judgment))| Self::OnlyOneLineHasExactlyNTraits(kind, judgment, count))
+        .parse_next(input)
+    }
+
+    fn only_line_has_exactly_n_traits(input: &mut &str) -> Result<Self> {
+        // Row #R is the only row with exactly 2 innocents
+        // Row #R is the only row with exactly 2 criminals
+        (
+            line,
+            " is the only ",
+            line_kind,
+            " with ",
+            quantified_judgment,
+        )
+            .verify(|&(line, _, kind, _, _)| line.kind() == kind)
+            .context(StrContext::Label("a matching row/column"))
+            .map(|(line, _, _, _, (count, judgment))| {
+                Self::OnlyLineHasExactlyNTraits(line, judgment, count)
+            })
+            .parse_next(input)
+    }
+
+    fn unit_shares_n_out_of_n_traits_with_unit(input: &mut &str) -> Result<Self> {
+        // Exactly 2 of the #N innocents neighboring #NAME are #BETWEEN
+        // Only 1 of the 2 innocents in column #C is #NAMES neighbor
+        // Only 1 of the #N innocents neighboring #NAME is #BETWEEN
+        // Only 1 of the #N innocents neighboring #NAME is #NAMES neighbor
+        separated_pair(
+            separated_pair(
+                preceded(opt("Only "), count),
+                " of the ",
+                quantified_judged_unit,
+            ),
+            alt(("is", "are")),
+            unit,
+        )
+        .map(
+            |((intersection, (quantity, judgment, quantified)), other)| {
+                Self::UnitSharesNOutOfNTraitsWithUnit {
+                    quantified,
+                    other,
+                    judgment,
+                    quantity,
+                    intersection,
+                }
             },
-        ),
-        map(judgment_plural, Set::Judgment),
-        map(row, Set::Row),
-    ))
-    .parse(input)
-}
+        )
+        .parse_next(input)
+    }
 
-fn judgment_plural(input: &str) -> SResult<'_, Judgment> {
-    alt((
-        map(tag("innocents"), |_| Judgment::Innocent),
-        map(tag("criminals"), |_| Judgment::Criminal),
-    ))
-    .parse(input)
-}
-
-enum Line {
-    Row(Row),
-    Column(Column),
-}
-
-impl From<Line> for Set {
-    fn from(value: Line) -> Self {
-        match value {
-            Line::Row(row) => Self::Row(row),
-            Line::Column(column) => Self::Column(column),
-        }
+    fn units_share_n_traits(input: &mut &str) -> Result<Self> {
+        // #NAME and #NAME have only one innocent neighbor in common
+        // An odd number of innocents #BETWEEN neighbor #NAME
+        // There are no innocents #BETWEEN who neighbor #NAME
+        alt((
+            (
+                name,
+                " and ",
+                name,
+                " have ",
+                count,
+                " ",
+                judgment_singular,
+                " neighbor",
+                opt("s"),
+                " in common",
+            )
+                .map(|(a, _, b, _, count, _, judgment, _, _, _)| {
+                    (Unit::Neighbor(a), Unit::Neighbor(b), judgment, count)
+                }),
+            separated_pair(quantified_judged_unit, " neighbor ", name).map(
+                |((count, judgment, unit), name)| (unit, Unit::Neighbor(name), judgment, count),
+            ),
+        ))
+        .map(|(a, b, judgment, count)| Self::UnitsShareNTraits(a, b, judgment, count))
+        .parse_next(input)
     }
 }
 
-fn line(input: &str) -> SResult<'_, Line> {
-    alt((map(row, Line::Row), map(column, Line::Column))).parse(input)
+fn unit(input: &mut &str) -> Result<Unit> {
+    // in Row 2
+    todo!()
 }
 
-fn row(input: &str) -> SResult<'_, Row> {
-    map(
-        (
-            tag("row\u{A0}"),
-            alt((
-                map(tag("1"), |_| Row::One),
-                map(tag("2"), |_| Row::Two),
-                map(tag("3"), |_| Row::Three),
-                map(tag("4"), |_| Row::Four),
-                map(tag("5"), |_| Row::Five),
-            )),
-        ),
-        |(_, row)| row,
-    )
-    .parse(input)
+fn judged_unit(input: &mut &str) -> Result<(Judgment, Unit)> {
+    // criminals in row 2
+    // innocent #PROFS
+    qualified_unit
+        .verify_map(|(count, judgment, unit)| {
+            if count.is_none() {
+                Some((judgment?, unit))
+            } else {
+                None
+            }
+        })
+        .parse_next(input)
 }
 
-fn column(input: &str) -> SResult<'_, Column> {
-    map(
-        (
-            tag("column\u{A0}"),
-            alt((
-                map(tag("A"), |_| Column::A),
-                map(tag("B"), |_| Column::B),
-                map(tag("C"), |_| Column::C),
-                map(tag("D"), |_| Column::D),
-            )),
-        ),
-        |(_, column)| column,
-    )
-    .parse(input)
+fn quantified_judged_unit(input: &mut &str) -> Result<(Quantity, Judgment, Unit)> {
+    // #NAMES #N innocent neighbors
+    qualified_unit
+        .verify_map(|(count, judgment, unit)| Some((count?, judgment?, unit)))
+        .parse_next(input)
 }
 
-fn direction(input: &str) -> SResult<'_, Direction> {
-    alt((
-        map(tag(" above "), |_| Direction::Above),
-        map(tag(" below "), |_| Direction::Below),
-        map(tag(" left of "), |_| Direction::Left),
-        map(tag(" right of "), |_| Direction::Right),
-    ))
-    .parse(input)
+fn qualified_unit(input: &mut &str) -> Result<(Option<Quantity>, Option<Judgment>, Unit)> {
+    todo!()
 }
 
-#[cfg(test)]
-mod tests {
-    use std::fmt;
+fn line(input: &mut &str) -> Result<Line> {
+    // Row 5
+    todo!()
+}
 
-    use nom::Parser;
+fn line_kind(input: &mut &str) -> Result<LineKind> {
+    // row
+    alt(("row".value(LineKind::Row), "column".value(LineKind::Column))).parse_next(input)
+}
 
-    use super::*;
+fn count(input: &mut &str) -> Result<Quantity> {
+    todo!()
+}
 
-    #[test]
-    fn sample_26_02_05_alice() {
-        let input = "Tina is one of 3 criminals in row\u{A0}4";
-        let expected = Sentence::IsOneOf(
-            "Tina".to_owned(),
-            Quantity::Exact(3),
-            Set::Judgment(Judgment::Criminal).and(Set::Row(Row::Four)),
-        );
-        parse_complete(input, sentence, &expected);
-    }
+fn quantified_judgment(input: &mut &str) -> Result<(Quantity, Judgment)> {
+    // exactly 2 innocent
+    todo!()
+}
 
-    #[test]
-    fn sample_26_02_05_tina() {
-        parse_complete(
-            "criminals above Xavi",
-            set,
-            &Set::Judgment(Judgment::Criminal)
-                .and(Set::Direction("Xavi".to_owned(), Direction::Above)),
-        );
-        let input = "both criminals above Xavi are connected";
-        let expected = Sentence::Connected(
-            Quantity::Exact(2),
-            Set::Judgment(Judgment::Criminal)
-                .and(Set::Direction("Xavi".to_owned(), Direction::Above)),
-        );
-        parse_complete(input, sentence, &expected);
-    }
+fn judgment_plural(input: &mut &str) -> Result<Judgment> {
+    // innocents
+    todo!()
+}
 
-    fn parse_complete<'input, T: PartialEq + fmt::Debug>(
-        input: &'input str,
-        mut parser: impl Parser<&'input str, Output = T, Error: fmt::Debug>,
-        expected: &T,
-    ) {
-        let (remainder, sentence) = parser.parse(input).unwrap();
-        assert_eq!(remainder, "");
-        assert_eq!(&sentence, expected);
-    }
+fn judgment_singular(input: &mut &str) -> Result<Judgment> {
+    // criminal
+    todo!()
+}
+
+fn name(input: &mut &str) -> Result<Name> {
+    todo!()
+}
+
+fn quantified_profession(input: &mut &str) -> Result<(Quantity, Profession)> {
+    // Exactly 1 #PROF
+    todo!()
+}
+
+fn direction(input: &mut &str) -> Result<Direction> {
+    // above
+    todo!()
+}
+
+fn determiner<'input>(input: &mut &'input str) -> Result<&'input str> {
+    todo!()
 }

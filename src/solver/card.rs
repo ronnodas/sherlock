@@ -4,13 +4,14 @@ use select::node::Node;
 use select::predicate::Predicate as _;
 
 use crate::html::{Class, ClassName, Div, H3, NodeExt as _, Paragraph};
+use crate::solver::{Name, Profession};
 
 use super::Judgment;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Card {
-    name: String,
-    profession: String,
+    name: Name,
+    profession: Profession,
     hint: Option<String>,
     status: Option<Judgment>,
 }
@@ -83,8 +84,12 @@ impl Card {
         self.hint.as_deref()
     }
 
-    pub(crate) fn name(&self) -> &str {
+    pub(crate) const fn name(&self) -> &Name {
         &self.name
+    }
+
+    pub(crate) const fn profession(&self) -> &Profession {
+        &self.profession
     }
 
     pub(crate) const fn is_judged(&self) -> bool {

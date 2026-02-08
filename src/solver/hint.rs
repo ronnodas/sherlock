@@ -2,107 +2,193 @@ mod parsers;
 
 use std::collections::HashSet;
 
-use anyhow::Result;
-use itertools::Itertools as _;
+use anyhow::{Result, bail};
+use mitsein::array_vec1::ArrayVec1;
+use mitsein::hash_set1::HashSet1;
+use mitsein::iter1::IntoIterator1 as _;
 use mitsein::vec1::{Vec1, vec1};
+
+use crate::solver::{Grid, Profession};
 
 use super::{Column, Coordinate, Judgment, Name, Row, Solution};
 use parsers::Sentence;
 
+pub(crate) type Set = HashSet<Coordinate>;
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) enum Hint {
-    Member(Coordinate, Set),
-    Count(Set, Quantity),
-    Connected(Set),
+    Judgment(Coordinate, Judgment),
+    Count(Set, Judgment, Quantity),
+    Connected(Set, Judgment),
+    Bigger {
+        big: Set,
+        small: Set,
+        judgment: Judgment,
+    },
+    UniqueWithCount(Vec1<Set>, Judgment, Quantity),
+    Not(Box<Self>),
 }
 
 impl Hint {
     pub(crate) fn evaluate(&self, solution: &Solution) -> bool {
         match self {
-            Self::Member(card, set) => set.contains(*card, solution),
-            Self::Count(set, quantity) => quantity.matches(set.all_members(solution).len()),
-            Self::Connected(set) => Coordinate::connected(&set.all_members(solution)),
+            &Self::Judgment(coord, judgment) => solution[coord.to_index()] == judgment,
+            Self::Count(set, judgment, quantity) => {
+                quantity.matches(judgment.filter(set, solution).count())
+            }
+            Self::Connected(set, judgment) => {
+                Coordinate::connected(&judgment.filter(set, solution).collect())
+            }
+            Self::Bigger {
+                big,
+                small,
+                judgment,
+            } => judgment.filter(big, solution).count() > judgment.filter(small, solution).count(),
+            Self::UniqueWithCount(sets, judgment, quantity) => {
+                sets.iter()
+                    .filter(|set| quantity.matches(judgment.filter(set, solution).count()))
+                    .count()
+                    == 1
+            }
+            Self::Not(hint) => !hint.evaluate(solution),
         }
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug)]
 pub(crate) enum HintRecipe {
-    Member(Name, SetRecipe),
-    Count(SetRecipe, Quantity),
-    Connected(SetRecipe),
+    Member(Name, Unit, Judgment),
+    Count(SetRecipe, Judgment, Quantity),
+    Connected(Unit, Judgment),
+    Bigger {
+        big: Unit,
+        small: Unit,
+        judgment: Judgment,
+    },
+    UniqueWithNeighbors(Unit, Judgment, Quantity),
+    UniqueLine(LineKind, Judgment, Quantity),
+    Not(Box<Self>),
 }
 
 impl HintRecipe {
     pub(crate) fn parse(hint: &str) -> Result<Vec<Self>> {
         Ok(Sentence::parse(hint)?.collate())
     }
-}
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub(crate) enum Set {
-    Judgment(Judgment),
-    Coord(HashSet<Coordinate>),
-    And(Vec1<Self>),
-}
-
-impl Set {
-    pub(crate) fn contains(&self, coord: Coordinate, solution: &Solution) -> bool {
-        match self {
-            &Self::Judgment(judgment) => solution[coord.to_index()] == judgment,
-            Self::Coord(coordinates) => coordinates.contains(&coord),
-            Self::And(sets) => sets.iter().all(|set| set.contains(coord, solution)),
-        }
-    }
-
-    pub(crate) fn all_members(&self, solution: &[Judgment; 20]) -> HashSet<Coordinate> {
-        match self {
-            Self::Judgment(target) => solution
-                .iter()
-                .positions(|judgment| judgment == target)
-                .map(Coordinate::from_index)
-                .collect(),
-            Self::Coord(set) => set.clone(),
-            Self::And(sets) => sets
-                .iter1()
-                .map(|set| set.all_members(solution))
-                .reduce(|a, b| a.intersection(&b).copied().collect()),
+    fn not(self) -> Self {
+        if let Self::Not(reverse) = self {
+            *reverse
+        } else {
+            Self::Not(Box::new(self))
         }
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug)]
 pub(crate) enum SetRecipe {
-    Judgment(Judgment),
+    Unit(Unit),
+    Intersection(Vec1<Unit>),
+}
+
+impl From<Unit> for SetRecipe {
+    fn from(unit: Unit) -> Self {
+        Self::Unit(unit)
+    }
+}
+
+impl From<Line> for SetRecipe {
+    fn from(line: Line) -> Self {
+        Self::Unit(Unit::Line(line))
+    }
+}
+
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Clone, Debug)]
+pub(crate) enum Unit {
+    Direction(Direction, Name),
+    Line(Line),
+    Profession(Profession, Option<Quantity>),
+    ProfessionShift(Profession, Direction),
+    Neighbor(Name),
+    Edges,
+}
+
+impl From<Line> for Unit {
+    fn from(v: Line) -> Self {
+        Self::Line(v)
+    }
+}
+
+impl Unit {
+    fn and(self, other: Self) -> SetRecipe {
+        SetRecipe::Intersection(vec1![self, other])
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Line {
     Row(Row),
     Column(Column),
-    Direction(Name, Direction),
-    And(Vec1<Self>),
 }
 
-impl SetRecipe {
-    fn and(mut self, mut other: Self) -> Self {
-        if let Self::And(vec) = &mut self {
-            vec.push(other);
-            self
-        } else if let Self::And(vec) = &mut other {
-            vec.push(self);
-            other
-        } else {
-            Self::And(vec1![self, other])
+impl Line {
+    const fn kind(self) -> LineKind {
+        match self {
+            Self::Row(_) => LineKind::Row,
+            Self::Column(_) => LineKind::Column,
+        }
+    }
+
+    fn others(self) -> Vec<Self> {
+        match self {
+            Self::Row(row) => row.others().map(Self::Row).collect(),
+            Self::Column(column) => column.others().map(Self::Column).collect(),
         }
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum LineKind {
+    Row,
+    Column,
+}
+impl LineKind {
+    fn all(self) -> ArrayVec1<Line, 5> {
+        match self {
+            Self::Row => Row::ALL.map(Line::Row).into(),
+            Self::Column => Column::ALL.map(Line::Column).into_iter1().collect1(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Quantity {
-    Exact(usize),
+    Exact(u8),
+    Parity(Parity),
 }
 
 impl Quantity {
-    pub(crate) const fn matches(&self, len: usize) -> bool {
+    pub(crate) fn matches(self, len: usize) -> bool {
         match self {
-            &Self::Exact(value) => len == value,
+            Self::Exact(value) => len == value.into(),
+            Self::Parity(parity) => parity.matches(len),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Parity {
+    Even,
+    Odd,
+}
+
+impl Parity {
+    const fn matches(self, len: usize) -> bool {
+        match self {
+            Self::Even => len.is_multiple_of(2),
+            Self::Odd => !len.is_multiple_of(2),
         }
     }
 }
@@ -115,10 +201,132 @@ pub(crate) enum Direction {
     Right,
 }
 
+impl Direction {
+    pub(crate) const ALL: [Self; 4] = [Self::Above, Self::Below, Self::Left, Self::Right];
+}
+
+pub(crate) trait Recipe {
+    type Output;
+
+    fn contextualize(self, grid: &Grid) -> Result<Self::Output>;
+}
+
+impl Recipe for HintRecipe {
+    type Output = Hint;
+
+    fn contextualize(self, grid: &Grid) -> Result<Self::Output> {
+        let hint = match self {
+            Self::Member(name, set, judgment) => {
+                let coordinate = grid.coord(&name)?;
+                let set = set.contextualize(grid)?;
+                if !set.contains(&coordinate) {
+                    bail!("invalid hint: {name} not in {set:?}")
+                }
+                Hint::Judgment(coordinate, judgment)
+            }
+            Self::Count(set, judgment, quantity) => {
+                Hint::Count(set.contextualize(grid)?, judgment, quantity)
+            }
+            Self::Connected(set, judgment) => Hint::Connected(set.contextualize(grid)?, judgment),
+            Self::Bigger {
+                big,
+                small,
+                judgment,
+            } => Hint::Bigger {
+                big: big.contextualize(grid)?,
+                small: small.contextualize(grid)?,
+                judgment,
+            },
+            Self::UniqueWithNeighbors(unit, judgment, quantity) => {
+                let Ok(set) = HashSet1::try_from(unit.contextualize(grid)?) else {
+                    bail!("empty unit {unit:?} cannnot have unique member")
+                };
+                let sets = set
+                    .into_iter1()
+                    .map(|coord| Coordinate::neighbors(coord).collect())
+                    .collect1();
+                Hint::UniqueWithCount(sets, judgment, quantity)
+            }
+            Self::UniqueLine(kind, judgment, quantity) => {
+                let sets: Result<Vec1<HashSet<Coordinate>>> = kind
+                    .all()
+                    .into_iter1()
+                    .map(|line| line.contextualize(grid))
+                    .collect1();
+                Hint::UniqueWithCount(sets?, judgment, quantity)
+            }
+            Self::Not(reverse) => Hint::Not(Box::new(reverse.contextualize(grid)?)),
+        };
+        Ok(hint)
+    }
+}
+
+impl Recipe for SetRecipe {
+    type Output = Set;
+
+    fn contextualize(self, grid: &Grid) -> Result<Self::Output> {
+        match self {
+            Self::Unit(unit) => unit.contextualize(grid),
+            Self::Intersection(sets) => sets
+                .into_iter1()
+                .map(|set| set.contextualize(grid))
+                .reduce(|a, b| Ok(a?.intersection(&b?).copied().collect())),
+        }
+    }
+}
+
+impl Recipe for &Unit {
+    type Output = Set;
+
+    fn contextualize(self, grid: &Grid) -> Result<Self::Output> {
+        let set = match self {
+            &Unit::Line(line) => line.contextualize(grid)?,
+            Unit::Direction(direction, name) => {
+                let start = grid.coord(name)?;
+                Coordinate::direction(start, *direction).collect()
+            }
+            Unit::Neighbor(name) => {
+                let center = grid.coord(name)?;
+                Coordinate::neighbors(center).collect()
+            }
+            Unit::Profession(profession, quantity) => {
+                let set = grid.by_profession(profession)?.clone().into_hash_set();
+                if let Some(quantity) = quantity
+                    && !quantity.matches(set.len())
+                {
+                    bail!("{profession} does not have {quantity:?} members")
+                }
+                set
+            }
+            Unit::Edges => Coordinate::edges().collect(),
+            Unit::ProfessionShift(profession, direction) => grid
+                .by_profession(profession)?
+                .into_iter()
+                .filter_map(|coord| coord.step(*direction))
+                .collect(),
+        };
+        Ok(set)
+    }
+}
+
+impl Recipe for Line {
+    type Output = Set;
+
+    fn contextualize(self, _grid: &Grid) -> Result<Self::Output> {
+        let set = match self {
+            Self::Row(row) => Coordinate::row_all(row).collect(),
+            Self::Column(column) => Coordinate::column_all(column).collect(),
+        };
+        Ok(set)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Direction, HintRecipe, Quantity, SetRecipe};
+    use crate::solver::hint::{Line, Unit};
     use crate::solver::{Judgment, Row};
+
+    use super::{Direction, HintRecipe, Parity, Quantity};
 
     #[test]
     fn sample_26_02_05_alice() {
@@ -127,10 +335,12 @@ mod tests {
             [
                 HintRecipe::Member(
                     "Tina".to_owned(),
-                    SetRecipe::Judgment(Judgment::Criminal).and(SetRecipe::Row(Row::Four))
+                    Unit::Line(Line::Row(Row::Four)),
+                    Judgment::Criminal
                 ),
                 HintRecipe::Count(
-                    SetRecipe::Judgment(Judgment::Criminal).and(SetRecipe::Row(Row::Four)),
+                    Unit::Line(Line::Row(Row::Four)).into(),
+                    Judgment::Criminal,
                     Quantity::Exact(3)
                 )
             ]
@@ -139,14 +349,25 @@ mod tests {
 
     #[test]
     fn sample_26_02_05_tina() {
-        let set = SetRecipe::Judgment(Judgment::Criminal)
-            .and(SetRecipe::Direction("Xavi".to_owned(), Direction::Above));
+        let set = Unit::Direction(Direction::Above, "Xavi".to_owned());
         assert_eq!(
             HintRecipe::parse("Both criminals above Xavi are connected").unwrap(),
             [
-                HintRecipe::Count(set.clone(), Quantity::Exact(2)),
-                HintRecipe::Connected(set)
+                HintRecipe::Count(set.clone().into(), Judgment::Criminal, Quantity::Exact(2)),
+                HintRecipe::Connected(set, Judgment::Criminal)
             ]
+        );
+    }
+
+    #[test]
+    fn sample_26_02_05_kyle() {
+        assert_eq!(
+            HintRecipe::parse("An odd number of innocents above Zara neighbor Gary").unwrap(),
+            [HintRecipe::Count(
+                Unit::Neighbor("Zara".to_owned()).and(Unit::Neighbor("Gary".to_owned())),
+                Judgment::Innocent,
+                Quantity::Parity(Parity::Odd)
+            )],
         );
     }
 }

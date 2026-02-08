@@ -9,17 +9,19 @@ use std::ops::{Index, IndexMut};
 use anyhow::{Result, anyhow, bail};
 use inquire::Editor;
 use itertools::Itertools as _;
-use mitsein::iter1::IntoIterator1 as _;
+use mitsein::NonEmpty;
+use mitsein::hash_set1::HashSet1;
 use select::document::Document;
 use select::predicate::{Attr, Predicate as _};
 
 use crate::html::{Class, ClassName, Div, NodeExt as _};
-use crate::solver::hint::{Direction, HintRecipe, Set, SetRecipe};
+use crate::solver::hint::{Direction, HintRecipe, Recipe as _, Set};
 
 use card::Card;
 use hint::Hint;
 
 type Name = String;
+type Profession = String;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Puzzle {
@@ -139,6 +141,7 @@ impl Puzzle {
 struct Grid {
     cards: [Card; 20],
     coordinates: HashMap<Name, Coordinate>,
+    by_profession: HashMap<Profession, NonEmpty<Set>>,
 }
 
 impl Grid {
@@ -162,15 +165,37 @@ impl Grid {
             .enumerate()
             .map(|(index, card)| (card.name().to_owned(), Coordinate::from_index(index)))
             .collect();
-        Ok(Self { cards, coordinates })
+        let by_profession = cards
+            .iter()
+            .enumerate()
+            .map(|(index, card)| (card.profession().to_owned(), Coordinate::from_index(index)))
+            .into_grouping_map()
+            .aggregate(|set: Option<NonEmpty<Set>>, _, item| {
+                let set = set.map_or_else(
+                    || HashSet1::from_one(item),
+                    |mut set| {
+                        _ = set.insert(item);
+                        set
+                    },
+                );
+                Some(set)
+            });
+        Ok(Self {
+            cards,
+            coordinates,
+            by_profession,
+        })
     }
 
     fn iter(&self) -> impl Iterator<Item = &Card> {
         self.cards.iter()
     }
 
-    fn coord(&self, name: &Name) -> Option<Coordinate> {
-        self.coordinates.get(name).copied()
+    fn coord(&self, name: &Name) -> Result<Coordinate> {
+        self.coordinates
+            .get(name)
+            .copied()
+            .ok_or_else(|| anyhow!("{name} not in grid"))
     }
 
     fn solved(&self) -> bool {
@@ -183,6 +208,12 @@ impl Grid {
 
     fn set_new(&mut self, index: usize, judgment: Judgment) -> Option<&Card> {
         self.cards[index].set(judgment)
+    }
+
+    fn by_profession(&self, profession: &Profession) -> Result<&NonEmpty<Set>> {
+        self.by_profession
+            .get(profession)
+            .ok_or_else(|| anyhow!("{profession} not in grid"))
     }
 }
 
@@ -213,6 +244,12 @@ impl Judgment {
             Self::Criminal => ClassName::Criminal,
         }
     }
+
+    fn filter(self, set: &Set, solution: &Solution) -> impl Iterator<Item = Coordinate> {
+        set.iter()
+            .filter(move |coord| solution[coord.to_index()] == self)
+            .copied()
+    }
 }
 
 impl fmt::Display for Judgment {
@@ -225,7 +262,7 @@ impl fmt::Display for Judgment {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct Coordinate {
+pub(crate) struct Coordinate {
     row: Row,
     col: Column,
 }
@@ -298,6 +335,28 @@ impl Coordinate {
     fn direction(start: Self, direction: Direction) -> impl Iterator<Item = Self> {
         successors(start.step(direction), move |coord| coord.step(direction))
     }
+
+    fn neighbors(center: Self) -> impl Iterator<Item = Self> {
+        use Direction::{Above, Below, Left, Right};
+        [center.step(Above), center.step(Below)]
+            .into_iter()
+            .flatten()
+            .flat_map(|vert| [Some(vert), vert.step(Right), vert.step(Left)])
+            .chain([center.step(Left), center.step(Right)])
+            .flatten()
+    }
+
+    fn edges() -> impl Iterator<Item = Self> {
+        [Column::A, Column::D]
+            .into_iter()
+            .cartesian_product(Row::ALL)
+            .chain(
+                [Column::B, Column::C]
+                    .into_iter()
+                    .cartesian_product([Row::One, Row::Five]),
+            )
+            .map(|(col, row)| Self { row, col })
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -351,6 +410,10 @@ impl Row {
             Self::Five => None,
         }
     }
+
+    fn others(&self) -> impl Iterator<Item = Self> {
+        Self::ALL.into_iter().filter(move |other| other != self)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -399,6 +462,10 @@ impl Column {
             Self::C => Some(Self::D),
             Self::D => None,
         }
+    }
+
+    fn others(&self) -> impl Iterator<Item = Self> {
+        Self::ALL.into_iter().filter(move |other| other != self)
     }
 }
 
@@ -460,61 +527,4 @@ impl Iterator for SolutionIterator {
             .try_into()
             .map_or((usize::MAX, None), |remaining| (remaining, Some(remaining)))
     }
-}
-
-trait Recipe {
-    type Output;
-
-    fn contextualize(self, grid: &Grid) -> Result<Self::Output>;
-}
-
-impl Recipe for SetRecipe {
-    type Output = Set;
-
-    fn contextualize(self, grid: &Grid) -> Result<Self::Output> {
-        let set = match self {
-            Self::Judgment(judgment) => Set::Judgment(judgment),
-            Self::Row(row) => Set::Coord(Coordinate::row_all(row).collect()),
-            Self::Column(column) => Set::Coord(Coordinate::column_all(column).collect()),
-            Self::Direction(name, direction) => {
-                let start = grid.coord(&name).ok_or_else(|| not_in_grid(&name))?;
-                Set::Coord(Coordinate::direction(start, direction).collect())
-            }
-            Self::And(recipes) => {
-                let sets = recipes
-                    .into_iter1()
-                    .map(|recipe| recipe.contextualize(grid))
-                    .coalesce(|a, b| match (a, b) {
-                        (e @ Err(_), _) | (_, e @ Err(_)) => Ok(e),
-                        (Ok(Set::Coord(a)), Ok(Set::Coord(b))) => {
-                            Ok(Ok(Set::Coord(a.union(&b).copied().collect())))
-                        }
-                        (Ok(b @ Set::Coord(_)), Ok(a)) | (Ok(a), Ok(b)) => Err((Ok(a), Ok(b))),
-                    })
-                    .collect1::<Result<_>>()?;
-                Set::And(sets)
-            }
-        };
-        Ok(set)
-    }
-}
-
-impl Recipe for HintRecipe {
-    type Output = Hint;
-
-    fn contextualize(self, grid: &Grid) -> Result<Self::Output> {
-        let hint = match self {
-            Self::Member(name, set) => {
-                let coordinate = grid.coord(&name).ok_or_else(|| not_in_grid(&name))?;
-                Hint::Member(coordinate, set.contextualize(grid)?)
-            }
-            Self::Count(set, quantity) => Hint::Count(set.contextualize(grid)?, quantity),
-            Self::Connected(set) => Hint::Connected(set.contextualize(grid)?),
-        };
-        Ok(hint)
-    }
-}
-
-fn not_in_grid(name: &Name) -> anyhow::Error {
-    anyhow!("{name} not in grid")
 }
