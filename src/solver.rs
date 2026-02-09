@@ -15,7 +15,8 @@ use select::document::Document;
 use select::predicate::{Attr, Predicate as _};
 
 use crate::html::{Class, ClassName, Div, NodeExt as _};
-use crate::solver::hint::{Direction, HintRecipe, Recipe as _, Set};
+use crate::solver::hint::recipes::{HintRecipe, Recipe as _};
+use crate::solver::hint::{Direction, Set};
 
 use card::Card;
 use hint::Hint;

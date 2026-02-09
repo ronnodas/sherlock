@@ -7,10 +7,8 @@ use winnow::error::{ParserError, StrContext};
 use winnow::token::{take_until, take_while};
 use winnow::{Parser, Result};
 
-use crate::solver::hint::{
-    Direction, HintRecipe as Hint, Line, LineKind, NameRecipe as Name, Parity, Profession,
-    Quantity, Unit,
-};
+use crate::solver::hint::recipes::{HintRecipe as Hint, NameRecipe as Name};
+use crate::solver::hint::{Direction, Line, LineKind, Parity, Profession, Quantity, Unit};
 use crate::solver::{Column, Judgment, Row};
 
 #[cfg_attr(test, derive(PartialEq))]
