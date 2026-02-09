@@ -5,9 +5,10 @@ use mitsein::hash_set1::HashSet1;
 use mitsein::iter1::IntoIterator1 as _;
 use mitsein::vec1::Vec1;
 
+use crate::solver::grid::Grid;
 use crate::solver::hint::parsers::Sentence;
 use crate::solver::hint::{Hint, Line, LineKind, Quantity, Set, Unit};
-use crate::solver::{Coordinate, Grid, Judgment, Name};
+use crate::solver::{Coordinate, Judgment, Name};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone)]

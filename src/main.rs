@@ -1,4 +1,3 @@
-pub(crate) mod html;
 mod solver;
 
 use std::path::{Path, PathBuf};

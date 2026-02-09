@@ -3,7 +3,7 @@ use itertools::Itertools as _;
 use select::node::Node;
 use select::predicate::Predicate as _;
 
-use crate::html::{Class, ClassName, Div, H3, NodeExt as _, Paragraph};
+use crate::solver::grid::html::{Class, ClassName, Div, H3, NodeExt as _, Paragraph};
 use crate::solver::{Name, Profession};
 
 use super::Judgment;
@@ -47,7 +47,7 @@ impl Card {
     fn parse_flipped(card: Node<'_>, status: Judgment, has_hint: bool) -> Result<Self> {
         let card = card.expect(
             Div.and(Class(ClassName::CardBack))
-                .and(Class(status.class())),
+                .and(Class(status.into())),
         )?;
         let [name, profession, hint] =
             card.expect_children()

@@ -8,9 +8,10 @@ use mitsein::iter1::IntoIterator1 as _;
 use mitsein::vec1::{Vec1, vec1};
 
 use crate::solver::Profession;
-use crate::solver::hint::recipes::SetRecipe;
+use crate::solver::grid::{Column, Direction, Row};
+use crate::solver::hint::recipes::{NameRecipe, SetRecipe};
 
-use super::{Column, Coordinate, Judgment, Row, Solution};
+use super::{Coordinate, Judgment, Solution};
 
 pub(crate) type Set = HashSet<Coordinate>;
 
@@ -61,11 +62,11 @@ impl Hint {
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Clone, Debug)]
 pub(crate) enum Unit {
-    Direction(Direction, recipes::NameRecipe),
+    Direction(Direction, NameRecipe),
     Line(Line),
     Profession(Profession),
     ProfessionShift(Profession, Direction),
-    Neighbor(recipes::NameRecipe),
+    Neighbor(NameRecipe),
     Edges,
     Quantified(Box<Self>, Quantity),
     Corners,
@@ -187,23 +188,12 @@ impl Parity {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum Direction {
-    Above,
-    Below,
-    Left,
-    Right,
-}
-
-impl Direction {
-    pub(crate) const ALL: [Self; 4] = [Self::Above, Self::Below, Self::Left, Self::Right];
-}
-
 #[cfg(test)]
 mod tests {
+    use crate::solver::Judgment;
+    use crate::solver::grid::Row;
     use crate::solver::hint::recipes::HintRecipe;
     use crate::solver::hint::{Line, Unit};
-    use crate::solver::{Judgment, Row};
 
     use super::{Direction, Parity, Quantity};
 

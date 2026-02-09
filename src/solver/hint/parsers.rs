@@ -7,9 +7,10 @@ use winnow::error::{ParserError, StrContext};
 use winnow::token::take_while;
 use winnow::{Parser, Result};
 
+use crate::solver::Judgment;
+use crate::solver::grid::{Column, Row};
 use crate::solver::hint::recipes::{HintRecipe as Hint, NameRecipe as Name};
 use crate::solver::hint::{Direction, Line, LineKind, Parity, Profession, Quantity, Unit};
-use crate::solver::{Column, Judgment, Row};
 
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug)]
@@ -585,9 +586,10 @@ mod tests {
     use winnow::Parser;
     use winnow::error::ParserError;
 
+    use crate::solver::Judgment;
+    use crate::solver::grid::{Column, Row};
     use crate::solver::hint::parsers::{Name, Sentence};
     use crate::solver::hint::{Direction, LineKind, Parity, Quantity, Unit};
-    use crate::solver::{Column, Judgment, Row};
 
     #[test]
     fn uma_2026_02_03() {

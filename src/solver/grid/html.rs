@@ -5,6 +5,8 @@ use itertools::Itertools as _;
 use select::node::Node;
 use select::predicate::{self, Name, Predicate};
 
+use crate::solver::Judgment;
+
 pub(crate) trait NodeExt<'html>: Sized + fmt::Debug {
     fn is(&self, predicate: impl Predicate) -> bool;
     fn children(&self) -> impl Iterator<Item = Node<'html>>;
@@ -138,6 +140,15 @@ impl ClassName {
             Self::Name => "name",
             Self::Profession => "profession",
             Self::Unflipped => "unflipped",
+        }
+    }
+}
+
+impl From<Judgment> for ClassName {
+    fn from(judgment: Judgment) -> Self {
+        match judgment {
+            Judgment::Innocent => Self::Innocent,
+            Judgment::Criminal => Self::Criminal,
         }
     }
 }
