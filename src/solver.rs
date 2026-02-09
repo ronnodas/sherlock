@@ -357,7 +357,7 @@ impl Coordinate {
     fn corners() -> impl Iterator<Item = Self> {
         [Row::One, Row::Five]
             .into_iter()
-            .cartesian_product([Column::A, Column::B])
+            .cartesian_product([Column::A, Column::D])
             .map(|(row, col)| Self { row, col })
     }
 }
