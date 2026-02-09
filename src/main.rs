@@ -3,12 +3,12 @@ mod solver;
 use std::path::{Path, PathBuf};
 use std::{fmt, fs};
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use clap::Parser;
-use inquire::{Select, Text};
+use inquire::{MultiSelect, Select, Text};
 use itertools::Itertools as _;
 
-use solver::Puzzle;
+use solver::{Name, Puzzle, Update};
 
 fn main() -> Result<()> {
     let args = Args::parse();
@@ -66,39 +66,57 @@ fn read_from_file(path: impl AsRef<Path>) -> Result<Puzzle> {
 fn play(mut puzzle: Puzzle) -> Result<()> {
     let mut pending = vec![];
     loop {
-        if pending.is_empty() {
-            pending.extend(puzzle.infer()?);
+        let new = puzzle.infer()?;
+        if let Some((last, rest)) = new.split_last() {
+            if rest.is_empty() {
+                println!("Mark {last}");
+            } else {
+                println!("Mark {} and {last}", rest.iter().format(", "));
+            }
         }
         if puzzle.solved() {
-            if let Some(((name, judgment), rest)) = pending.split_last() {
-                println!(
-                    "Mark {} and {name} as {judgment} to solve puzzle!",
-                    rest.iter().format_with(", ", |(name, judgment), f| {
-                        f(&format_args!("{name} as {judgment}"))
-                    }),
-                );
-            } else {
-                println!("Puzzle solved!");
-            }
+            println!("Puzzle solved!");
             break;
         }
-        let Some((name, judgment)) = pending.pop() else {
-            if pending.is_empty() {
-                bail!("Stuck! Puzzle state: {puzzle:?}")
+        pending.extend(new.into_iter().map(Update::into_name));
+        pending.sort_unstable();
+
+        loop {
+            let selected = Select::new(
+                "Add a logical hint:",
+                pending
+                    .iter()
+                    .map(HintOption::Name)
+                    .chain(HintOption::FIXED)
+                    .collect(),
+            )
+            .prompt()?;
+            match selected {
+                HintOption::Name(name) => {
+                    if let Some(hint) =
+                        Text::new(&format!("Enter {name}'s hint:")).prompt_skippable()?
+                    {
+                        match puzzle.add_hint(&hint, name) {
+                            Ok(()) => {
+                                let name = name.clone();
+                                pending.retain(|pending| pending != &name);
+                                break;
+                            }
+                            Err(e) => {
+                                println!("I didn't understand that hint :(\n{e}");
+                            }
+                        }
+                    }
+                }
+                HintOption::MarkAsFlavor => {
+                    let flavor =
+                        MultiSelect::new("Select characters with flavor text", pending.clone())
+                            .prompt_skippable()?
+                            .unwrap_or_default();
+                    pending.retain(|pending| !flavor.contains(pending));
+                }
             }
-            continue;
-        };
-        match Select::new(
-            &format!("Mark {name} as {judgment}"),
-            HintKind::ALL.to_vec(),
-        )
-        .prompt()?
-        {
-            HintKind::Logical => {}
-            HintKind::Flavor => continue,
         }
-        let hint = Text::new("Enter new hint:").prompt()?;
-        puzzle.add_hint(&hint, &name)?;
     }
     Ok(())
 }
@@ -106,25 +124,6 @@ fn play(mut puzzle: Puzzle) -> Result<()> {
 #[derive(Parser)]
 struct Args {
     html: Option<PathBuf>,
-}
-
-#[derive(Clone, Copy)]
-enum HintKind {
-    Logical,
-    Flavor,
-}
-
-impl HintKind {
-    const ALL: [Self; 2] = [Self::Logical, Self::Flavor];
-}
-
-impl fmt::Display for HintKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Logical => write!(f, "logical hint"),
-            Self::Flavor => write!(f, "flavor text"),
-        }
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -144,6 +143,24 @@ impl fmt::Display for InputMode {
             Self::Today => write!(f, "download today's daily puzzle"),
             Self::File => write!(f, "load from html file"),
             Self::Direct => write!(f, "paste html"),
+        }
+    }
+}
+
+enum HintOption<'name> {
+    Name(&'name Name),
+    MarkAsFlavor,
+}
+
+impl HintOption<'_> {
+    const FIXED: [Self; 1] = [Self::MarkAsFlavor];
+}
+
+impl fmt::Display for HintOption<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Name(name) => write!(f, "{name}"),
+            Self::MarkAsFlavor => write!(f, "mark hints as flavor"),
         }
     }
 }

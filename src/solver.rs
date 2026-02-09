@@ -14,7 +14,7 @@ use hint::Hint;
 use hint::recipes::{HintRecipe, Recipe as _};
 use solution::Solution;
 
-type Name = String;
+pub(crate) type Name = String;
 type Profession = String;
 
 #[derive(Clone, Debug)]
@@ -73,7 +73,7 @@ impl Puzzle {
         self.grid.solved()
     }
 
-    pub(crate) fn infer(&mut self) -> Result<Vec<(Name, Judgment)>> {
+    pub(crate) fn infer(&mut self) -> Result<Vec<Update>> {
         let Some((first, rest)) = self.solutions.split_first() else {
             bail!("no solutions!")
         };
@@ -92,12 +92,12 @@ impl Puzzle {
         Ok(fixed
             .into_iter()
             .enumerate()
-            .filter_map(|(index, fixed)| {
-                let fixed = fixed?;
-                let name = self.grid.set_new(index, fixed)?.name().to_owned();
-                Some((name, fixed))
+            .filter_map(|(index, judgment)| {
+                let judgment = judgment?;
+                let name = self.grid.set_new(index, judgment)?.name().to_owned();
+                Some(Update { name, judgment })
             })
-            .sorted_by(|(a, _), (b, _)| a.cmp(b))
+            .sorted_by(|a, b| a.name.cmp(&b.name))
             .collect())
     }
 
@@ -130,12 +130,31 @@ impl fmt::Display for Judgment {
     }
 }
 
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug)]
+pub(crate) struct Update {
+    name: Name,
+    judgment: Judgment,
+}
+
+impl Update {
+    pub(crate) fn into_name(self) -> Name {
+        self.name
+    }
+}
+
+impl fmt::Display for Update {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} as {}", self.name, self.judgment)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::read_from_file;
 
-    use super::Judgment;
     use super::solution::Solution;
+    use super::{Judgment, Update};
 
     #[test]
     fn sample_2026_02_08() {
@@ -208,9 +227,12 @@ mod tests {
         ];
 
         for &changes in steps {
-            let deductions: Vec<(String, Judgment)> = changes
+            let deductions: Vec<Update> = changes
                 .iter()
-                .map(|&(name, judgment, _)| (name.to_owned(), judgment))
+                .map(|&(name, judgment, _)| Update {
+                    name: name.to_owned(),
+                    judgment,
+                })
                 .collect();
             assert_eq!(puzzle.infer().unwrap(), deductions);
             for &(speaker, _, hint) in changes {
