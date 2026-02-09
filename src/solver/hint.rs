@@ -73,7 +73,7 @@ pub(crate) enum HintRecipe {
 
 impl HintRecipe {
     pub(crate) fn parse(hint: &str) -> Result<Vec<Self>> {
-        Ok(Sentence::parse(hint)?.collate())
+        Ok(Sentence::parse(&hint.replace("&nbsp;", "\u{A0}"))?.collate())
     }
 
     fn not(self) -> Self {

@@ -7,6 +7,7 @@ use std::{fmt, fs};
 use anyhow::{Result, bail};
 use clap::Parser;
 use inquire::{Select, Text};
+use itertools::Itertools as _;
 use solver::Puzzle;
 
 fn main() -> Result<()> {
@@ -31,9 +32,7 @@ fn main_menu() -> Result<Puzzle> {
             let api_key = include_str!("../browserless_api_key").trim();
             let target_url = "https://cluesbysam.com/";
             // let selector = ".card-grid #grid";
-            let json = format!(
-                r#"{{"url": "{target_url}"}}"#,
-            );
+            let json = format!(r#"{{"url": "{target_url}"}}"#,);
             // dbg!(&json);
             let html = ureq::post(format!(
                 "https://production-sfo.browserless.io/content?token={api_key}"
@@ -42,7 +41,6 @@ fn main_menu() -> Result<Puzzle> {
             .send(&json)?
             .body_mut()
             .read_to_string()?;
-            dbg!(&html);
             Puzzle::parse(&html)
         }
         InputMode::File => {
@@ -60,9 +58,24 @@ fn read_from_file(path: impl AsRef<Path>) -> Result<Puzzle> {
 
 fn play(mut puzzle: Puzzle) -> Result<()> {
     let mut pending = vec![];
-    while !pending.is_empty() || !puzzle.solved() {
-        let Some((name, judgment)) = pending.pop() else {
+    loop {
+        if pending.is_empty() {
             pending.extend(puzzle.infer()?);
+        }
+        if puzzle.solved() {
+            if let Some(((name, judgment), rest)) = pending.split_last() {
+                println!(
+                    "Mark {} and {name} as {judgment} to solve puzzle!",
+                    rest.iter().format_with(", ", |(name, judgment), f| {
+                        f(&format_args!("{name} as {judgment}"))
+                    }),
+                );
+            } else {
+                println!("Puzzle solved!");
+            }
+            break;
+        }
+        let Some((name, judgment)) = pending.pop() else {
             if pending.is_empty() {
                 bail!("Stuck! Puzzle state: {puzzle:?}")
             }
@@ -77,7 +90,7 @@ fn play(mut puzzle: Puzzle) -> Result<()> {
             HintKind::Logical => {}
             HintKind::Flavor => continue,
         }
-        let hint = Text::new("Enter new hint").prompt()?;
+        let hint = Text::new("Enter new hint:").prompt()?;
         puzzle.add_hint(&hint, &name)?;
     }
     Ok(())

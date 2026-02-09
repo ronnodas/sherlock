@@ -38,7 +38,7 @@ impl Puzzle {
         loop {
             let html = Editor::new("Enter html:").prompt()?;
             match Self::parse(&html) {
-                Ok(grid) => return Ok(grid),
+                Ok(puzzle) => return Ok(puzzle),
                 Err(e) => eprintln!("{e}"),
             }
         }
