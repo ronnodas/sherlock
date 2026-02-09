@@ -43,7 +43,6 @@ pub(crate) enum Sentence {
 }
 
 impl Sentence {
-    //TODO take Cow?
     pub(crate) fn parse(hint: &str) -> anyhow::Result<Self> {
         Self::parse_cased(hint).or_else(|e| {
             let mut hint = hint.to_owned();

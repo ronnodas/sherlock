@@ -7,8 +7,9 @@ use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::IntoIterator1 as _;
 use mitsein::vec1::Vec1;
 
-use super::grid::{Column, Direction, Row};
-use super::{Coordinate, Judgment, Profession, Solution};
+use super::grid::{Column, Coordinate, Direction, Row};
+use super::solution::Solution;
+use super::{Judgment, Profession};
 
 pub(crate) type Set = HashSet<Coordinate>;
 
@@ -30,24 +31,26 @@ pub(crate) enum Hint {
 impl Hint {
     pub(crate) fn evaluate(&self, solution: &Solution) -> bool {
         match self {
-            &Self::Judgment(coord, judgment) => solution[coord.to_index()] == judgment,
+            &Self::Judgment(coord, judgment) => solution[coord] == judgment,
             Self::Count(set, judgment, quantity) => {
-                quantity.matches(judgment.filter(set, solution).count())
+                quantity.matches(solution.select(set, *judgment).count())
             }
             Self::Connected(set, judgment) => {
-                Coordinate::connected(&judgment.filter(set, solution).collect())
+                Coordinate::connected(&solution.select(set, *judgment).collect())
             }
             Self::Equal(a, b, judgment) => {
-                judgment.filter(a, solution).count() == judgment.filter(b, solution).count()
+                solution.select(a, *judgment).count() == solution.select(b, *judgment).count()
             }
             Self::Bigger {
                 big,
                 small,
                 judgment,
-            } => judgment.filter(big, solution).count() > judgment.filter(small, solution).count(),
+            } => {
+                solution.select(big, *judgment).count() > solution.select(small, *judgment).count()
+            }
             Self::UniqueWithCount(sets, judgment, quantity) => {
                 sets.iter()
-                    .filter(|set| quantity.matches(judgment.filter(set, solution).count()))
+                    .filter(|set| quantity.matches(solution.select(set, *judgment).count()))
                     .count()
                     == 1
             }

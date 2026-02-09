@@ -1,5 +1,6 @@
 mod grid;
 mod hint;
+mod solution;
 
 use std::fmt;
 use std::iter::repeat;
@@ -8,9 +9,10 @@ use anyhow::{Result, bail};
 use inquire::Editor;
 use itertools::Itertools as _;
 
-use grid::{Coordinate, Grid};
+use grid::Grid;
+use hint::Hint;
 use hint::recipes::{HintRecipe, Recipe as _};
-use hint::{Hint, Set};
+use solution::Solution;
 
 type Name = String;
 type Profession = String;
@@ -21,8 +23,6 @@ pub(crate) struct Puzzle {
     hints: Vec<Hint>,
     solutions: Vec<Solution>,
 }
-
-type Solution = [Judgment; 20];
 
 impl Puzzle {
     pub(crate) fn prompt() -> Result<Self> {
@@ -54,7 +54,7 @@ impl Puzzle {
             .iter()
             .enumerate()
             .filter_map(|(index, &judgment)| Some((index, judgment?)));
-        let solutions = SolutionIterator::new(fixed_values).collect();
+        let solutions = Solution::all(fixed_values);
 
         let mut puzzle = Self {
             grid,
@@ -78,12 +78,12 @@ impl Puzzle {
             bail!("no solutions!")
         };
 
-        let mut fixed = first.map(Some);
+        let mut fixed = first.as_array().map(Some);
         for solution in rest {
             for i in 0..20 {
                 let fixed = &mut fixed[i];
                 if let Some(val) = *fixed
-                    && val != solution[i]
+                    && val != solution.as_array()[i]
                 {
                     *fixed = None;
                 }
@@ -121,14 +121,6 @@ pub(crate) enum Judgment {
     Criminal,
 }
 
-impl Judgment {
-    fn filter(self, set: &Set, solution: &Solution) -> impl Iterator<Item = Coordinate> {
-        set.iter()
-            .filter(move |coord| solution[coord.to_index()] == self)
-            .copied()
-    }
-}
-
 impl fmt::Display for Judgment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -138,77 +130,18 @@ impl fmt::Display for Judgment {
     }
 }
 
-struct SolutionIterator {
-    counter: u32,
-    template: [Judgment; 20],
-    free_indices: Vec<usize>,
-}
-
-impl SolutionIterator {
-    fn new(fixed_values: impl IntoIterator<Item = (usize, Judgment)>) -> Self {
-        let mut template = [Judgment::Innocent; 20];
-        let mut fixed_mask = [false; 20];
-
-        for (idx, val) in fixed_values {
-            template[idx] = val;
-            fixed_mask[idx] = true;
-        }
-
-        let free_indices: Vec<usize> = (0..20).filter(|i| !fixed_mask[*i]).collect();
-
-        Self {
-            counter: 0,
-            template,
-            free_indices,
-        }
-    }
-
-    const fn max_counter(&self) -> u32 {
-        1_u32 << self.free_indices.len()
-    }
-}
-
-impl Iterator for SolutionIterator {
-    type Item = Solution;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.counter >= self.max_counter() {
-            return None;
-        }
-
-        let mut current = self.template;
-
-        for (bit_pos, &target_idx) in self.free_indices.iter().enumerate() {
-            // Check if the nth bit of the counter is set
-            if (self.counter >> bit_pos) & 1 == 1 {
-                current[target_idx] = Judgment::Criminal;
-            } else {
-                current[target_idx] = Judgment::Innocent;
-            }
-        }
-
-        self.counter += 1;
-        Some(current)
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.max_counter() - self.counter)
-            .try_into()
-            .map_or((usize::MAX, None), |remaining| (remaining, Some(remaining)))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::read_from_file;
 
     use super::Judgment;
+    use super::solution::Solution;
 
     #[test]
     fn sample_2026_02_08() {
         use Judgment::{Criminal as C, Innocent as I};
         let mut puzzle = read_from_file("samples/2026-02-08.html").unwrap();
-        let solution = [I, C, C, C, C, C, I, C, I, C, C, C, C, I, C, C, C, I, C, I];
+        let solution = Solution::from([I, C, C, C, C, C, I, C, I, C, C, C, C, I, C, C, C, I, C, I]);
 
         let steps: &[&[(&str, Judgment, Option<&str>)]] = &[
             &[

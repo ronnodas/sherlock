@@ -5,8 +5,8 @@ use mitsein::hash_set1::HashSet1;
 use mitsein::iter1::IntoIterator1 as _;
 use mitsein::vec1::Vec1;
 
-use crate::solver::grid::Grid;
-use crate::solver::{Coordinate, Judgment, Name};
+use crate::solver::grid::{Coordinate, Grid};
+use crate::solver::{Judgment, Name};
 
 use super::parsers::{Sentence, Unit};
 use super::{Hint, Line, LineKind, Quantity, Set};
@@ -37,8 +37,8 @@ pub(crate) enum HintRecipe {
     },
     UniqueWithNeighbors(Unit, Judgment, Quantity),
     UniqueLine(LineKind, Judgment, Quantity),
-    Not(Box<Self>),
     EqualSize(Unit, Unit, Judgment),
+    Not(Box<Self>),
 }
 
 impl HintRecipe {
