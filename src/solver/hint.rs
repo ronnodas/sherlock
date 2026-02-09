@@ -20,6 +20,7 @@ pub(crate) enum Hint {
     Judgment(Coordinate, Judgment),
     Count(Set, Judgment, Quantity),
     Connected(Set, Judgment),
+    Equal(Set, Set, Judgment),
     Bigger {
         big: Set,
         small: Set,
@@ -38,6 +39,9 @@ impl Hint {
             }
             Self::Connected(set, judgment) => {
                 Coordinate::connected(&judgment.filter(set, solution).collect())
+            }
+            Self::Equal(a, b, judgment) => {
+                judgment.filter(a, solution).count() == judgment.filter(b, solution).count()
             }
             Self::Bigger {
                 big,
@@ -69,6 +73,7 @@ pub(crate) enum HintRecipe {
     UniqueWithNeighbors(Unit, Judgment, Quantity),
     UniqueLine(LineKind, Judgment, Quantity),
     Not(Box<Self>),
+    EqualSize(Unit, Unit, Judgment),
 }
 
 impl HintRecipe {
@@ -204,6 +209,7 @@ impl LineKind {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Quantity {
     Exact(u8),
+    AtLeast(u8),
     Parity(Parity),
 }
 
@@ -211,6 +217,7 @@ impl Quantity {
     pub(crate) fn matches(self, len: usize) -> bool {
         match self {
             Self::Exact(value) => len == usize::from(value),
+            Self::AtLeast(value) => len >= usize::from(value),
             Self::Parity(parity) => parity.matches(len),
         }
     }
@@ -308,6 +315,11 @@ impl Recipe for HintRecipe {
                     .collect1();
                 Hint::UniqueWithCount(sets?, judgment, quantity)
             }
+            Self::EqualSize(a, b, judgment) => Hint::Equal(
+                a.contextualize(grid, speaker)?,
+                b.contextualize(grid, speaker)?,
+                judgment,
+            ),
             Self::Not(reverse) => Hint::Not(Box::new(reverse.contextualize(grid, speaker)?)),
         };
         Ok(hint)
