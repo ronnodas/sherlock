@@ -57,10 +57,17 @@ impl Puzzle {
             .flatten_ok()
             .try_collect()?;
 
+        let old = grid.fixed();
+        let fixed_values = old
+            .iter()
+            .enumerate()
+            .filter_map(|(index, &judgment)| Some((index, judgment?)));
+        let solutions = SolutionIterator::new(fixed_values).collect();
+
         let mut puzzle = Self {
             grid,
             hints: Vec::new(),
-            solutions: Vec::new(),
+            solutions,
         };
 
         hints
@@ -70,31 +77,13 @@ impl Puzzle {
         Ok(puzzle)
     }
 
-    fn validate(&self, solution: &Solution) -> bool {
-        self.hints.iter().all(|hint| hint.evaluate(solution))
-    }
-
     pub(crate) fn solved(&self) -> bool {
         self.grid.solved()
     }
 
     pub(crate) fn infer(&mut self) -> Result<Vec<(Name, Judgment)>> {
-        let (first, rest): (Solution, &[Solution]) = loop {
-            // TODO move to initialization (and then make the type Vec1?)
-            if let Some((&first, rest)) = self.solutions.split_first() {
-                break (first, rest);
-            }
-            let old = self.grid.fixed();
-            let fixed_values = old
-                .iter()
-                .enumerate()
-                .filter_map(|(index, &judgment)| Some((index, judgment?)));
-            self.solutions = SolutionIterator::new(fixed_values)
-                .filter(|solution| self.validate(solution))
-                .collect();
-            if self.solutions.is_empty() {
-                bail!("no solutions!")
-            }
+        let Some((first, rest)) = self.solutions.split_first() else {
+            bail!("no solutions!")
         };
 
         let mut fixed = first.map(Some);
@@ -116,6 +105,7 @@ impl Puzzle {
                 let name = self.grid.set_new(index, fixed)?.name().to_owned();
                 Some((name, fixed))
             })
+            .sorted_by(|(a, _), (b, _)| a.cmp(b))
             .collect())
     }
 
@@ -529,5 +519,137 @@ impl Iterator for SolutionIterator {
         (self.max_counter() - self.counter)
             .try_into()
             .map_or((usize::MAX, None), |remaining| (remaining, Some(remaining)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::read_from_file;
+    use crate::solver::Judgment;
+
+    #[test]
+    fn sample_2026_02_08() {
+        use Judgment::{Criminal, Innocent};
+        let mut puzzle = read_from_file("samples/2026-02-08.html").unwrap();
+        let solution = [
+            Innocent, Criminal, Criminal, Criminal, Criminal, Criminal, Innocent, Criminal,
+            Innocent, Criminal, Criminal, Criminal, Criminal, Innocent, Criminal, Criminal,
+            Criminal, Innocent, Criminal, Innocent,
+        ];
+
+        assert_eq!(
+            puzzle.infer().unwrap(),
+            vec![
+                ("Betsy".to_owned(), Criminal),
+                ("Emma".to_owned(), Criminal)
+            ]
+        );
+        puzzle
+            .add_hint(
+                "Only 1 of the 3 innocents neighboring Kyle is my neighbor",
+                &"Betsy".to_owned(),
+            )
+            .unwrap();
+        puzzle
+            .add_hint(
+                "Only 1 of the 2 innocents neighboring Betsy is Donna's neighbor",
+                &"Emma".to_owned(),
+            )
+            .unwrap();
+        assert!(puzzle.solutions.contains(&solution));
+
+        assert_eq!(
+            puzzle.infer().unwrap(),
+            vec![("Floyd".to_owned(), Criminal),]
+        );
+        puzzle
+            .add_hint(
+                "Row&nbsp;5 is the only row with exactly 2 criminals",
+                &"Floyd".to_owned(),
+            )
+            .unwrap();
+        assert!(puzzle.solutions.contains(&solution));
+
+        assert_eq!(
+            puzzle.infer().unwrap(),
+            vec![("Isaac".to_owned(), Criminal),]
+        );
+        puzzle
+            .add_hint(
+                "Only 1 of the 3 innocents neighboring Gabe is Donna's neighbor",
+                &"Isaac".to_owned(),
+            )
+            .unwrap();
+        assert!(puzzle.solutions.contains(&solution));
+
+        assert_eq!(
+            puzzle.infer().unwrap(),
+            vec![
+                ("Gabe".to_owned(), Criminal),
+                ("Hank".to_owned(), Innocent),
+                ("Nick".to_owned(), Criminal),
+            ]
+        );
+        puzzle
+            .add_hint(
+                "Kyle and Wally have only one innocent neighbor in common",
+                &"Gabe".to_owned(),
+            )
+            .unwrap();
+        puzzle
+            .add_hint(
+                "Only one person in a corner has exactly 2 innocent neighbors",
+                &"Hank".to_owned(),
+            )
+            .unwrap();
+        puzzle
+            .add_hint(
+                "Exactly 2 of the 3 innocents neighboring Ruth are in row&nbsp;5",
+                &"Nick".to_owned(),
+            )
+            .unwrap();
+        assert!(puzzle.solutions.contains(&solution));
+
+        assert_eq!(
+            puzzle.infer().unwrap(),
+            vec![
+                ("Kyle".to_owned(), Criminal),
+                ("Oscar".to_owned(), Criminal),
+                ("Sarah".to_owned(), Criminal),
+                ("Uma".to_owned(), Criminal),
+            ]
+        );
+        puzzle
+            .add_hint(
+                "There's an odd number of innocents neighboring Vera",
+                &"Oscar".to_owned(),
+            )
+            .unwrap();
+        assert!(puzzle.solutions.contains(&solution));
+
+        assert_eq!(
+            puzzle.infer().unwrap(),
+            vec![
+                ("Vera".to_owned(), Innocent),
+                ("Wally".to_owned(), Criminal),
+            ]
+        );
+        puzzle
+            .add_hint("Paul has exactly 2 innocent neighbors", &"Vera".to_owned())
+            .unwrap();
+        assert!(puzzle.solutions.contains(&solution));
+
+        assert_eq!(
+            puzzle.infer().unwrap(),
+            vec![
+                ("Alice".to_owned(), Innocent),
+                ("Donna".to_owned(), Criminal),
+                ("Jane".to_owned(), Innocent),
+                ("Mary".to_owned(), Criminal),
+                ("Paul".to_owned(), Innocent),
+                ("Ruth".to_owned(), Criminal),
+            ]
+        );
+        assert_eq!(puzzle.solutions, [solution]);
     }
 }
