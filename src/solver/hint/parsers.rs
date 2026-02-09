@@ -333,10 +333,23 @@ impl Sentence {
     }
 
     fn equal_number_of_traits_in_units(input: &mut &str) -> Result<Self> {
-        preceded(
-            "There's an equal number of ",
-            separated_pair(judgment_plural, " ", unit_pair),
-        )
+        alt((
+            preceded(
+                "There's an equal number of ",
+                separated_pair(judgment_plural, " ", unit_pair),
+            ),
+            preceded(
+                "There are as many ",
+                separated_pair(
+                    judged_unit,
+                    terminated(" as ", opt("there are ")),
+                    judged_unit,
+                ),
+            )
+            .verify_map(|((judgment_a, a), (judgment_b, b))| {
+                (judgment_a == judgment_b).then_some((judgment_a, [a, b]))
+            }),
+        ))
         .map(|(judgment, [a, b])| Self::EqualNumberOfTraitsInUnits(a, b, judgment))
         .parse_next(input)
     }
@@ -582,6 +595,19 @@ mod tests {
     use crate::solver::hint::parsers::{Name, Sentence};
     use crate::solver::hint::{Direction, LineKind, Parity, Quantity, Unit};
     use crate::solver::{Column, Judgment, Row};
+
+    #[test]
+    fn salil_2026_02_04() {
+        test_parser(
+            Sentence::any,
+            "There are as many innocent builders as there are innocent guards",
+            &Sentence::EqualNumberOfTraitsInUnits(
+                Unit::Profession("builder".into()),
+                Unit::Profession("guard".into()),
+                Judgment::Innocent,
+            ),
+        );
+    }
 
     #[test]
     fn alice_2026_02_05() {
