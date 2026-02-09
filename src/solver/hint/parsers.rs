@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use winnow::ascii::dec_uint;
 use winnow::combinator::{alt, delimited, opt, preceded, separated_pair, terminated};
 use winnow::error::{ParserError, StrContext};
-use winnow::token::{take_until, take_while};
+use winnow::token::take_while;
 use winnow::{Parser, Result};
 
 use crate::solver::hint::recipes::{HintRecipe as Hint, NameRecipe as Name};
@@ -392,17 +392,13 @@ fn maybe_judged_unit(input: &mut &str) -> Result<(Option<Judgment>, Unit)> {
 fn judged_unit(input: &mut &str) -> Result<(Judgment, Unit)> {
     qualified_unit
         .verify_map(|(count, judgment, unit)| {
-            if count.is_none() {
-                Some((judgment?, unit))
-            } else {
-                None
-            }
+            let judgment = judgment?;
+            count.is_none().then_some((judgment, unit))
         })
         .parse_next(input)
 }
 
 fn quantified_judged_unit(input: &mut &str) -> Result<(Quantity, Judgment, Unit)> {
-    // #NAMES #N innocent neighbors
     alt((
         separated_pair(
             separated_pair(quantity, " ", judgment_plural),
@@ -423,7 +419,6 @@ fn qualified_unit(input: &mut &str) -> Result<(Option<Quantity>, Option<Judgment
         opt(terminated(judgment_any, " ")),
         unit,
     )
-        .map(|(quantity, judgment, unit)| (quantity, judgment, unit))
         .parse_next(input)
 }
 
@@ -447,7 +442,6 @@ fn parity(input: &mut &str) -> Result<Parity> {
 }
 
 fn quantified_judgment(input: &mut &str) -> Result<(Quantity, Judgment)> {
-    // exactly 2 innocent
     separated_pair(quantity, " ", judgment_any).parse_next(input)
 }
 
@@ -518,7 +512,9 @@ fn profession_any(input: &mut &str) -> Result<Profession> {
 }
 
 fn profession_singular(input: &mut &str) -> Result<Profession> {
-    take_until(1.., ' ').map(str::to_owned).parse_next(input)
+    take_while(1.., |c| c != ' ')
+        .map(str::to_owned)
+        .parse_next(input)
 }
 
 fn profession_plural(input: &mut &str) -> Result<Profession> {
@@ -529,12 +525,10 @@ fn profession_plural(input: &mut &str) -> Result<Profession> {
 }
 
 fn line(input: &mut &str) -> Result<Line> {
-    // Row 5
     alt((row.map(Line::Row), column.map(Line::Column))).parse_next(input)
 }
 
 fn line_kind(input: &mut &str) -> Result<LineKind> {
-    // row
     alt(("row".value(LineKind::Row), "column".value(LineKind::Column))).parse_next(input)
 }
 
