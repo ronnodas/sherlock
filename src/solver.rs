@@ -6,6 +6,7 @@ use std::fmt;
 use std::iter::repeat;
 
 use anyhow::{Result, bail};
+use colored::{Color, Colorize as _};
 use inquire::Editor;
 use itertools::Itertools as _;
 
@@ -121,6 +122,15 @@ pub(crate) enum Judgment {
     Criminal,
 }
 
+impl Judgment {
+    const fn color(self) -> Color {
+        match self {
+            Self::Innocent => Color::Green,
+            Self::Criminal => Color::Red,
+        }
+    }
+}
+
 impl fmt::Display for Judgment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -145,7 +155,13 @@ impl Update {
 
 impl fmt::Display for Update {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} as {}", self.name, self.judgment)
+        let color = self.judgment.color();
+        write!(
+            f,
+            "{} as {}",
+            self.name.color(color),
+            self.judgment.to_string().color(color)
+        )
     }
 }
 
