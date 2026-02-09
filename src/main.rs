@@ -29,7 +29,14 @@ fn main_menu() -> Result<Puzzle> {
     .prompt()?;
     match mode {
         InputMode::Today => {
-            let api_key = include_str!("../browserless_api_key").trim();
+            let api_key = match fs::read_to_string("browserless_api_key") {
+                Ok(api_key) => api_key,
+                Err(e) => {
+                    println!("add a token from [browserless.io] to a `browserless_api_key` file");
+                    return Err(e.into());
+                }
+            };
+            let api_key = api_key.trim();
             let target_url = "https://cluesbysam.com/";
             // let selector = ".card-grid #grid";
             let json = format!(r#"{{"url": "{target_url}"}}"#,);
