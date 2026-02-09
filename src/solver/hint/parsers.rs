@@ -8,14 +8,15 @@ use winnow::token::{take_until, take_while};
 use winnow::{Parser as _, Result};
 
 use crate::solver::hint::{
-    Direction, HintRecipe as Hint, Line, LineKind, Parity, Profession, Quantity, Unit,
+    Direction, HintRecipe as Hint, Line, LineKind, NameRecipe as Name, Parity, Profession,
+    Quantity, Unit,
 };
-use crate::solver::{Column, Judgment, Name, Row};
+use crate::solver::{Column, Judgment, Row};
 
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug)]
 pub(crate) enum Sentence {
-    AllTraitsAreNeighborsInUnit(Unit, Judgment),
+    TraitsAreNeighborsInUnit(Unit, Judgment, Option<Quantity>),
     HasMostTraits(Line, Judgment),
     IsOneOfNTraitsInUnit(Unit, Name, Judgment, Quantity),
     MoreTraitsInUnitThanUnit {
@@ -53,9 +54,11 @@ impl Sentence {
 
     pub(crate) fn collate(self) -> Vec<Hint> {
         match self {
-            Self::AllTraitsAreNeighborsInUnit(unit, judgment) => {
-                vec![Hint::Connected(unit, judgment)]
-            }
+            Self::TraitsAreNeighborsInUnit(unit, judgment, quantity) => quantity
+                .map(|quantity| Hint::Count(unit.clone().into(), judgment, quantity))
+                .into_iter()
+                .chain(once(Hint::Connected(unit, judgment)))
+                .collect(),
             Self::HasMostTraits(line, judgment) => line
                 .others()
                 .into_iter()
@@ -143,9 +146,18 @@ impl Sentence {
 
     fn all_traits_are_neighbors_in_unit(input: &mut &str) -> Result<Self> {
         // "All criminals in row 2 are connected"
-        delimited("All ", judged_unit, " are connected")
-            .map(|(judgment, unit)| Self::AllTraitsAreNeighborsInUnit(unit, judgment))
-            .parse_next(input)
+        terminated(
+            separated_pair(
+                alt(("All".value(None), quantity.map(Some))),
+                " ",
+                judged_unit,
+            ),
+            " are connected",
+        )
+        .map(|(quantity, (judgment, unit))| {
+            Self::TraitsAreNeighborsInUnit(unit, judgment, quantity)
+        })
+        .parse_next(input)
     }
 
     fn has_most_traits(input: &mut &str) -> Result<Self> {
@@ -275,11 +287,7 @@ impl Sentence {
         // Only 1 of the #N innocents neighboring #NAME is #BETWEEN
         // Only 1 of the #N innocents neighboring #NAME is #NAMES neighbor
         separated_pair(
-            separated_pair(
-                preceded(opt("Only "), quantity),
-                " of the ",
-                quantified_judged_unit,
-            ),
+            separated_pair(quantity, " of the ", quantified_judged_unit),
             alt((" is ", " are ")),
             unit,
         )
@@ -333,11 +341,12 @@ fn unit(input: &mut &str) -> Result<Unit> {
         preceded("in ", line).map(Unit::Line),
         separated_pair(direction, " ", name)
             .map(|(direction, name)| Unit::Direction(direction, name)),
+        terminated(name_possessive, " neighbor").map(Unit::Neighbor),
         (
             opt(delimited((determiner, " "), quantity, " ")),
             profession_any,
         )
-            .map(|(count, profession)| Unit::Profession(profession, count)),
+            .map(|(quantity, profession)| Unit::Profession(profession).maybe_quantify(quantity)),
     ))
     .parse_next(input)
 }
@@ -396,6 +405,7 @@ fn line_kind(input: &mut &str) -> Result<LineKind> {
 
 fn quantity(input: &mut &str) -> Result<Quantity> {
     alt((
+        "both".value(Quantity::Exact(2)),
         preceded(
             opt(alt(("exactly ", "only "))),
             alt((dec_uint, "one".value(1))).map(Quantity::Exact),
@@ -435,14 +445,26 @@ fn judgment_singular(input: &mut &str) -> Result<Judgment> {
 }
 
 fn name_possessive(input: &mut &str) -> Result<Name> {
-    name.verify_map(|s| s.strip_suffix("'s").map(str::to_owned))
-        .parse_next(input)
+    alt((
+        "my".value(Name::Me),
+        raw_name
+            .verify_map(|s| s.strip_suffix("'s"))
+            .map(|name| Name::Other(name.to_owned())),
+    ))
+    .parse_next(input)
 }
 
 fn name(input: &mut &str) -> Result<Name> {
+    alt((
+        "me".value(Name::Me),
+        raw_name.map(|name| Name::Other(name.to_owned())),
+    ))
+    .parse_next(input)
+}
+
+fn raw_name<'input>(input: &mut &'input str) -> Result<&'input str> {
     take_while(1.., |c| c != ' ')
         .verify(|s: &str| s.chars().next().is_some_and(|c| c.is_ascii_uppercase()))
-        .map(str::to_owned)
         .parse_next(input)
 }
 
@@ -513,9 +535,9 @@ mod tests {
     use winnow::Parser;
     use winnow::error::ParserError;
 
-    use crate::solver::hint::parsers::Sentence;
+    use crate::solver::hint::parsers::{Name, Sentence};
     use crate::solver::hint::{Direction, Parity, Quantity, Unit};
-    use crate::solver::{Judgment, Row};
+    use crate::solver::{Column, Judgment, Row};
 
     #[test]
     fn alice_2026_02_05() {
@@ -524,7 +546,7 @@ mod tests {
             "Tina is one of 3 criminals in row\u{A0}4",
             &Sentence::IsOneOfNTraitsInUnit(
                 Row::Four.into(),
-                "Tina".to_owned(),
+                "Tina".into(),
                 Judgment::Criminal,
                 Quantity::Exact(3),
             ),
@@ -538,7 +560,7 @@ mod tests {
             "exactly 2 of the 4 innocents neighboring Gary are in row\u{a0}1",
             &Sentence::UnitSharesNOutOfNTraitsWithUnit {
                 quantity: Quantity::Exact(4),
-                quantified: Unit::Neighbor("Gary".to_owned()),
+                quantified: Unit::Neighbor("Gary".into()),
                 other: Row::One.into(),
                 judgment: Judgment::Innocent,
                 intersection: Quantity::Exact(2),
@@ -553,7 +575,7 @@ mod tests {
             "an odd number of innocents on the edges neighbor Gary",
             &Sentence::UnitsShareNTraits(
                 Unit::Edges,
-                Unit::Neighbor("Gary".to_owned()),
+                Unit::Neighbor("Gary".into()),
                 Judgment::Innocent,
                 Quantity::Parity(Parity::Odd),
             ),
@@ -567,7 +589,7 @@ mod tests {
             "exactly 1 innocent in row\u{a0}4 is neighboring Xavi",
             &Sentence::UnitsShareNTraits(
                 Row::Four.into(),
-                Unit::Neighbor("Xavi".to_owned()),
+                Unit::Neighbor("Xavi".into()),
                 Judgment::Innocent,
                 Quantity::Exact(1),
             ),
@@ -580,7 +602,7 @@ mod tests {
             Sentence::any,
             "Xavi has exactly 3 innocent neighbors",
             &Sentence::NumberOfTraitsInUnit(
-                Unit::Neighbor("Xavi".to_owned()),
+                Unit::Neighbor("Xavi".into()),
                 Judgment::Innocent,
                 Quantity::Exact(3),
             ),
@@ -594,22 +616,22 @@ mod tests {
             "an odd number of innocents above Zara neighbor Gary",
             &Sentence::UnitsShareNTraits(
                 Unit::Direction(Direction::Above, "Zara".into()),
-                Unit::Neighbor("Gary".to_owned()),
+                Unit::Neighbor("Gary".into()),
                 Judgment::Innocent,
                 Quantity::Parity(Parity::Odd),
             ),
         );
     }
 
-    #[ignore = "unknown category"]
     #[test]
     fn tina_2026_02_05() {
         test_parser(
             Sentence::any,
             "both criminals above Xavi are connected",
-            &Sentence::AllTraitsAreNeighborsInUnit(
-                Unit::Direction(Direction::Above, "Xavi".to_owned()),
+            &Sentence::TraitsAreNeighborsInUnit(
+                Unit::Direction(Direction::Above, "Xavi".into()),
                 Judgment::Criminal,
+                Some(Quantity::Exact(2)),
             ),
         );
     }
@@ -620,7 +642,7 @@ mod tests {
             Sentence::any,
             "Only one of us 2 singers has exactly 2 criminal neighbors",
             &Sentence::OnlyOnePersonInUnitHasExactlyNTraitNeighbors(
-                Unit::Profession("singer".to_owned(), Some(Quantity::Exact(2))),
+                Unit::Profession("singer".to_owned()).quantify(Quantity::Exact(2)),
                 Judgment::Criminal,
                 Quantity::Exact(2),
             ),
@@ -633,8 +655,8 @@ mod tests {
             Sentence::any,
             "Jason is one of Ellie's 4 innocent neighbors",
             &Sentence::IsOneOfNTraitsInUnit(
-                Unit::Neighbor("Ellie".to_owned()),
-                "Jason".to_owned(),
+                Unit::Neighbor("Ellie".into()),
+                "Jason".into(),
                 Judgment::Innocent,
                 Quantity::Exact(4),
             ),
@@ -647,8 +669,8 @@ mod tests {
             Sentence::any,
             "Ellie and Noah have only one innocent neighbor in common",
             &Sentence::UnitsShareNTraits(
-                Unit::Neighbor("Ellie".to_owned()),
-                Unit::Neighbor("Noah".to_owned()),
+                Unit::Neighbor("Ellie".into()),
+                Unit::Neighbor("Noah".into()),
                 Judgment::Innocent,
                 Quantity::Exact(1),
             ),
@@ -684,7 +706,7 @@ mod tests {
             Sentence::any,
             "There are exactly 2 innocents to the left of Noah",
             &Sentence::NumberOfTraitsInUnit(
-                Unit::Direction(Direction::Left, "Noah".to_owned()),
+                Unit::Direction(Direction::Left, "Noah".into()),
                 Judgment::Innocent,
                 Quantity::Exact(2),
             ),
@@ -697,9 +719,39 @@ mod tests {
             Sentence::any,
             "There are more innocent cooks than innocent mechs",
             &Sentence::MoreTraitsInUnitThanUnit {
-                big: Unit::Profession("cook".to_owned(), None),
-                small: Unit::Profession("mech".to_owned(), None),
+                big: Unit::Profession("cook".to_owned()),
+                small: Unit::Profession("mech".to_owned()),
                 judgment: Judgment::Innocent,
+            },
+        );
+    }
+
+    #[test]
+    fn gary_2027_02_07() {
+        test_parser(
+            Sentence::any,
+            "only 1 of the 2 innocents in column\u{a0}C is Zara's neighbor",
+            &Sentence::UnitSharesNOutOfNTraitsWithUnit {
+                quantity: Quantity::Exact(2),
+                quantified: Column::C.into(),
+                other: Unit::Neighbor("Zara".into()),
+                judgment: Judgment::Innocent,
+                intersection: Quantity::Exact(1),
+            },
+        );
+    }
+
+    #[test]
+    fn uma_2027_02_07() {
+        test_parser(
+            Sentence::any,
+            "only 1 of the 3 innocents neighboring me is to the right of Kay",
+            &Sentence::UnitSharesNOutOfNTraitsWithUnit {
+                quantity: Quantity::Exact(3),
+                quantified: Unit::Neighbor(Name::Me),
+                other: Unit::Direction(Direction::Right, "Kay".into()),
+                judgment: Judgment::Innocent,
+                intersection: Quantity::Exact(1),
             },
         );
     }

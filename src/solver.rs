@@ -3,7 +3,7 @@ mod hint;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::iter::successors;
+use std::iter::{repeat, successors};
 use std::ops::{Index, IndexMut};
 
 use anyhow::{Result, anyhow, bail};
@@ -50,10 +50,10 @@ impl Puzzle {
     }
 
     fn new(grid: Grid) -> Result<Self> {
-        let hints: Vec<HintRecipe> = grid
+        let hints: Vec<(Name, HintRecipe)> = grid
             .iter()
-            .filter_map(|card| card.hint())
-            .map(HintRecipe::parse)
+            .filter_map(|card| Some((card.name().clone(), card.hint()?)))
+            .map(|(name, hint)| HintRecipe::parse(hint).map(|hints| repeat(name).zip(hints)))
             .flatten_ok()
             .try_collect()?;
 
@@ -65,17 +65,13 @@ impl Puzzle {
 
         hints
             .into_iter()
-            .try_for_each(|hint| puzzle.add_parsed_hint(hint))?;
+            .try_for_each(|(speaker, hint)| puzzle.add_parsed_hint(hint, &speaker))?;
 
         Ok(puzzle)
     }
 
     fn validate(&self, solution: &Solution) -> bool {
         self.hints.iter().all(|hint| hint.evaluate(solution))
-    }
-
-    fn format(self) -> String {
-        unimplemented!()
     }
 
     pub(crate) fn solved(&self) -> bool {
@@ -123,14 +119,14 @@ impl Puzzle {
             .collect())
     }
 
-    pub(crate) fn add_hint(&mut self, hint: &str) -> Result<()> {
+    pub(crate) fn add_hint(&mut self, hint: &str, speaker: &Name) -> Result<()> {
         HintRecipe::parse(hint)?
             .into_iter()
-            .try_for_each(|hint| self.add_parsed_hint(hint))
+            .try_for_each(|hint| self.add_parsed_hint(hint, speaker))
     }
 
-    fn add_parsed_hint(&mut self, hint: HintRecipe) -> Result<()> {
-        let hint = hint.contextualize(&self.grid)?;
+    fn add_parsed_hint(&mut self, hint: HintRecipe, speaker: &Name) -> Result<()> {
+        let hint = hint.contextualize(&self.grid, speaker)?;
         self.solutions.retain(|solution| hint.evaluate(solution));
         self.hints.push(hint);
         Ok(())

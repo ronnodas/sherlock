@@ -39,7 +39,7 @@ fn main() -> Result<()> {
             HintKind::Flavor => continue,
         }
         let hint = Text::new("Enter new hint").prompt()?;
-        puzzle.add_hint(&hint)?;
+        puzzle.add_hint(&hint, &name)?;
     }
     Ok(())
 }

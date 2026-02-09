@@ -58,7 +58,7 @@ impl Hint {
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug)]
 pub(crate) enum HintRecipe {
-    Member(Name, Unit, Judgment),
+    Member(NameRecipe, Unit, Judgment),
     Count(SetRecipe, Judgment, Quantity),
     Connected(Unit, Judgment),
     Bigger {
@@ -107,12 +107,31 @@ impl From<Line> for SetRecipe {
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Clone, Debug)]
 pub(crate) enum Unit {
-    Direction(Direction, Name),
+    Direction(Direction, NameRecipe),
     Line(Line),
-    Profession(Profession, Option<Quantity>),
+    Profession(Profession),
     ProfessionShift(Profession, Direction),
-    Neighbor(Name),
+    Neighbor(NameRecipe),
     Edges,
+    Quantified(Box<Self>, Quantity),
+}
+
+impl Unit {
+    fn and(self, other: Self) -> SetRecipe {
+        SetRecipe::Intersection(vec1![self, other])
+    }
+
+    fn quantify(self, quantity: Quantity) -> Self {
+        Self::Quantified(Box::new(self), quantity)
+    }
+
+    fn maybe_quantify(self, quantity: Option<Quantity>) -> Self {
+        if let Some(quantity) = quantity {
+            self.quantify(quantity)
+        } else {
+            self
+        }
+    }
 }
 
 impl From<Line> for Unit {
@@ -127,9 +146,9 @@ impl From<Row> for Unit {
     }
 }
 
-impl Unit {
-    fn and(self, other: Self) -> SetRecipe {
-        SetRecipe::Intersection(vec1![self, other])
+impl From<Column> for Unit {
+    fn from(column: Column) -> Self {
+        Self::Line(Line::Column(column))
     }
 }
 
@@ -223,40 +242,55 @@ impl Direction {
     pub(crate) const ALL: [Self; 4] = [Self::Above, Self::Below, Self::Left, Self::Right];
 }
 
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug, Clone)]
+pub(crate) enum NameRecipe {
+    Me,
+    Other(Name),
+}
+
+impl From<&str> for NameRecipe {
+    fn from(v: &str) -> Self {
+        Self::Other(v.to_owned())
+    }
+}
+
 pub(crate) trait Recipe {
     type Output;
 
-    fn contextualize(self, grid: &Grid) -> Result<Self::Output>;
+    fn contextualize(self, grid: &Grid, speaker: &Name) -> Result<Self::Output>;
 }
 
 impl Recipe for HintRecipe {
     type Output = Hint;
 
-    fn contextualize(self, grid: &Grid) -> Result<Self::Output> {
+    fn contextualize(self, grid: &Grid, speaker: &Name) -> Result<Self::Output> {
         let hint = match self {
             Self::Member(name, set, judgment) => {
-                let coordinate = grid.coord(&name)?;
-                let set = set.contextualize(grid)?;
+                let coordinate = name.contextualize(grid, speaker)?;
+                let set = set.contextualize(grid, speaker)?;
                 if !set.contains(&coordinate) {
-                    bail!("invalid hint: {name} not in {set:?}")
+                    bail!("invalid hint: {name:?} not in {set:?}")
                 }
                 Hint::Judgment(coordinate, judgment)
             }
             Self::Count(set, judgment, quantity) => {
-                Hint::Count(set.contextualize(grid)?, judgment, quantity)
+                Hint::Count(set.contextualize(grid, speaker)?, judgment, quantity)
             }
-            Self::Connected(set, judgment) => Hint::Connected(set.contextualize(grid)?, judgment),
+            Self::Connected(set, judgment) => {
+                Hint::Connected(set.contextualize(grid, speaker)?, judgment)
+            }
             Self::Bigger {
                 big,
                 small,
                 judgment,
             } => Hint::Bigger {
-                big: big.contextualize(grid)?,
-                small: small.contextualize(grid)?,
+                big: big.contextualize(grid, speaker)?,
+                small: small.contextualize(grid, speaker)?,
                 judgment,
             },
             Self::UniqueWithNeighbors(unit, judgment, quantity) => {
-                let Ok(set) = HashSet1::try_from(unit.contextualize(grid)?) else {
+                let Ok(set) = HashSet1::try_from(unit.contextualize(grid, speaker)?) else {
                     bail!("empty unit {unit:?} cannnot have unique member")
                 };
                 let sets = set
@@ -269,11 +303,11 @@ impl Recipe for HintRecipe {
                 let sets: Result<Vec1<HashSet<Coordinate>>> = kind
                     .all()
                     .into_iter1()
-                    .map(|line| line.contextualize(grid))
+                    .map(|line| line.contextualize(grid, speaker))
                     .collect1();
                 Hint::UniqueWithCount(sets?, judgment, quantity)
             }
-            Self::Not(reverse) => Hint::Not(Box::new(reverse.contextualize(grid)?)),
+            Self::Not(reverse) => Hint::Not(Box::new(reverse.contextualize(grid, speaker)?)),
         };
         Ok(hint)
     }
@@ -282,12 +316,12 @@ impl Recipe for HintRecipe {
 impl Recipe for SetRecipe {
     type Output = Set;
 
-    fn contextualize(self, grid: &Grid) -> Result<Self::Output> {
+    fn contextualize(self, grid: &Grid, speaker: &Name) -> Result<Self::Output> {
         match self {
-            Self::Unit(unit) => unit.contextualize(grid),
+            Self::Unit(unit) => unit.contextualize(grid, speaker),
             Self::Intersection(sets) => sets
                 .into_iter1()
-                .map(|set| set.contextualize(grid))
+                .map(|set| set.contextualize(grid, speaker))
                 .reduce(|a, b| Ok(a?.intersection(&b?).copied().collect())),
         }
     }
@@ -296,41 +330,52 @@ impl Recipe for SetRecipe {
 impl Recipe for &Unit {
     type Output = Set;
 
-    fn contextualize(self, grid: &Grid) -> Result<Self::Output> {
+    fn contextualize(self, grid: &Grid, speaker: &Name) -> Result<Self::Output> {
         let set = match self {
-            &Unit::Line(line) => line.contextualize(grid)?,
+            &Unit::Line(line) => line.contextualize(grid, speaker)?,
             Unit::Direction(direction, name) => {
-                let start = grid.coord(name)?;
+                let start = name.contextualize(grid, speaker)?;
                 Coordinate::direction(start, *direction).collect()
             }
             Unit::Neighbor(name) => {
-                let center = grid.coord(name)?;
+                let center = name.contextualize(grid, speaker)?;
                 Coordinate::neighbors(center).collect()
             }
-            Unit::Profession(profession, quantity) => {
-                let set = grid.by_profession(profession)?.clone().into_hash_set();
-                if let Some(quantity) = quantity
-                    && !quantity.matches(set.len())
-                {
-                    bail!("{profession} does not have {quantity:?} members")
-                }
-                set
-            }
+            Unit::Profession(profession) => grid.by_profession(profession)?.clone().into_hash_set(),
             Unit::Edges => Coordinate::edges().collect(),
             Unit::ProfessionShift(profession, direction) => grid
                 .by_profession(profession)?
                 .into_iter()
                 .filter_map(|coord| coord.step(*direction))
                 .collect(),
+            Unit::Quantified(inner, quantity) => {
+                let set = inner.contextualize(grid, speaker)?;
+                if !quantity.matches(set.len()) {
+                    bail!("{inner:?} does not have {quantity:?} members")
+                }
+                set
+            }
         };
         Ok(set)
+    }
+}
+
+impl Recipe for &NameRecipe {
+    type Output = Coordinate;
+
+    fn contextualize(self, grid: &Grid, speaker: &Name) -> Result<Self::Output> {
+        let name = match self {
+            NameRecipe::Me => speaker,
+            NameRecipe::Other(name) => name,
+        };
+        grid.coord(name)
     }
 }
 
 impl Recipe for Line {
     type Output = Set;
 
-    fn contextualize(self, _grid: &Grid) -> Result<Self::Output> {
+    fn contextualize(self, _grid: &Grid, _speaker: &Name) -> Result<Self::Output> {
         let set = match self {
             Self::Row(row) => Coordinate::row_all(row).collect(),
             Self::Column(column) => Coordinate::column_all(column).collect(),
@@ -351,23 +396,23 @@ mod tests {
         assert_eq!(
             HintRecipe::parse("Tina is one of 3 criminals in row\u{A0}4").unwrap(),
             [
-                HintRecipe::Member(
-                    "Tina".to_owned(),
-                    Unit::Line(Line::Row(Row::Four)),
-                    Judgment::Criminal
-                ),
                 HintRecipe::Count(
                     Unit::Line(Line::Row(Row::Four)).into(),
                     Judgment::Criminal,
                     Quantity::Exact(3)
-                )
+                ),
+                HintRecipe::Member(
+                    "Tina".into(),
+                    Unit::Line(Line::Row(Row::Four)),
+                    Judgment::Criminal
+                ),
             ]
         );
     }
 
     #[test]
     fn sample_26_02_05_tina() {
-        let set = Unit::Direction(Direction::Above, "Xavi".to_owned());
+        let set = Unit::Direction(Direction::Above, "Xavi".into());
         assert_eq!(
             HintRecipe::parse("Both criminals above Xavi are connected").unwrap(),
             [
@@ -382,7 +427,7 @@ mod tests {
         assert_eq!(
             HintRecipe::parse("An odd number of innocents above Zara neighbor Gary").unwrap(),
             [HintRecipe::Count(
-                Unit::Neighbor("Zara".to_owned()).and(Unit::Neighbor("Gary".to_owned())),
+                Unit::Direction(Direction::Above, "Zara".into()).and(Unit::Neighbor("Gary".into())),
                 Judgment::Innocent,
                 Quantity::Parity(Parity::Odd)
             )],
