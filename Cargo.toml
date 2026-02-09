@@ -10,6 +10,7 @@ inquire = { version = "0.9.3", features = ["editor"] }
 itertools = "0.14.0"
 mitsein = { version = "0.9.0", features = ["arrayvec"] }
 select = "0.6.1"
+ureq = "3.2.0"
 winnow = "0.7.14"
 
 

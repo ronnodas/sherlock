@@ -1,25 +1,64 @@
 pub(crate) mod html;
 mod solver;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{fmt, fs};
 
 use anyhow::{Result, bail};
 use clap::Parser;
-
 use inquire::{Select, Text};
 use solver::Puzzle;
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let mut puzzle = match args.html {
-        Some(path) => {
-            let html = fs::read_to_string(path)?;
-            Puzzle::parse(&html)?
-        }
-        None => Puzzle::prompt()?,
+    let puzzle = match args.html {
+        Some(path) => read_from_file(path)?,
+        None => main_menu()?,
     };
+    play(puzzle)?;
+    Ok(())
+}
+
+fn main_menu() -> Result<Puzzle> {
+    let mode = Select::new(
+        "Which puzzle do you want to solve?",
+        InputMode::ALL.to_vec(),
+    )
+    .prompt()?;
+    match mode {
+        InputMode::Today => {
+            let api_key = include_str!("../browserless_api_key").trim();
+            let target_url = "https://cluesbysam.com/";
+            // let selector = ".card-grid #grid";
+            let json = format!(
+                r#"{{"url": "{target_url}"}}"#,
+            );
+            // dbg!(&json);
+            let html = ureq::post(format!(
+                "https://production-sfo.browserless.io/content?token={api_key}"
+            ))
+            .content_type("application/json")
+            .send(&json)?
+            .body_mut()
+            .read_to_string()?;
+            dbg!(&html);
+            Puzzle::parse(&html)
+        }
+        InputMode::File => {
+            let path = Text::new("enter path to html:").prompt()?;
+            read_from_file(path)
+        }
+        InputMode::Direct => Puzzle::prompt(),
+    }
+}
+
+fn read_from_file(path: impl AsRef<Path>) -> Result<Puzzle> {
+    let html = fs::read_to_string(path)?;
+    Puzzle::parse(&html)
+}
+
+fn play(mut puzzle: Puzzle) -> Result<()> {
     let mut pending = vec![];
     while !pending.is_empty() || !puzzle.solved() {
         let Some((name, judgment)) = pending.pop() else {
@@ -64,6 +103,27 @@ impl fmt::Display for HintKind {
         match self {
             Self::Logical => write!(f, "logical hint"),
             Self::Flavor => write!(f, "flavor text"),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum InputMode {
+    Today,
+    File,
+    Direct,
+}
+
+impl InputMode {
+    const ALL: [Self; 3] = [Self::Today, Self::File, Self::Direct];
+}
+
+impl fmt::Display for InputMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Today => write!(f, "download today's daily puzzle"),
+            Self::File => write!(f, "load from html file"),
+            Self::Direct => write!(f, "paste html"),
         }
     }
 }
