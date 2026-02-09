@@ -32,15 +32,16 @@ fn main_menu() -> Result<Puzzle> {
             let api_key = match fs::read_to_string("browserless_api_key") {
                 Ok(api_key) => api_key,
                 Err(e) => {
-                    println!("add a token from [browserless.io] to a `browserless_api_key` file");
+                    // TODO ask for token here
+                    println!(
+                        "add a token from [browserless.io] to a file named `browserless_api_key`"
+                    );
                     return Err(e.into());
                 }
             };
             let api_key = api_key.trim();
             let target_url = "https://cluesbysam.com/";
-            // let selector = ".card-grid #grid";
             let json = format!(r#"{{"url": "{target_url}"}}"#,);
-            // dbg!(&json);
             let html = ureq::post(format!(
                 "https://production-sfo.browserless.io/content?token={api_key}"
             ))
@@ -103,7 +104,7 @@ fn play(mut puzzle: Puzzle) -> Result<()> {
                                 break;
                             }
                             Err(e) => {
-                                println!("I didn't understand that hint :(\n{e}");
+                                println!("I didn't understand that hint :(\n\n{e}");
                             }
                         }
                     }
