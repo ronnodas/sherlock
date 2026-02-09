@@ -12,10 +12,10 @@ use mitsein::hash_set1::HashSet1;
 use select::document::Document;
 use select::predicate::{Attr, Predicate as _};
 
-use crate::solver::grid::card::Card;
-use crate::solver::grid::html::{Class, ClassName, Div, NodeExt as _};
-use crate::solver::hint::Set;
-use crate::solver::{Judgment, Name, Profession};
+use super::hint::Set;
+use super::{Judgment, Name, Profession};
+use card::Card;
+use html::{Class, ClassName, Div, NodeExt as _};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Grid {

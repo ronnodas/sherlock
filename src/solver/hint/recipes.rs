@@ -6,9 +6,10 @@ use mitsein::iter1::IntoIterator1 as _;
 use mitsein::vec1::Vec1;
 
 use crate::solver::grid::Grid;
-use crate::solver::hint::parsers::Sentence;
-use crate::solver::hint::{Hint, Line, LineKind, Quantity, Set, Unit};
 use crate::solver::{Coordinate, Judgment, Name};
+
+use super::parsers::{Sentence, Unit};
+use super::{Hint, Line, LineKind, Quantity, Set};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone)]
@@ -205,5 +206,58 @@ impl Recipe for Line {
             Self::Column(column) => Coordinate::column_all(column).collect(),
         };
         Ok(set)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::solver::Judgment;
+    use crate::solver::grid::{Direction, Row};
+    use crate::solver::hint::parsers::Unit;
+    use crate::solver::hint::{Line, Parity};
+
+    use super::{HintRecipe, Quantity};
+
+    #[test]
+    fn sample_26_02_05_alice() {
+        assert_eq!(
+            HintRecipe::parse("Tina is one of 3 criminals in row\u{A0}4").unwrap(),
+            [
+                HintRecipe::Count(
+                    Unit::Line(Line::Row(Row::Four)).into(),
+                    Judgment::Criminal,
+                    Quantity::Exact(3)
+                ),
+                HintRecipe::Member(
+                    "Tina".into(),
+                    Unit::Line(Line::Row(Row::Four)),
+                    Judgment::Criminal
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn sample_26_02_05_tina() {
+        let set = Unit::Direction(Direction::Above, "Xavi".into());
+        assert_eq!(
+            HintRecipe::parse("Both criminals above Xavi are connected").unwrap(),
+            [
+                HintRecipe::Count(set.clone().into(), Judgment::Criminal, Quantity::Exact(2)),
+                HintRecipe::Connected(set, Judgment::Criminal)
+            ]
+        );
+    }
+
+    #[test]
+    fn sample_26_02_05_kyle() {
+        assert_eq!(
+            HintRecipe::parse("An odd number of innocents above Zara neighbor Gary").unwrap(),
+            [HintRecipe::Count(
+                Unit::Direction(Direction::Above, "Zara".into()).and(Unit::Neighbor("Gary".into())),
+                Judgment::Innocent,
+                Quantity::Parity(Parity::Odd)
+            )],
+        );
     }
 }

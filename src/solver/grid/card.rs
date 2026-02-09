@@ -3,10 +3,9 @@ use itertools::Itertools as _;
 use select::node::Node;
 use select::predicate::Predicate as _;
 
-use crate::solver::grid::html::{Class, ClassName, Div, H3, NodeExt as _, Paragraph};
-use crate::solver::{Name, Profession};
+use crate::solver::{Judgment, Name, Profession};
 
-use super::Judgment;
+use super::html::{Class, ClassName, Div, H3, NodeExt as _, Paragraph};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Card {

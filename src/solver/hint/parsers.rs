@@ -1,6 +1,7 @@
 use std::iter::once;
 
 use anyhow::anyhow;
+use mitsein::vec1::vec1;
 use winnow::ascii::dec_uint;
 use winnow::combinator::{alt, delimited, opt, preceded, separated_pair, terminated};
 use winnow::error::{ParserError, StrContext};
@@ -9,8 +10,9 @@ use winnow::{Parser, Result};
 
 use crate::solver::Judgment;
 use crate::solver::grid::{Column, Row};
-use crate::solver::hint::recipes::{HintRecipe as Hint, NameRecipe as Name};
-use crate::solver::hint::{Direction, Line, LineKind, Parity, Profession, Quantity, Unit};
+
+use super::recipes::{HintRecipe as Hint, NameRecipe as Name, SetRecipe as Set};
+use super::{Direction, Line, LineKind, Parity, Profession, Quantity};
 
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug)]
@@ -361,6 +363,55 @@ impl Sentence {
     }
 }
 
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Clone, Debug)]
+pub(crate) enum Unit {
+    Direction(Direction, Name),
+    Line(Line),
+    Profession(Profession),
+    ProfessionShift(Profession, Direction),
+    Neighbor(Name),
+    Edges,
+    Quantified(Box<Self>, Quantity),
+    Corners,
+}
+
+impl Unit {
+    pub(crate) fn and(self, other: Self) -> Set {
+        Set::Intersection(vec1![self, other])
+    }
+
+    fn quantify(self, quantity: Quantity) -> Self {
+        Self::Quantified(Box::new(self), quantity)
+    }
+
+    fn maybe_quantify(self, quantity: Option<Quantity>) -> Self {
+        if let Some(quantity) = quantity {
+            self.quantify(quantity)
+        } else {
+            self
+        }
+    }
+}
+
+impl From<Line> for Unit {
+    fn from(v: Line) -> Self {
+        Self::Line(v)
+    }
+}
+
+impl From<Row> for Unit {
+    fn from(row: Row) -> Self {
+        Self::Line(Line::Row(row))
+    }
+}
+
+impl From<Column> for Unit {
+    fn from(column: Column) -> Self {
+        Self::Line(Line::Column(column))
+    }
+}
+
 fn unit_pair(input: &mut &str) -> Result<[Unit; 2]> {
     preceded("in ", line_pair)
         .map(|lines| lines.map(Unit::Line))
@@ -588,8 +639,9 @@ mod tests {
 
     use crate::solver::Judgment;
     use crate::solver::grid::{Column, Row};
-    use crate::solver::hint::parsers::{Name, Sentence};
-    use crate::solver::hint::{Direction, LineKind, Parity, Quantity, Unit};
+    use crate::solver::hint::{Direction, LineKind, Parity, Quantity};
+
+    use super::{Name, Sentence, Unit};
 
     #[test]
     fn uma_2026_02_03() {

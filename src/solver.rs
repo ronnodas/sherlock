@@ -8,11 +8,9 @@ use anyhow::{Result, bail};
 use inquire::Editor;
 use itertools::Itertools as _;
 
-use crate::solver::grid::{Coordinate, Grid};
-use crate::solver::hint::Set;
-use crate::solver::hint::recipes::{HintRecipe, Recipe as _};
-
-use hint::Hint;
+use grid::{Coordinate, Grid};
+use hint::recipes::{HintRecipe, Recipe as _};
+use hint::{Hint, Set};
 
 type Name = String;
 type Profession = String;
@@ -203,131 +201,92 @@ impl Iterator for SolutionIterator {
 #[cfg(test)]
 mod tests {
     use crate::read_from_file;
-    use crate::solver::Judgment;
+
+    use super::Judgment;
 
     #[test]
     fn sample_2026_02_08() {
-        use Judgment::{Criminal, Innocent};
+        use Judgment::{Criminal as C, Innocent as I};
         let mut puzzle = read_from_file("samples/2026-02-08.html").unwrap();
-        let solution = [
-            Innocent, Criminal, Criminal, Criminal, Criminal, Criminal, Innocent, Criminal,
-            Innocent, Criminal, Criminal, Criminal, Criminal, Innocent, Criminal, Criminal,
-            Criminal, Innocent, Criminal, Innocent,
+        let solution = [I, C, C, C, C, C, I, C, I, C, C, C, C, I, C, C, C, I, C, I];
+
+        let steps: &[&[(&str, Judgment, Option<&str>)]] = &[
+            &[
+                (
+                    "Betsy",
+                    C,
+                    Some("Only 1 of the 3 innocents neighboring Kyle is my neighbor"),
+                ),
+                (
+                    "Emma",
+                    C,
+                    Some("Only 1 of the 2 innocents neighboring Betsy is Donna's neighbor"),
+                ),
+            ],
+            &[(
+                "Floyd",
+                C,
+                Some("Row&nbsp;5 is the only row with exactly 2 criminals"),
+            )],
+            &[(
+                "Isaac",
+                C,
+                Some("Only 1 of the 3 innocents neighboring Gabe is Donna's neighbor"),
+            )],
+            &[
+                (
+                    "Gabe",
+                    C,
+                    Some("Kyle and Wally have only one innocent neighbor in common"),
+                ),
+                (
+                    "Hank",
+                    I,
+                    Some("Only one person in a corner has exactly 2 innocent neighbors"),
+                ),
+                (
+                    "Nick",
+                    C,
+                    Some("Exactly 2 of the 3 innocents neighboring Ruth are in row&nbsp;5"),
+                ),
+            ],
+            &[
+                ("Kyle", C, None),
+                (
+                    "Oscar",
+                    C,
+                    Some("There's an odd number of innocents neighboring Vera"),
+                ),
+                ("Sarah", C, None),
+                ("Uma", C, None),
+            ],
+            &[
+                ("Vera", I, Some("Paul has exactly 2 innocent neighbors")),
+                ("Wally", C, None),
+            ],
+            &[
+                ("Alice", I, None),
+                ("Donna", C, None),
+                ("Jane", I, None),
+                ("Mary", C, None),
+                ("Paul", I, None),
+                ("Ruth", C, None),
+            ],
         ];
 
-        assert_eq!(
-            puzzle.infer().unwrap(),
-            vec![
-                ("Betsy".to_owned(), Criminal),
-                ("Emma".to_owned(), Criminal)
-            ]
-        );
-        puzzle
-            .add_hint(
-                "Only 1 of the 3 innocents neighboring Kyle is my neighbor",
-                &"Betsy".to_owned(),
-            )
-            .unwrap();
-        puzzle
-            .add_hint(
-                "Only 1 of the 2 innocents neighboring Betsy is Donna's neighbor",
-                &"Emma".to_owned(),
-            )
-            .unwrap();
-        assert!(puzzle.solutions.contains(&solution));
+        for &changes in steps {
+            let deductions: Vec<(String, Judgment)> = changes
+                .iter()
+                .map(|&(name, judgment, _)| (name.to_owned(), judgment))
+                .collect();
+            assert_eq!(puzzle.infer().unwrap(), deductions);
+            for &(speaker, _, hint) in changes {
+                if let Some(hint) = hint {
+                    puzzle.add_hint(hint, &speaker.to_owned()).unwrap();
+                }
+            }
+        }
 
-        assert_eq!(
-            puzzle.infer().unwrap(),
-            vec![("Floyd".to_owned(), Criminal),]
-        );
-        puzzle
-            .add_hint(
-                "Row&nbsp;5 is the only row with exactly 2 criminals",
-                &"Floyd".to_owned(),
-            )
-            .unwrap();
-        assert!(puzzle.solutions.contains(&solution));
-
-        assert_eq!(
-            puzzle.infer().unwrap(),
-            vec![("Isaac".to_owned(), Criminal),]
-        );
-        puzzle
-            .add_hint(
-                "Only 1 of the 3 innocents neighboring Gabe is Donna's neighbor",
-                &"Isaac".to_owned(),
-            )
-            .unwrap();
-        assert!(puzzle.solutions.contains(&solution));
-
-        assert_eq!(
-            puzzle.infer().unwrap(),
-            vec![
-                ("Gabe".to_owned(), Criminal),
-                ("Hank".to_owned(), Innocent),
-                ("Nick".to_owned(), Criminal),
-            ]
-        );
-        puzzle
-            .add_hint(
-                "Kyle and Wally have only one innocent neighbor in common",
-                &"Gabe".to_owned(),
-            )
-            .unwrap();
-        puzzle
-            .add_hint(
-                "Only one person in a corner has exactly 2 innocent neighbors",
-                &"Hank".to_owned(),
-            )
-            .unwrap();
-        puzzle
-            .add_hint(
-                "Exactly 2 of the 3 innocents neighboring Ruth are in row&nbsp;5",
-                &"Nick".to_owned(),
-            )
-            .unwrap();
-        assert!(puzzle.solutions.contains(&solution));
-
-        assert_eq!(
-            puzzle.infer().unwrap(),
-            vec![
-                ("Kyle".to_owned(), Criminal),
-                ("Oscar".to_owned(), Criminal),
-                ("Sarah".to_owned(), Criminal),
-                ("Uma".to_owned(), Criminal),
-            ]
-        );
-        puzzle
-            .add_hint(
-                "There's an odd number of innocents neighboring Vera",
-                &"Oscar".to_owned(),
-            )
-            .unwrap();
-        assert!(puzzle.solutions.contains(&solution));
-
-        assert_eq!(
-            puzzle.infer().unwrap(),
-            vec![
-                ("Vera".to_owned(), Innocent),
-                ("Wally".to_owned(), Criminal),
-            ]
-        );
-        puzzle
-            .add_hint("Paul has exactly 2 innocent neighbors", &"Vera".to_owned())
-            .unwrap();
-        assert!(puzzle.solutions.contains(&solution));
-
-        assert_eq!(
-            puzzle.infer().unwrap(),
-            vec![
-                ("Alice".to_owned(), Innocent),
-                ("Donna".to_owned(), Criminal),
-                ("Jane".to_owned(), Innocent),
-                ("Mary".to_owned(), Criminal),
-                ("Paul".to_owned(), Innocent),
-                ("Ruth".to_owned(), Criminal),
-            ]
-        );
         assert_eq!(puzzle.solutions, [solution]);
     }
 }

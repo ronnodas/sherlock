@@ -5,13 +5,10 @@ use std::collections::HashSet;
 
 use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::IntoIterator1 as _;
-use mitsein::vec1::{Vec1, vec1};
+use mitsein::vec1::Vec1;
 
-use crate::solver::Profession;
-use crate::solver::grid::{Column, Direction, Row};
-use crate::solver::hint::recipes::{NameRecipe, SetRecipe};
-
-use super::{Coordinate, Judgment, Solution};
+use super::grid::{Column, Direction, Row};
+use super::{Coordinate, Judgment, Profession, Solution};
 
 pub(crate) type Set = HashSet<Coordinate>;
 
@@ -59,55 +56,6 @@ impl Hint {
     }
 }
 
-#[cfg_attr(test, derive(PartialEq, Eq))]
-#[derive(Clone, Debug)]
-pub(crate) enum Unit {
-    Direction(Direction, NameRecipe),
-    Line(Line),
-    Profession(Profession),
-    ProfessionShift(Profession, Direction),
-    Neighbor(NameRecipe),
-    Edges,
-    Quantified(Box<Self>, Quantity),
-    Corners,
-}
-
-impl Unit {
-    fn and(self, other: Self) -> SetRecipe {
-        SetRecipe::Intersection(vec1![self, other])
-    }
-
-    fn quantify(self, quantity: Quantity) -> Self {
-        Self::Quantified(Box::new(self), quantity)
-    }
-
-    fn maybe_quantify(self, quantity: Option<Quantity>) -> Self {
-        if let Some(quantity) = quantity {
-            self.quantify(quantity)
-        } else {
-            self
-        }
-    }
-}
-
-impl From<Line> for Unit {
-    fn from(v: Line) -> Self {
-        Self::Line(v)
-    }
-}
-
-impl From<Row> for Unit {
-    fn from(row: Row) -> Self {
-        Self::Line(Line::Row(row))
-    }
-}
-
-impl From<Column> for Unit {
-    fn from(column: Column) -> Self {
-        Self::Line(Line::Column(column))
-    }
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Line {
     Row(Row),
@@ -147,6 +95,7 @@ pub(crate) enum LineKind {
     Row,
     Column,
 }
+
 impl LineKind {
     fn all(self) -> ArrayVec1<Line, 5> {
         match self {
@@ -185,58 +134,5 @@ impl Parity {
             Self::Even => len.is_multiple_of(2),
             Self::Odd => !len.is_multiple_of(2),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::solver::Judgment;
-    use crate::solver::grid::Row;
-    use crate::solver::hint::recipes::HintRecipe;
-    use crate::solver::hint::{Line, Unit};
-
-    use super::{Direction, Parity, Quantity};
-
-    #[test]
-    fn sample_26_02_05_alice() {
-        assert_eq!(
-            HintRecipe::parse("Tina is one of 3 criminals in row\u{A0}4").unwrap(),
-            [
-                HintRecipe::Count(
-                    Unit::Line(Line::Row(Row::Four)).into(),
-                    Judgment::Criminal,
-                    Quantity::Exact(3)
-                ),
-                HintRecipe::Member(
-                    "Tina".into(),
-                    Unit::Line(Line::Row(Row::Four)),
-                    Judgment::Criminal
-                ),
-            ]
-        );
-    }
-
-    #[test]
-    fn sample_26_02_05_tina() {
-        let set = Unit::Direction(Direction::Above, "Xavi".into());
-        assert_eq!(
-            HintRecipe::parse("Both criminals above Xavi are connected").unwrap(),
-            [
-                HintRecipe::Count(set.clone().into(), Judgment::Criminal, Quantity::Exact(2)),
-                HintRecipe::Connected(set, Judgment::Criminal)
-            ]
-        );
-    }
-
-    #[test]
-    fn sample_26_02_05_kyle() {
-        assert_eq!(
-            HintRecipe::parse("An odd number of innocents above Zara neighbor Gary").unwrap(),
-            [HintRecipe::Count(
-                Unit::Direction(Direction::Above, "Zara".into()).and(Unit::Neighbor("Gary".into())),
-                Judgment::Innocent,
-                Quantity::Parity(Parity::Odd)
-            )],
-        );
     }
 }

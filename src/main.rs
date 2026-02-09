@@ -7,6 +7,7 @@ use anyhow::{Result, bail};
 use clap::Parser;
 use inquire::{Select, Text};
 use itertools::Itertools as _;
+
 use solver::Puzzle;
 
 fn main() -> Result<()> {
