@@ -19,6 +19,7 @@ pub(crate) enum Sentence {
     TraitsAreNeighborsInUnit(Unit, Judgment, Option<Quantity>),
     HasMostTraits(Line, Judgment),
     IsOneOfNTraitsInUnit(Unit, Name, Judgment, Quantity),
+    EqualNumberOfTraitsInUnits(Unit, Unit, Judgment),
     MoreTraitsInUnitThanUnit {
         big: Unit,
         small: Unit,
@@ -26,9 +27,10 @@ pub(crate) enum Sentence {
     },
     NProfessionsHaveTraitInDir(Profession, Judgment, Direction, Quantity),
     NumberOfTraitsInUnit(Unit, Judgment, Quantity),
-    OnlyOnePersonInUnitHasExactlyNTraitNeighbors(Unit, Judgment, Quantity),
-    OnlyOneLineHasExactlyNTraits(LineKind, Judgment, Quantity),
-    OnlyLineHasExactlyNTraits(Line, Judgment, Quantity),
+    OnlyOnePersonInUnitHasNTraitNeighbors(Unit, Judgment, Quantity),
+    EachLineHasNTraits(LineKind, Judgment, Quantity),
+    OnlyOneLineHasNTraits(LineKind, Judgment, Quantity),
+    OnlyGivenLineHasNTraits(Line, Judgment, Quantity),
     UnitSharesNOutOfNTraitsWithUnit {
         quantity: Quantity,
         quantified: Unit,
@@ -37,7 +39,6 @@ pub(crate) enum Sentence {
         intersection: Quantity,
     },
     UnitsShareNTraits(Unit, Unit, Judgment, Quantity),
-    EqualNumberOfTraitsInUnits(Unit, Unit, Judgment),
 }
 
 impl Sentence {
@@ -94,13 +95,18 @@ impl Sentence {
             Self::NumberOfTraitsInUnit(unit, judgment, quantity) => {
                 vec![Hint::Count(unit.into(), judgment, quantity)]
             }
-            Self::OnlyOnePersonInUnitHasExactlyNTraitNeighbors(unit, judgment, quantity) => {
+            Self::OnlyOnePersonInUnitHasNTraitNeighbors(unit, judgment, quantity) => {
                 vec![Hint::UniqueWithNeighbors(unit, judgment, quantity)]
             }
-            Self::OnlyOneLineHasExactlyNTraits(line_kind, judgment, quantity) => {
+            Self::OnlyOneLineHasNTraits(line_kind, judgment, quantity) => {
                 vec![Hint::UniqueLine(line_kind, judgment, quantity)]
             }
-            Self::OnlyLineHasExactlyNTraits(line, judgment, quantity) => {
+            Self::EachLineHasNTraits(kind, judgment, quantity) => kind
+                .all()
+                .into_iter()
+                .map(|line| Hint::Count(line.into(), judgment, quantity))
+                .collect(),
+            Self::OnlyGivenLineHasNTraits(line, judgment, quantity) => {
                 let equal = Hint::Count(line.into(), judgment, quantity);
                 line.others()
                     .into_iter()
@@ -145,6 +151,7 @@ impl Sentence {
             Self::only_line_has_exactly_n_traits,
             Self::unit_shares_n_out_of_n_traits_with_unit,
             Self::equal_number_of_traits_in_units,
+            Self::each_line_has_n_traits,
         ))
         .parse_next(input)
     }
@@ -240,7 +247,7 @@ impl Sentence {
             ),
         )
         .map(|(unit, (count, judgment))| {
-            Self::OnlyOnePersonInUnitHasExactlyNTraitNeighbors(unit, judgment, count)
+            Self::OnlyOnePersonInUnitHasNTraitNeighbors(unit, judgment, count)
         })
         .parse_next(input)
     }
@@ -251,7 +258,7 @@ impl Sentence {
             " has ",
             quantified_judgment,
         )
-        .map(|(kind, (count, judgment))| Self::OnlyOneLineHasExactlyNTraits(kind, judgment, count))
+        .map(|(kind, (count, judgment))| Self::OnlyOneLineHasNTraits(kind, judgment, count))
         .parse_next(input)
     }
 
@@ -266,7 +273,7 @@ impl Sentence {
             .verify(|&(line, _, kind, _, _)| line.kind() == kind)
             .context(StrContext::Label("a matching row/column"))
             .map(|(line, _, _, _, (count, judgment))| {
-                Self::OnlyLineHasExactlyNTraits(line, judgment, count)
+                Self::OnlyGivenLineHasNTraits(line, judgment, count)
             })
             .parse_next(input)
     }
@@ -332,6 +339,12 @@ impl Sentence {
         )
         .map(|(judgment, [a, b])| Self::EqualNumberOfTraitsInUnits(a, b, judgment))
         .parse_next(input)
+    }
+
+    fn each_line_has_n_traits(input: &mut &str) -> Result<Self> {
+        separated_pair(preceded("Each ", line_kind), " has ", quantified_judgment)
+            .map(|(kind, (quantity, judgment))| Self::EachLineHasNTraits(kind, judgment, quantity))
+            .parse_next(input)
     }
 }
 
@@ -567,7 +580,7 @@ mod tests {
     use winnow::error::ParserError;
 
     use crate::solver::hint::parsers::{Name, Sentence};
-    use crate::solver::hint::{Direction, Parity, Quantity, Unit};
+    use crate::solver::hint::{Direction, LineKind, Parity, Quantity, Unit};
     use crate::solver::{Column, Judgment, Row};
 
     #[test]
@@ -668,11 +681,24 @@ mod tests {
     }
 
     #[test]
+    fn vera_2026_02_05() {
+        test_parser(
+            Sentence::any,
+            "Each column has at least 3 innocents",
+            &Sentence::EachLineHasNTraits(
+                LineKind::Column,
+                Judgment::Innocent,
+                Quantity::AtLeast(3),
+            ),
+        );
+    }
+
+    #[test]
     fn freya_2026_02_06() {
         test_parser(
             Sentence::any,
             "Only one of us 2 singers has exactly 2 criminal neighbors",
-            &Sentence::OnlyOnePersonInUnitHasExactlyNTraitNeighbors(
+            &Sentence::OnlyOnePersonInUnitHasNTraitNeighbors(
                 Unit::Profession("singer".to_owned()).quantify(Quantity::Exact(2)),
                 Judgment::Criminal,
                 Quantity::Exact(2),
@@ -806,7 +832,7 @@ mod tests {
         test_parser(
             Sentence::any,
             "Only one person in a corner has exactly 2 innocent neighbors",
-            &Sentence::OnlyOnePersonInUnitHasExactlyNTraitNeighbors(
+            &Sentence::OnlyOnePersonInUnitHasNTraitNeighbors(
                 Unit::Corners,
                 Judgment::Innocent,
                 Quantity::Exact(2),
