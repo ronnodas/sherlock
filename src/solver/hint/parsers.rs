@@ -134,12 +134,12 @@ impl Sentence {
             Self::is_one_of_n_traits_in_unit,
             Self::more_traits_in_unit_than_unit,
             Self::n_professions_have_trait_in_dir,
+            Self::units_share_n_traits,
             Self::number_of_traits_in_unit,
             Self::only_one_person_in_unit_has_exactly_n_trait_neighbors,
             Self::only_one_line_has_exactly_n_traits,
             Self::only_line_has_exactly_n_traits,
             Self::unit_shares_n_out_of_n_traits_with_unit,
-            Self::units_share_n_traits,
         ))
         .parse_next(input)
     }
@@ -239,7 +239,7 @@ impl Sentence {
         // Only one of us 2 #PROFS has exactly 2 criminal neighbors
         // Only one person in a corner has exactly 2 innocent neighbors
         separated_pair(
-            preceded(alt(("Only one of ", "Only one ")), unit),
+            preceded((alt(("Only one of ", "Only one ")), opt("person ")), unit),
             " has ",
             terminated(
                 separated_pair(quantity, " ", judgment_singular),
@@ -310,6 +310,15 @@ impl Sentence {
         // An odd number of innocents #BETWEEN neighbor #NAME
         // There are no innocents #BETWEEN who neighbor #NAME
         alt((
+            separated_pair(
+                preceded(
+                    opt(alt(("There are ", "There is "))),
+                    quantified_judged_unit,
+                ),
+                alt((" who neighbor ", " neighbor ", " is neighboring ")),
+                name,
+            )
+            .map(|((count, judgment, unit), name)| (unit, Unit::Neighbor(name), judgment, count)),
             (
                 name,
                 " and ",
@@ -323,12 +332,6 @@ impl Sentence {
                 .map(|(a, _, b, _, (count, judgment), _, _, _)| {
                     (Unit::Neighbor(a), Unit::Neighbor(b), judgment, count)
                 }),
-            separated_pair(
-                quantified_judged_unit,
-                alt((" neighbor ", " is neighboring ")),
-                name,
-            )
-            .map(|((count, judgment, unit), name)| (unit, Unit::Neighbor(name), judgment, count)),
         ))
         .map(|(a, b, judgment, count)| Self::UnitsShareNTraits(a, b, judgment, count))
         .parse_next(input)
@@ -338,6 +341,8 @@ impl Sentence {
 fn unit(input: &mut &str) -> Result<Unit> {
     // in Row 2
     alt((
+        "on the edges".value(Unit::Edges),
+        "in a corner".value(Unit::Corners),
         preceded("in ", line).map(Unit::Line),
         separated_pair(direction, " ", name)
             .map(|(direction, name)| Unit::Direction(direction, name)),
@@ -376,8 +381,8 @@ fn quantified_judged_unit(input: &mut &str) -> Result<(Quantity, Judgment, Unit)
         .map(|((count, judgment), name)| (count, judgment, Unit::Neighbor(name))),
         (name_possessive, " ", quantified_judgment, " neighbors")
             .map(|(name, _, (quantity, judgment), _)| (quantity, judgment, Unit::Neighbor(name))),
-        terminated(quantified_judgment, " on the edges")
-            .map(|(quantity, judgment)| (quantity, judgment, Unit::Edges)),
+        // terminated(quantified_judgment, " on the edges")
+        // .map(|(quantity, judgment)| (quantity, judgment, Unit::Edges)),
         qualified_unit.verify_map(|(count, judgment, unit)| Some((count?, judgment?, unit))),
     ))
     .parse_next(input)
@@ -406,6 +411,7 @@ fn line_kind(input: &mut &str) -> Result<LineKind> {
 fn quantity(input: &mut &str) -> Result<Quantity> {
     alt((
         "both".value(Quantity::Exact(2)),
+        "no".value(Quantity::Exact(0)),
         preceded(
             opt(alt(("exactly ", "only "))),
             alt((dec_uint, "one".value(1))).map(Quantity::Exact),
@@ -727,7 +733,7 @@ mod tests {
     }
 
     #[test]
-    fn gary_2027_02_07() {
+    fn gary_2026_02_07() {
         test_parser(
             Sentence::any,
             "only 1 of the 2 innocents in column\u{a0}C is Zara's neighbor",
@@ -742,7 +748,7 @@ mod tests {
     }
 
     #[test]
-    fn uma_2027_02_07() {
+    fn uma_2026_02_07() {
         test_parser(
             Sentence::any,
             "only 1 of the 3 innocents neighboring me is to the right of Kay",
@@ -753,6 +759,33 @@ mod tests {
                 judgment: Judgment::Innocent,
                 intersection: Quantity::Exact(1),
             },
+        );
+    }
+
+    #[test]
+    fn xena_2026_02_08() {
+        test_parser(
+            Sentence::any,
+            "There are no innocents in row 1 who neighbor Donna",
+            &Sentence::UnitsShareNTraits(
+                Row::One.into(),
+                Unit::Neighbor("Donna".into()),
+                Judgment::Innocent,
+                Quantity::Exact(0),
+            ),
+        );
+    }
+
+    #[test]
+    fn hank_2026_02_08() {
+        test_parser(
+            Sentence::any,
+            "Only one person in a corner has exactly 2 innocent neighbors",
+            &Sentence::OnlyOnePersonInUnitHasExactlyNTraitNeighbors(
+                Unit::Corners,
+                Judgment::Innocent,
+                Quantity::Exact(2),
+            ),
         );
     }
 

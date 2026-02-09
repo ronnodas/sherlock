@@ -353,6 +353,13 @@ impl Coordinate {
             )
             .map(|(col, row)| Self { row, col })
     }
+
+    fn corners() -> impl Iterator<Item = Self> {
+        [Row::One, Row::Five]
+            .into_iter()
+            .cartesian_product([Column::A, Column::B])
+            .map(|(row, col)| Self { row, col })
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]

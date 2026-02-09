@@ -114,6 +114,7 @@ pub(crate) enum Unit {
     Neighbor(NameRecipe),
     Edges,
     Quantified(Box<Self>, Quantity),
+    Corners,
 }
 
 impl Unit {
@@ -209,7 +210,7 @@ pub(crate) enum Quantity {
 impl Quantity {
     pub(crate) fn matches(self, len: usize) -> bool {
         match self {
-            Self::Exact(value) => len == value.into(),
+            Self::Exact(value) => len == usize::from(value),
             Self::Parity(parity) => parity.matches(len),
         }
     }
@@ -343,6 +344,7 @@ impl Recipe for &Unit {
             }
             Unit::Profession(profession) => grid.by_profession(profession)?.clone().into_hash_set(),
             Unit::Edges => Coordinate::edges().collect(),
+            Unit::Corners => Coordinate::corners().collect(),
             Unit::ProfessionShift(profession, direction) => grid
                 .by_profession(profession)?
                 .into_iter()
