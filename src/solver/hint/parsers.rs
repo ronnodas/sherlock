@@ -212,13 +212,14 @@ impl Sentence {
     fn n_professions_have_trait_in_dir(input: &mut &str) -> Result<Self> {
         (
             quantified_profession,
-            " has a ",
+            alt((" has ", " have ")),
+            alt(("an ", "a ")),
             judgment_singular,
             " directly ",
             direction,
             " them",
         )
-            .map(|((count, profession), _, judgment, _, direction, _)| {
+            .map(|((count, profession), _, _, judgment, _, direction, _)| {
                 Self::NProfessionsHaveTraitInDir(profession, judgment, direction, count)
             })
             .parse_next(input)
@@ -595,6 +596,20 @@ mod tests {
     use crate::solver::hint::parsers::{Name, Sentence};
     use crate::solver::hint::{Direction, LineKind, Parity, Quantity, Unit};
     use crate::solver::{Column, Judgment, Row};
+
+    #[test]
+    fn uma_2026_02_03() {
+        test_parser(
+            Sentence::any,
+            "exactly 1 judge has an innocent directly above them",
+            &Sentence::NProfessionsHaveTraitInDir(
+                "judge".into(),
+                Judgment::Innocent,
+                Direction::Above,
+                Quantity::Exact(1),
+            ),
+        );
+    }
 
     #[test]
     fn salil_2026_02_04() {
