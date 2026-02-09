@@ -45,12 +45,18 @@ impl Card {
     }
 
     fn parse_flipped(card: Node<'_>, status: Judgment, has_hint: bool) -> Result<Self> {
-        let [_face, name, profession, _aria, hint] = card
-            .expect(
-                Div.and(Class(ClassName::CardBack))
-                    .and(Class(status.class())),
-            )?
-            .expect_children()?;
+        let card = card.expect(
+            Div.and(Class(ClassName::CardBack))
+                .and(Class(status.class())),
+        )?;
+        let [name, profession, hint] =
+            card.expect_children()
+                .map(|[_face, name, profession, _aria, hint]| [name, profession, hint])
+                .or_else(|_| {
+                    card.expect_children().map(
+                        |[_correct, _face, name, profession, _aria, hint]| [name, profession, hint],
+                    )
+                })?;
         let name = parse_name(name)?;
         let profession = parse_profession(profession)?;
         let hint = if has_hint {
