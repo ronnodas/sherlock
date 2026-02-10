@@ -218,7 +218,7 @@ impl Sentence {
             judgment_singular,
             " directly ",
             direction,
-            " them",
+            alt((" them", " us")),
         )
             .map(|((count, profession), _, _, judgment, _, direction, _)| {
                 Self::NProfessionsHaveTraitInDir(profession, judgment, direction, count)
@@ -316,6 +316,8 @@ impl Sentence {
                 name,
             )
             .map(|((count, judgment, unit), name)| (unit, Unit::Neighbor(name), judgment, count)),
+            separated_pair(quantified_judged_unit, alt((" is ", " are ")), unit)
+                .map(|((quantity, judgment, a), b)| (a, b, judgment, quantity)),
             (
                 name,
                 " and ",
@@ -371,9 +373,11 @@ pub(crate) enum Unit {
     Profession(Profession),
     ProfessionShift(Profession, Direction),
     Neighbor(Name),
+    Between(Name, Name),
     Edges,
-    Quantified(Box<Self>, Quantity),
     Corners,
+    All,
+    Quantified(Box<Self>, Quantity),
 }
 
 impl Unit {
@@ -420,9 +424,10 @@ fn unit_pair(input: &mut &str) -> Result<[Unit; 2]> {
 
 fn unit(input: &mut &str) -> Result<Unit> {
     alt((
+        "in total".value(Unit::All),
         "on the edges".value(Unit::Edges),
         "in a corner".value(Unit::Corners),
-        preceded(opt("in "), line).map(Unit::Line),
+        preceded(opt("in "), alt((between, line.map(Unit::Line)))),
         separated_pair(direction, " ", name)
             .map(|(direction, name)| Unit::Direction(direction, name)),
         terminated(name_possessive, alt((" neighbors", " neighbor"))).map(Unit::Neighbor),
@@ -542,7 +547,12 @@ fn raw_name<'input>(input: &mut &'input str) -> Result<&'input str> {
 }
 
 fn quantified_profession(input: &mut &str) -> Result<(Quantity, Profession)> {
-    separated_pair(quantity, " ", profession_any).parse_next(input)
+    separated_pair(
+        quantity,
+        alt((terminated(" of us ", opt((quantity, " "))), " ")),
+        profession_any,
+    )
+    .parse_next(input)
 }
 
 fn direction(input: &mut &str) -> Result<Direction> {
@@ -560,7 +570,11 @@ fn determiner<'input>(input: &mut &'input str) -> Result<&'input str> {
 }
 
 fn profession_any(input: &mut &str) -> Result<Profession> {
-    alt((profession_plural, profession_singular)).parse_next(input)
+    alt((
+        profession_plural,
+        preceded(opt(alt(("an ", "a "))), profession_singular),
+    ))
+    .parse_next(input)
 }
 
 fn profession_singular(input: &mut &str) -> Result<Profession> {
@@ -573,6 +587,12 @@ fn profession_plural(input: &mut &str) -> Result<Profession> {
     take_while(2.., |c| c != ' ')
         .verify_map(|s: &str| s.strip_suffix('s'))
         .map(str::to_owned)
+        .parse_next(input)
+}
+
+fn between(input: &mut &str) -> Result<Unit> {
+    preceded("between ", separated_pair(name, " and ", name))
+        .map(|(a, b)| Unit::Between(a, b))
         .parse_next(input)
 }
 
@@ -988,6 +1008,57 @@ mod tests {
             Sentence::any,
             "There are at least 10 innocents on the edges",
             &Sentence::NumberOfTraitsInUnit(Unit::Edges, Judgment::Innocent, Quantity::AtLeast(10)),
+        );
+    }
+
+    #[test]
+    fn gary_2026_02_10() {
+        test_parser(
+            Sentence::any,
+            "Ryan is one of 2 innocents in between Betty and Vicky",
+            &Sentence::IsOneOfNTraitsInUnit(
+                Unit::Between("Betty".into(), "Vicky".into()),
+                "Ryan".into(),
+                Judgment::Innocent,
+                Quantity::Exact(2),
+            ),
+        );
+    }
+
+    #[test]
+    fn lisa_2026_02_10() {
+        test_parser(
+            Sentence::any,
+            "exactly 1 innocent on the edges is a farmer",
+            &Sentence::UnitsShareNTraits(
+                Unit::Edges,
+                Unit::Profession("farmer".to_owned()),
+                Judgment::Innocent,
+                Quantity::Exact(1),
+            ),
+        );
+    }
+
+    #[test]
+    fn will_2026_02_10() {
+        test_parser(
+            Sentence::any,
+            "2 of us 3 singers have an innocent directly to the left of us",
+            &Sentence::NProfessionsHaveTraitInDir(
+                "singer".into(),
+                Judgment::Innocent,
+                Direction::Left,
+                Quantity::Exact(2),
+            ),
+        );
+    }
+
+    #[test]
+    fn janet_2026_02_10() {
+        test_parser(
+            Sentence::any,
+            "There are 9 innocents in total",
+            &Sentence::NumberOfTraitsInUnit(Unit::All, Judgment::Innocent, Quantity::Exact(9)),
         );
     }
 

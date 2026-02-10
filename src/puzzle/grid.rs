@@ -260,6 +260,27 @@ impl Coordinate {
             }
         })
     }
+
+    pub(crate) fn between([a, b]: [Self; 2]) -> Result<HashSet<Self>> {
+        if a.row == b.row {
+            Ok(Column::between([a.col, b.col])
+                .map(|col| Self { row: a.row, col })
+                .collect())
+        } else if a.col == b.col {
+            Ok(Row::between([a.row, b.row])
+                .map(|row| Self { row, col: a.col })
+                .collect())
+        } else {
+            Err(anyhow!("{a} and {b} not on the same line"))
+        }
+    }
+
+    pub(crate) fn all() -> impl Iterator<Item = Self> {
+        Row::ALL
+            .into_iter()
+            .cartesian_product(Column::ALL)
+            .map(|(row, col)| Self { row, col })
+    }
 }
 
 impl fmt::Display for Coordinate {
@@ -367,6 +388,12 @@ impl Row {
         };
         Some(row)
     }
+
+    fn between(mut pair: [Self; 2]) -> impl Iterator<Item = Self> {
+        pair.sort_unstable();
+        let [a, b] = pair;
+        successors(a.next(), |r| r.next()).take_while(move |&r| r != b)
+    }
 }
 
 impl fmt::Display for Row {
@@ -443,6 +470,12 @@ impl Column {
             _ => return None,
         };
         Some(col)
+    }
+
+    fn between(mut pair: [Self; 2]) -> impl Iterator<Item = Self> {
+        pair.sort_unstable();
+        let [a, b] = pair;
+        successors(a.next(), |r| r.next()).take_while(move |&r| r != b)
     }
 }
 

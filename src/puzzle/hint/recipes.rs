@@ -173,6 +173,11 @@ impl Recipe for &Unit {
                 .into_iter()
                 .filter_map(|coord| coord.step(*direction))
                 .collect(),
+            Unit::Between(a, b) => {
+                let [a, b] = [a, b].map(|name| name.contextualize(grid, speaker));
+                Coordinate::between([a?, b?])?
+            }
+            Unit::All => Coordinate::all().collect(),
             Unit::Quantified(inner, quantity) => {
                 let set = inner.contextualize(grid, speaker)?;
                 if !quantity.matches(set.len()) {
