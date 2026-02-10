@@ -5,10 +5,12 @@ use std::{fmt, fs};
 
 use anyhow::Result;
 use clap::Parser;
-use inquire::{MultiSelect, Select, Text};
+use inquire::{Confirm, MultiSelect, Select, Text};
 use itertools::Itertools as _;
 
 use solver::{Name, Puzzle, Update};
+
+const API_KEY_FILE: &str = "browserless_api_key";
 
 fn main() -> Result<()> {
     let args = Args::parse();
@@ -28,35 +30,49 @@ fn main_menu() -> Result<Puzzle> {
     )
     .prompt()?;
     match mode {
-        InputMode::Today => {
-            let api_key = match fs::read_to_string("browserless_api_key") {
-                Ok(api_key) => api_key,
-                Err(e) => {
-                    // TODO ask for token here
-                    println!(
-                        "add a token from [browserless.io] to a file named `browserless_api_key`"
-                    );
-                    return Err(e.into());
-                }
-            };
-            let api_key = api_key.trim();
-            let target_url = "https://cluesbysam.com/";
-            let json = format!(r#"{{"url": "{target_url}"}}"#,);
-            let html = ureq::post(format!(
-                "https://production-sfo.browserless.io/content?token={api_key}"
-            ))
-            .content_type("application/json")
-            .send(&json)?
-            .body_mut()
-            .read_to_string()?;
-            Puzzle::parse(&html)
+        InputMode::Today => fetch_from_url("https://cluesbysam.com/"),
+        InputMode::Fetch => {
+            let target_url = Text::new("Enter puzzle url").prompt()?;
+            fetch_from_url(&target_url)
         }
         InputMode::File => {
-            let path = Text::new("enter path to html:").prompt()?;
+            let path = Text::new("Enter path to html:").prompt()?;
             read_from_file(path)
         }
-        InputMode::Direct => Puzzle::prompt(),
+        InputMode::Paste => Puzzle::prompt(),
     }
+}
+
+fn fetch_from_url(target_url: &str) -> Result<Puzzle> {
+    let api_key = read_api_key()?;
+    let json = format!(r#"{{"url": "{target_url}"}}"#);
+    let html = ureq::post(format!(
+        "https://production-sfo.browserless.io/content?token={api_key}"
+    ))
+    .content_type("application/json")
+    .send(&json)?
+    .body_mut()
+    .read_to_string()?;
+    Puzzle::parse(&html)
+}
+
+fn read_api_key() -> Result<String> {
+    let api_key = if let Ok(api_key) = fs::read_to_string(API_KEY_FILE) {
+        api_key.trim().to_owned()
+    } else {
+        let key = Text::new("Enter an API token from [browserless.io]:")
+            .prompt()?
+            .trim()
+            .to_owned();
+        let save = Confirm::new("Save key to disk (current directory)?")
+            .with_default(true)
+            .prompt()?;
+        if save {
+            fs::write(API_KEY_FILE, &key)?;
+        }
+        key
+    };
+    Ok(api_key)
 }
 
 fn read_from_file(path: impl AsRef<Path>) -> Result<Puzzle> {
@@ -131,19 +147,21 @@ struct Args {
 enum InputMode {
     Today,
     File,
-    Direct,
+    Paste,
+    Fetch,
 }
 
 impl InputMode {
-    const ALL: [Self; 3] = [Self::Today, Self::File, Self::Direct];
+    const ALL: [Self; 4] = [Self::Today, Self::Fetch, Self::File, Self::Paste];
 }
 
 impl fmt::Display for InputMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Today => write!(f, "download today's daily puzzle"),
+            Self::Fetch => write!(f, "download puzzle from url"),
             Self::File => write!(f, "load from html file"),
-            Self::Direct => write!(f, "paste html"),
+            Self::Paste => write!(f, "paste html"),
         }
     }
 }
