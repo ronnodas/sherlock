@@ -10,7 +10,7 @@ use itertools::Itertools as _;
 use mitsein::NonEmpty;
 use mitsein::hash_set1::HashSet1;
 use select::document::Document;
-use select::predicate::{Attr, Predicate as _};
+use select::predicate::{Any, Attr, Predicate as _};
 
 use super::hint::Set;
 use super::{Judgment, Name, Profession};
@@ -34,7 +34,7 @@ impl Grid {
             bail!("expecting unique element");
         };
         let cards: [Card; 20] = cards
-            .expect_children::<20>()?
+            .expect_children::<20>(Any)?
             .iter()
             .map(|card| Card::parse(card))
             .collect::<Result<Vec<Card>>>()?

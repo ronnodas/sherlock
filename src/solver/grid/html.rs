@@ -25,10 +25,13 @@ pub(crate) trait NodeExt<'html>: Sized + fmt::Debug {
         }
     }
 
-    fn expect_children<const N: usize>(&self) -> Result<[Node<'html>; N]> {
+    fn expect_children<const N: usize>(
+        &self,
+        predicate: impl Predicate + Copy,
+    ) -> Result<[Node<'html>; N]> {
         let children = self
             .children()
-            .filter(|child| child.name().is_some())
+            .filter(|child| child.name().is_some() && child.is(predicate))
             .collect_vec();
         children.try_into().map_err(|children: Vec<Node<'_>>| {
             anyhow!("expecting {N} children, found {}", children.len())
@@ -47,8 +50,8 @@ pub(crate) trait NodeExt<'html>: Sized + fmt::Debug {
         }
     }
 
-    fn unique_child(&self) -> Result<Node<'html>> {
-        let [child] = self.expect_children()?;
+    fn unique_child(&self, predicate: impl Predicate + Copy) -> Result<Node<'html>> {
+        let [child] = self.expect_children(predicate)?;
         Ok(child)
     }
 }

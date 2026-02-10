@@ -1,7 +1,7 @@
 use anyhow::{Ok, Result, bail};
 use itertools::Itertools as _;
 use select::node::Node;
-use select::predicate::Predicate as _;
+use select::predicate::{Any, Predicate as _};
 
 use crate::solver::{Judgment, Name, Profession};
 
@@ -19,8 +19,7 @@ impl Card {
     pub(crate) fn parse(node: &Node<'_>) -> Result<Self> {
         let node = node
             .expect(Div.and(Class(ClassName::CardContainer)))?
-            .unique_child()?
-            .expect(Div.and(Class(ClassName::Card)))?;
+            .unique_child(Div.and(Class(ClassName::Card)))?;
         let status = if node.is(Class(ClassName::Flipped)) {
             if node.is(Class(ClassName::Innocent)) {
                 Some(Judgment::Innocent)
@@ -36,7 +35,7 @@ impl Card {
         };
         let has_hint = node.is(Class(ClassName::HasHint));
         // TODO validate coord
-        let [_coord, card, _inspect, _aria] = node.expect_children()?;
+        let [_coord, card, _inspect, _aria] = node.expect_children(Any)?;
         status.map_or_else(
             || Self::parse_unflipped(card),
             |status| Self::parse_flipped(card, status, has_hint),
@@ -49,10 +48,10 @@ impl Card {
                 .and(Class(status.into())),
         )?;
         let [name, profession, hint] =
-            card.expect_children()
+            card.expect_children(Any)
                 .map(|[_face, name, profession, _aria, hint]| [name, profession, hint])
                 .or_else(|_| {
-                    card.expect_children().map(
+                    card.expect_children(Any).map(
                         |[_correct, _face, name, profession, _aria, hint]| [name, profession, hint],
                     )
                 })?;
@@ -74,7 +73,7 @@ impl Card {
     fn parse_unflipped(card: Node<'_>) -> Result<Self> {
         let [_face, name, profession] = card
             .expect(Div.and(Class(ClassName::CardFront)))?
-            .expect_children()?;
+            .expect_children(Any)?;
         let name = parse_name(name)?;
         let profession = parse_profession(profession)?;
         Ok(Self {
@@ -128,7 +127,7 @@ fn parse_profession(profession: Node<'_>) -> Result<String> {
 
 fn parse_name(name: Node<'_>) -> Result<String> {
     name.expect(Div.and(Class(ClassName::Name)))?
-        .unique_child()?
+        .unique_child(Any)?
         .expect(H3.and(Class(ClassName::Name)))?
         .expect_text()
         .map(|name| {
