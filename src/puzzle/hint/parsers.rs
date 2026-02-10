@@ -45,13 +45,12 @@ pub(crate) enum Sentence {
 impl Sentence {
     pub(crate) fn parse(hint: &str) -> anyhow::Result<Self> {
         Self::parse_cased(hint).or_else(|e| {
-            //TODO if both error out, should return the first error
             let mut hint = hint.to_owned();
             let Some(first) = hint.get_mut(..1) else {
                 return Err(e);
             };
             first.make_ascii_lowercase();
-            Self::parse_cased(&hint)
+            Self::parse_cased(&hint).map_err(|_lower_case_err| e)
         })
     }
 
