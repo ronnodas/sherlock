@@ -5,8 +5,8 @@ use mitsein::hash_set1::HashSet1;
 use mitsein::iter1::IntoIterator1 as _;
 use mitsein::vec1::Vec1;
 
-use crate::solver::grid::{Coordinate, Grid};
-use crate::solver::{Judgment, Name};
+use crate::puzzle::grid::{Coordinate, Grid};
+use crate::puzzle::{Judgment, Name};
 
 use super::parsers::{Sentence, Unit};
 use super::{Hint, Line, LineKind, Quantity, Set};
@@ -211,10 +211,10 @@ impl Recipe for Line {
 
 #[cfg(test)]
 mod tests {
-    use crate::solver::Judgment;
-    use crate::solver::grid::{Direction, Row};
-    use crate::solver::hint::parsers::Unit;
-    use crate::solver::hint::{Line, Parity};
+    use crate::puzzle::Judgment;
+    use crate::puzzle::grid::{Direction, Row};
+    use crate::puzzle::hint::parsers::Unit;
+    use crate::puzzle::hint::{Line, Parity};
 
     use super::{HintRecipe, Quantity};
 

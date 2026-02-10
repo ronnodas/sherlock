@@ -8,8 +8,8 @@ use winnow::error::{ParserError, StrContext};
 use winnow::token::take_while;
 use winnow::{Parser, Result};
 
-use crate::solver::Judgment;
-use crate::solver::grid::{Column, Row};
+use crate::puzzle::Judgment;
+use crate::puzzle::grid::{Column, Row};
 
 use super::recipes::{HintRecipe as Hint, NameRecipe as Name, SetRecipe as Set};
 use super::{Direction, Line, LineKind, Parity, Profession, Quantity};
@@ -45,6 +45,7 @@ pub(crate) enum Sentence {
 impl Sentence {
     pub(crate) fn parse(hint: &str) -> anyhow::Result<Self> {
         Self::parse_cased(hint).or_else(|e| {
+            //TODO if both error out, should return the first error
             let mut hint = hint.to_owned();
             let Some(first) = hint.get_mut(..1) else {
                 return Err(e);
@@ -636,9 +637,9 @@ mod tests {
     use winnow::Parser;
     use winnow::error::ParserError;
 
-    use crate::solver::Judgment;
-    use crate::solver::grid::{Column, Row};
-    use crate::solver::hint::{Direction, LineKind, Parity, Quantity};
+    use crate::puzzle::Judgment;
+    use crate::puzzle::grid::{Column, Row};
+    use crate::puzzle::hint::{Direction, LineKind, Parity, Quantity};
 
     use super::{Name, Sentence, Unit};
 

@@ -2,16 +2,20 @@ use anyhow::{Ok, Result, bail};
 use itertools::Itertools as _;
 use select::node::Node;
 use select::predicate::{Any, Predicate as _};
+use serde::{Deserialize, Serialize};
 
-use crate::solver::{Judgment, Name, Profession};
+use crate::puzzle::{Judgment, Name, Profession};
 
 use super::html::{Class, ClassName, Div, H3, NodeExt as _, Paragraph};
 
-#[derive(Clone, Debug)]
+// TODO change types so that hint can only exist if status is Some
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Card {
     name: Name,
     profession: Profession,
-    hint: Option<String>,
+    #[serde(skip_serializing_if = "HintText::is_unknown")]
+    hint: HintText,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     status: Option<Judgment>,
 }
 
@@ -58,9 +62,9 @@ impl Card {
         let name = parse_name(name)?;
         let profession = parse_profession(profession)?;
         let hint = if has_hint {
-            Some(parse_hint(hint)?)
+            HintText::Known(parse_hint(hint)?)
         } else {
-            None
+            HintText::Flavor
         };
         Ok(Self {
             name,
@@ -79,13 +83,13 @@ impl Card {
         Ok(Self {
             name,
             profession,
-            hint: None,
+            hint: HintText::Unknown,
             status: None,
         })
     }
 
     pub(crate) fn hint(&self) -> Option<&str> {
-        self.hint.as_deref()
+        self.hint.as_known()
     }
 
     pub(crate) const fn name(&self) -> &Name {
@@ -109,6 +113,67 @@ impl Card {
             self.status = Some(judgment);
             &*self
         })
+    }
+
+    pub(crate) fn set_hint(&mut self, hint: String) {
+        self.hint = HintText::Known(hint);
+    }
+
+    pub(crate) fn mark_as_flavor(&mut self) {
+        self.hint = HintText::Flavor;
+    }
+
+    pub(crate) const fn hint_pending(&self) -> bool {
+        self.status.is_some() && self.hint.is_unknown()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(from = "Option<String>")]
+enum HintText {
+    #[default]
+    Unknown,
+    Flavor,
+    Known(String),
+}
+
+impl HintText {
+    #[must_use]
+    fn as_known(&self) -> Option<&str> {
+        if let Self::Known(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    /// Returns `true` if the hint text is [`Unknown`].
+    ///
+    /// [`Unknown`]: HintText::Unknown
+    #[must_use]
+    const fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+}
+
+impl From<Option<String>> for HintText {
+    fn from(value: Option<String>) -> Self {
+        match value {
+            Some(string) if string == "Flavor" => Self::Flavor,
+            Some(string) => Self::Known(string),
+            None => Self::Unknown,
+        }
+    }
+}
+
+impl Serialize for HintText {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let option = match self {
+            Self::Unknown => None,
+            Self::Flavor => Some("Flavor"),
+            Self::Known(hint) => Some(hint.as_str()),
+        };
+        option.serialize(serializer)
     }
 }
 

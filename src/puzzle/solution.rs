@@ -1,8 +1,8 @@
 use std::ops::Index;
 
-use crate::solver::Judgment;
-use crate::solver::grid::Coordinate;
-use crate::solver::hint::Set;
+use crate::puzzle::Judgment;
+use crate::puzzle::grid::Coordinate;
+use crate::puzzle::hint::Set;
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Clone, Debug)]

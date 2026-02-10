@@ -1,9 +1,13 @@
 mod card;
 mod html;
+mod save;
 
 use std::collections::{HashMap, HashSet};
+use std::error::Error;
 use std::iter::successors;
 use std::ops::{Index, IndexMut};
+use std::str::FromStr;
+use std::{cmp, fmt};
 
 use anyhow::{Result, anyhow, bail};
 use itertools::Itertools as _;
@@ -11,13 +15,15 @@ use mitsein::NonEmpty;
 use mitsein::hash_set1::HashSet1;
 use select::document::Document;
 use select::predicate::{Any, Attr, Predicate as _};
+use serde::{Deserialize, Serialize};
 
 use super::hint::Set;
 use super::{Judgment, Name, Profession};
 use card::Card;
 use html::{Class, ClassName, Div, NodeExt as _};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(from = "save::CardList")]
 pub(crate) struct Grid {
     cards: [Card; 20],
     coordinates: HashMap<Name, Coordinate>,
@@ -40,6 +46,10 @@ impl Grid {
             .collect::<Result<Vec<Card>>>()?
             .try_into()
             .unwrap_or_else(|_| unreachable!());
+        Ok(Self::new(cards))
+    }
+
+    fn new(cards: [Card; 20]) -> Self {
         let coordinates = cards
             .iter()
             .enumerate()
@@ -60,11 +70,11 @@ impl Grid {
                 );
                 Some(set)
             });
-        Ok(Self {
+        Self {
             cards,
             coordinates,
             by_profession,
-        })
+        }
     }
 
     pub(crate) fn iter(&self) -> impl Iterator<Item = &Card> {
@@ -94,6 +104,32 @@ impl Grid {
         self.by_profession
             .get(profession)
             .ok_or_else(|| anyhow!("{profession} not in grid"))
+    }
+
+    pub(crate) fn add_hint(&mut self, hint: &str, speaker: &Name) -> Result<()> {
+        let index = self.coord(speaker)?;
+        self.cards[index.to_index()].set_hint(hint.to_owned());
+        Ok(())
+    }
+
+    pub(crate) fn mark_as_flavor(&mut self, name: &Name) -> Result<()> {
+        let index = self.coord(name)?;
+        self.cards[index.to_index()].mark_as_flavor();
+        Ok(())
+    }
+
+    pub(crate) fn pending_hints(&self) -> Vec<String> {
+        self.cards
+            .iter()
+            .filter(|card| card.hint_pending())
+            .map(|card| card.name().clone())
+            .collect()
+    }
+}
+
+impl Serialize for Grid {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        save::CardList::from(self).serialize(serializer)
     }
 }
 
@@ -214,9 +250,57 @@ impl Coordinate {
             .cartesian_product([Column::A, Column::D])
             .map(|(row, col)| Self { row, col })
     }
+
+    fn parse(string: &str) -> Option<Self> {
+        let [col, row] = string.chars().collect_array()?;
+        Some({
+            Self {
+                row: Row::parse(row)?,
+                col: Column::parse(col)?,
+            }
+        })
+    }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+impl fmt::Display for Coordinate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.col, self.row)
+    }
+}
+
+impl FromStr for Coordinate {
+    type Err = ParseCoordinateError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s).ok_or(ParseCoordinateError)
+    }
+}
+
+impl Ord for Coordinate {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.row.cmp(&other.row).then(self.col.cmp(&other.col))
+    }
+}
+
+impl PartialOrd for Coordinate {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct ParseCoordinateError;
+
+impl fmt::Display for ParseCoordinateError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "string does not represent a grid coordinate")
+    }
+}
+
+// 2. Implement Error (Allows trait object conversion)
+impl Error for ParseCoordinateError {}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 pub(crate) enum Row {
     One,
     Two,
@@ -271,9 +355,34 @@ impl Row {
     pub(crate) fn others(&self) -> impl Iterator<Item = Self> {
         Self::ALL.into_iter().filter(move |other| other != self)
     }
+
+    const fn parse(row: char) -> Option<Self> {
+        let row = match row {
+            '1' => Self::One,
+            '2' => Self::Two,
+            '3' => Self::Three,
+            '4' => Self::Four,
+            '5' => Self::Five,
+            _ => return None,
+        };
+        Some(row)
+    }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+impl fmt::Display for Row {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let c = match self {
+            Self::One => '1',
+            Self::Two => '2',
+            Self::Three => '3',
+            Self::Four => '4',
+            Self::Five => '5',
+        };
+        write!(f, "{c}")
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 pub(crate) enum Column {
     A,
     B,
@@ -323,6 +432,29 @@ impl Column {
 
     pub(crate) fn others(&self) -> impl Iterator<Item = Self> {
         Self::ALL.into_iter().filter(move |other| other != self)
+    }
+
+    const fn parse(col: char) -> Option<Self> {
+        let col = match col {
+            'A' => Self::A,
+            'B' => Self::B,
+            'C' => Self::C,
+            'D' => Self::D,
+            _ => return None,
+        };
+        Some(col)
+    }
+}
+
+impl fmt::Display for Column {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let c = match self {
+            Self::A => 'A',
+            Self::B => 'B',
+            Self::C => 'C',
+            Self::D => 'D',
+        };
+        write!(f, "{c}")
     }
 }
 
