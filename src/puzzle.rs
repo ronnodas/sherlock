@@ -4,6 +4,7 @@ mod solution;
 
 use std::fmt;
 use std::iter::repeat;
+use std::ops::Not;
 
 use anyhow::{Result, bail};
 use colored::{Color, Colorize as _};
@@ -154,6 +155,17 @@ impl Judgment {
         match self {
             Self::Innocent => Color::Green,
             Self::Criminal => Color::Red,
+        }
+    }
+}
+
+impl Not for Judgment {
+    type Output = Self;
+
+    fn not(self) -> Self {
+        match self {
+            Self::Innocent => Self::Criminal,
+            Self::Criminal => Self::Innocent,
         }
     }
 }

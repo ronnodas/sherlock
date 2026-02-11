@@ -4,7 +4,7 @@ pub(crate) mod recipes;
 use std::collections::HashSet;
 
 use mitsein::array_vec1::ArrayVec1;
-use mitsein::iter1::IntoIterator1 as _;
+use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
 use super::grid::{Column, Coordinate, Direction, Row};
@@ -13,48 +13,66 @@ use super::{Judgment, Profession};
 
 pub(crate) type Set = HashSet<Coordinate>;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub(crate) enum Hint {
-    Judgment(Coordinate, Judgment),
-    Count(Set, Judgment, Quantity),
-    Connected(Set, Judgment),
-    Equal(Set, Set, Judgment),
-    Bigger {
-        big: Set,
-        small: Set,
-        judgment: Judgment,
-    },
-    UniqueWithCount(Vec1<Set>, Judgment, Quantity),
-    Not(Box<Self>),
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug, Clone)]
+pub(crate) struct WithJudgment<T> {
+    pub kind: T,
+    pub judgment: Judgment,
 }
+
+pub(crate) type Hint = WithJudgment<HintKind>;
 
 impl Hint {
     pub(crate) fn evaluate(&self, solution: &Solution) -> bool {
+        self.kind.evaluate(self.judgment, solution)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum HintKind {
+    Judgment(Coordinate),
+    Count(Set, Quantity),
+    Connected(Set),
+    Equal([Set; 2]),
+    Bigger { big: Set, small: Set },
+    BiggerThanMany { big: Set, small: Vec1<Set> },
+    Majority(Set),
+    UniqueWithCount(Vec1<Set>, Quantity),
+    Not(Box<Self>),
+}
+
+impl HintKind {
+    fn evaluate(&self, judgment: Judgment, solution: &Solution) -> bool {
         match self {
-            &Self::Judgment(coord, judgment) => solution[coord] == judgment,
-            Self::Count(set, judgment, quantity) => {
-                quantity.matches(solution.select(set, *judgment).count())
+            &Self::Judgment(coord) => solution[coord] == judgment,
+            Self::Count(set, quantity) => quantity.matches(solution.select(set, judgment).count()),
+            Self::Connected(set) => {
+                Coordinate::connected(&solution.select(set, judgment).collect())
             }
-            Self::Connected(set, judgment) => {
-                Coordinate::connected(&solution.select(set, *judgment).collect())
+            Self::Equal([a, b]) => {
+                solution.select(a, judgment).count() == solution.select(b, judgment).count()
             }
-            Self::Equal(a, b, judgment) => {
-                solution.select(a, *judgment).count() == solution.select(b, *judgment).count()
+            Self::Bigger { big, small } => {
+                solution.select(big, judgment).count() > solution.select(small, judgment).count()
             }
-            Self::Bigger {
-                big,
-                small,
-                judgment,
-            } => {
-                solution.select(big, *judgment).count() > solution.select(small, *judgment).count()
+            Self::BiggerThanMany { big, small } => {
+                solution.select(big, judgment).count()
+                    > small
+                        .iter1()
+                        .map(|small| solution.select(small, judgment).count())
+                        .max()
             }
-            Self::UniqueWithCount(sets, judgment, quantity) => {
+            Self::UniqueWithCount(sets, quantity) => {
                 sets.iter()
-                    .filter(|set| quantity.matches(solution.select(set, *judgment).count()))
+                    .filter(|set| quantity.matches(solution.select(set, judgment).count()))
                     .count()
                     == 1
             }
-            Self::Not(hint) => !hint.evaluate(solution),
+            Self::Majority(set) => {
+                let count = solution.select(set, judgment).count();
+                count > set.len() - count
+            }
+            Self::Not(hint) => !hint.evaluate(judgment, solution),
         }
     }
 }
@@ -73,11 +91,12 @@ impl Line {
         }
     }
 
-    fn others(self) -> Vec<Self> {
+    fn others(self) -> Vec1<Self> {
         match self {
-            Self::Row(row) => row.others().map(Self::Row).collect(),
-            Self::Column(column) => column.others().map(Self::Column).collect(),
+            Self::Row(row) => row.others().map(Self::Row).try_collect1().ok(),
+            Self::Column(column) => column.others().map(Self::Column).try_collect1().ok(),
         }
+        .unwrap_or_else(|| unreachable!())
     }
 }
 
@@ -90,6 +109,15 @@ impl From<Row> for Line {
 impl From<Column> for Line {
     fn from(v: Column) -> Self {
         Self::Column(v)
+    }
+}
+
+impl From<Line> for Set {
+    fn from(line: Line) -> Self {
+        match line {
+            Line::Row(row) => Coordinate::row_all(row).collect(),
+            Line::Column(column) => Coordinate::column_all(column).collect(),
+        }
     }
 }
 

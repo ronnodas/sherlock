@@ -13,6 +13,8 @@ use anyhow::{Result, anyhow, bail};
 use itertools::Itertools as _;
 use mitsein::NonEmpty;
 use mitsein::hash_set1::HashSet1;
+use mitsein::iter1::IteratorExt as _;
+use mitsein::vec1::Vec1;
 use select::document::Document;
 use select::predicate::{Any, Attr, Predicate as _};
 use serde::{Deserialize, Serialize};
@@ -124,6 +126,15 @@ impl Grid {
             .filter(|card| card.hint_pending())
             .map(|card| card.name().clone())
             .collect()
+    }
+
+    pub(crate) fn other_professions(&self, profession: &str) -> Result<Vec1<Set>> {
+        self.by_profession
+            .iter()
+            .filter(move |&(other, _)| other != profession)
+            .map(|(_, set)| set.clone().into_hash_set())
+            .try_collect1()
+            .map_err(|_empty| anyhow!("only {profession}s on grid"))
     }
 }
 

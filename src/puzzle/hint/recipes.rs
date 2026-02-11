@@ -1,15 +1,12 @@
-use std::collections::HashSet;
-
 use anyhow::{Result, bail};
 use mitsein::hash_set1::HashSet1;
 use mitsein::iter1::IntoIterator1 as _;
 use mitsein::vec1::Vec1;
 
+use crate::puzzle::Name;
 use crate::puzzle::grid::{Coordinate, Grid};
-use crate::puzzle::{Judgment, Name};
-
-use super::parsers::{Sentence, Unit};
-use super::{Hint, Line, LineKind, Quantity, Set};
+use crate::puzzle::hint::parsers::{Sentence, Unit, UnitInSeries};
+use crate::puzzle::hint::{Hint, HintKind, Line, LineKind, Quantity, Set, WithJudgment};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone)]
@@ -24,28 +21,32 @@ impl From<&str> for NameRecipe {
     }
 }
 
-#[cfg_attr(test, derive(PartialEq, Eq))]
-#[derive(Debug)]
-pub(crate) enum HintRecipe {
-    Member(NameRecipe, Unit, Judgment),
-    Count(SetRecipe, Judgment, Quantity),
-    Connected(Unit, Judgment),
-    Bigger {
-        big: Unit,
-        small: Unit,
-        judgment: Judgment,
-    },
-    UniqueWithNeighbors(Unit, Judgment, Quantity),
-    UniqueLine(LineKind, Judgment, Quantity),
-    EqualSize(Unit, Unit, Judgment),
-    Not(Box<Self>),
-}
+pub(crate) type HintRecipe = WithJudgment<HintRecipeKind>;
 
 impl HintRecipe {
     pub(crate) fn parse(hint: &str) -> Result<Vec<Self>> {
         Ok(Sentence::parse(&hint.replace("&nbsp;", "\u{A0}"))?.collate())
     }
+}
 
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug)]
+pub(crate) enum HintRecipeKind {
+    Is(NameRecipe),
+    //TODO get rid of Member, or add more general validation
+    Member(NameRecipe, Unit),
+    Count(SetRecipe, Quantity),
+    Connected(Unit),
+    EqualSize([Unit; 2]),
+    BiggerThanOthers(UnitInSeries),
+    Bigger { big: Unit, small: Unit },
+    Majority(Unit),
+    UniqueWithNeighbors(Unit, Quantity),
+    UniqueLine(LineKind, Quantity),
+    Not(Box<Self>),
+}
+
+impl HintRecipeKind {
     pub(crate) fn not(self) -> Self {
         if let Self::Not(reverse) = self {
             *reverse
@@ -84,31 +85,35 @@ impl Recipe for HintRecipe {
     type Output = Hint;
 
     fn contextualize(self, grid: &Grid, speaker: &Name) -> Result<Self::Output> {
+        Ok(Hint {
+            kind: self.kind.contextualize(grid, speaker)?,
+            judgment: self.judgment,
+        })
+    }
+}
+
+impl Recipe for HintRecipeKind {
+    type Output = HintKind;
+
+    fn contextualize(self, grid: &Grid, speaker: &Name) -> Result<Self::Output> {
         let hint = match self {
-            Self::Member(name, set, judgment) => {
+            Self::Member(name, set) => {
                 let coordinate = name.contextualize(grid, speaker)?;
                 let set = set.contextualize(grid, speaker)?;
                 if !set.contains(&coordinate) {
                     bail!("invalid hint: {name:?} not in {set:?}")
                 }
-                Hint::Judgment(coordinate, judgment)
+                HintKind::Judgment(coordinate)
             }
-            Self::Count(set, judgment, quantity) => {
-                Hint::Count(set.contextualize(grid, speaker)?, judgment, quantity)
+            Self::Count(set, quantity) => {
+                HintKind::Count(set.contextualize(grid, speaker)?, quantity)
             }
-            Self::Connected(set, judgment) => {
-                Hint::Connected(set.contextualize(grid, speaker)?, judgment)
-            }
-            Self::Bigger {
-                big,
-                small,
-                judgment,
-            } => Hint::Bigger {
+            Self::Connected(set) => HintKind::Connected(set.contextualize(grid, speaker)?),
+            Self::Bigger { big, small } => HintKind::Bigger {
                 big: big.contextualize(grid, speaker)?,
                 small: small.contextualize(grid, speaker)?,
-                judgment,
             },
-            Self::UniqueWithNeighbors(unit, judgment, quantity) => {
+            Self::UniqueWithNeighbors(unit, quantity) => {
                 let Ok(set) = HashSet1::try_from(unit.contextualize(grid, speaker)?) else {
                     bail!("empty unit {unit:?} cannnot have unique member")
                 };
@@ -116,22 +121,30 @@ impl Recipe for HintRecipe {
                     .into_iter1()
                     .map(|coord| Coordinate::neighbors(coord).collect())
                     .collect1();
-                Hint::UniqueWithCount(sets, judgment, quantity)
+                HintKind::UniqueWithCount(sets, quantity)
             }
-            Self::UniqueLine(kind, judgment, quantity) => {
-                let sets: Result<Vec1<HashSet<Coordinate>>> = kind
-                    .all()
-                    .into_iter1()
-                    .map(|line| line.contextualize(grid, speaker))
-                    .collect1();
-                Hint::UniqueWithCount(sets?, judgment, quantity)
+            Self::UniqueLine(kind, quantity) => {
+                let sets = kind.all().into_iter1().map(Set::from).collect1();
+                HintKind::UniqueWithCount(sets, quantity)
             }
-            Self::EqualSize(a, b, judgment) => Hint::Equal(
-                a.contextualize(grid, speaker)?,
-                b.contextualize(grid, speaker)?,
-                judgment,
-            ),
-            Self::Not(reverse) => Hint::Not(Box::new(reverse.contextualize(grid, speaker)?)),
+            Self::EqualSize(units) => {
+                let [a, b] = units.map(|unit| unit.contextualize(grid, speaker));
+                HintKind::Equal([a?, b?])
+            }
+            Self::BiggerThanOthers(big) => {
+                let small = big.others(grid, speaker)?;
+                let big = Unit::from(big).contextualize(grid, speaker)?;
+                HintKind::BiggerThanMany { big, small }
+            }
+            Self::Majority(unit) => {
+                let set = unit.contextualize(grid, speaker)?;
+                HintKind::Majority(set)
+            }
+            Self::Is(name) => {
+                let coord = name.contextualize(grid, speaker)?;
+                HintKind::Judgment(coord)
+            }
+            Self::Not(reverse) => HintKind::Not(Box::new(reverse.contextualize(grid, speaker)?)),
         };
         Ok(hint)
     }
@@ -156,7 +169,7 @@ impl Recipe for &Unit {
 
     fn contextualize(self, grid: &Grid, speaker: &Name) -> Result<Self::Output> {
         let set = match self {
-            &Unit::Line(line) => line.contextualize(grid, speaker)?,
+            &Unit::Line(line) => line.into(),
             Unit::Direction(direction, name) => {
                 let start = name.contextualize(grid, speaker)?;
                 Coordinate::direction(start, *direction).collect()
@@ -173,8 +186,10 @@ impl Recipe for &Unit {
                 .into_iter()
                 .filter_map(|coord| coord.step(*direction))
                 .collect(),
-            Unit::Between(a, b) => {
-                let [a, b] = [a, b].map(|name| name.contextualize(grid, speaker));
+            Unit::Between(names) => {
+                let [a, b] = names
+                    .each_ref()
+                    .map(|name| name.contextualize(grid, speaker));
                 Coordinate::between([a?, b?])?
             }
             Unit::All => Coordinate::all().collect(),
@@ -202,18 +217,6 @@ impl Recipe for &NameRecipe {
     }
 }
 
-impl Recipe for Line {
-    type Output = Set;
-
-    fn contextualize(self, _grid: &Grid, _speaker: &Name) -> Result<Self::Output> {
-        let set = match self {
-            Self::Row(row) => Coordinate::row_all(row).collect(),
-            Self::Column(column) => Coordinate::column_all(column).collect(),
-        };
-        Ok(set)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::puzzle::Judgment;
@@ -221,23 +224,24 @@ mod tests {
     use crate::puzzle::hint::parsers::Unit;
     use crate::puzzle::hint::{Line, Parity};
 
-    use super::{HintRecipe, Quantity};
+    use super::{HintRecipe, HintRecipeKind, Quantity};
 
     #[test]
     fn sample_26_02_05_alice() {
         assert_eq!(
             HintRecipe::parse("Tina is one of 3 criminals in row\u{A0}4").unwrap(),
             [
-                HintRecipe::Count(
-                    Unit::Line(Line::Row(Row::Four)).into(),
-                    Judgment::Criminal,
-                    Quantity::Exact(3)
-                ),
-                HintRecipe::Member(
-                    "Tina".into(),
-                    Unit::Line(Line::Row(Row::Four)),
-                    Judgment::Criminal
-                ),
+                HintRecipe {
+                    kind: HintRecipeKind::Count(
+                        Unit::Line(Line::Row(Row::Four)).into(),
+                        Quantity::Exact(3)
+                    ),
+                    judgment: Judgment::Criminal,
+                },
+                HintRecipe {
+                    kind: HintRecipeKind::Member("Tina".into(), Row::Four.into(),),
+                    judgment: Judgment::Criminal
+                },
             ]
         );
     }
@@ -248,8 +252,14 @@ mod tests {
         assert_eq!(
             HintRecipe::parse("Both criminals above Xavi are connected").unwrap(),
             [
-                HintRecipe::Count(set.clone().into(), Judgment::Criminal, Quantity::Exact(2)),
-                HintRecipe::Connected(set, Judgment::Criminal)
+                HintRecipe {
+                    kind: HintRecipeKind::Count(set.clone().into(), Quantity::Exact(2)),
+                    judgment: Judgment::Criminal
+                },
+                HintRecipe {
+                    kind: HintRecipeKind::Connected(set),
+                    judgment: Judgment::Criminal
+                }
             ]
         );
     }
@@ -258,11 +268,14 @@ mod tests {
     fn sample_26_02_05_kyle() {
         assert_eq!(
             HintRecipe::parse("An odd number of innocents above Zara neighbor Gary").unwrap(),
-            [HintRecipe::Count(
-                Unit::Direction(Direction::Above, "Zara".into()).and(Unit::Neighbor("Gary".into())),
-                Judgment::Innocent,
-                Quantity::Parity(Parity::Odd)
-            )],
+            [HintRecipe {
+                kind: HintRecipeKind::Count(
+                    Unit::Direction(Direction::Above, "Zara".into())
+                        .and(Unit::Neighbor("Gary".into())),
+                    Quantity::Parity(Parity::Odd)
+                ),
+                judgment: Judgment::Innocent,
+            }],
         );
     }
 }
