@@ -1,3 +1,5 @@
+use std::ops::Not;
+
 use anyhow::{Result, bail};
 use mitsein::hash_set1::HashSet1;
 use mitsein::iter1::IntoIterator1 as _;
@@ -46,8 +48,10 @@ pub(crate) enum HintRecipeKind {
     Not(Box<Self>),
 }
 
-impl HintRecipeKind {
-    pub(crate) fn not(self) -> Self {
+impl Not for HintRecipeKind {
+    type Output = Self;
+
+    fn not(self) -> Self {
         if let Self::Not(reverse) = self {
             *reverse
         } else {
