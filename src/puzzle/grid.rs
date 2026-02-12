@@ -160,7 +160,9 @@ impl Grid {
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
+// TODO https://github.com/hjson/hjson-rust/issues/40
+#[serde(tag = "format")]
 pub(crate) enum Format {
     Original,
     Sep2025,
