@@ -4,9 +4,8 @@ use select::node::Node;
 use select::predicate::Predicate as _;
 use serde::{Deserialize, Serialize};
 
+use crate::puzzle::grid::html::{Class, ClassName, Div, H3, NodeExt as _, Paragraph};
 use crate::puzzle::{Judgment, Name, Profession};
-
-use super::html::{Class, ClassName, Div, H3, NodeExt as _, Paragraph};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Card {
@@ -117,6 +116,7 @@ impl Card {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct CardBack {
     judgment: Judgment,
+    #[serde(skip_serializing_if = "HintText::is_unknown", default)]
     hint: HintText,
 }
 
