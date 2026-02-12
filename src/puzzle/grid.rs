@@ -59,7 +59,7 @@ impl Grid {
         let cards = match format {
             Format::Original => cards.map(|(card, _)| card),
             Format::Sep2025 => cards.map(|(mut card, has_hint)| {
-                if !has_hint {
+                if !has_hint && card.is_judged() {
                     card.mark_as_flavor();
                 }
                 card
