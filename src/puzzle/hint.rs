@@ -153,6 +153,12 @@ impl Quantity {
     }
 }
 
+impl From<Parity> for Quantity {
+    fn from(v: Parity) -> Self {
+        Self::Parity(v)
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Parity {
     Even,
