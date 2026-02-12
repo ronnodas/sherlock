@@ -41,7 +41,8 @@ fn main_menu() -> Result<(Puzzle, Vec<Name>)> {
             let archive_id = Text::new("Enter puzzle archive id")
                 .with_placeholder("a0b1c2d3e4f5")
                 .prompt()?;
-            let target_url = format!("https://cluesbysam.com/archive/{archive_id}/");
+            // TODO puzzles from before 2026-09-01 seem to not have the `has-hint` class, manually confirm if unparseable hints are flavor?
+            let target_url = format!("https://cluesbysam.com/s/archive/{archive_id}/");
             fetch_from_url(&target_url, Some(archive_id))
         }
         InputMode::File => {

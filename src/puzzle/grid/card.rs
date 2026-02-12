@@ -1,7 +1,7 @@
-use anyhow::{Ok, Result, bail};
+use anyhow::{Context as _, Ok, Result, bail};
 use itertools::Itertools as _;
 use select::node::Node;
-use select::predicate::{Any, Predicate as _};
+use select::predicate::Predicate as _;
 use serde::{Deserialize, Serialize};
 
 use crate::puzzle::{Judgment, Name, Profession};
@@ -22,7 +22,7 @@ pub(crate) struct Card {
 impl Card {
     pub(crate) fn parse(node: &Node<'_>) -> Result<Self> {
         let node = node
-            .expect(Div.and(Class(ClassName::CardContainer)))?
+            .expect(Div)?
             .unique_child(Div.and(Class(ClassName::Card)))?;
         let status = if node.is(Class(ClassName::Flipped)) {
             if node.is(Class(ClassName::Innocent)) {
@@ -32,14 +32,17 @@ impl Card {
             } else {
                 bail!("expecting either `.innocent` or `.criminal`")
             }
-        } else if node.is(Class(ClassName::Unflipped)) {
-            None
         } else {
-            bail!("expecting either `.flipped` or `.unflipped`");
+            None
         };
         let has_hint = node.is(Class(ClassName::HasHint));
         // TODO validate coord
-        let [_coord, card, _inspect, _aria] = node.expect_children(Any)?;
+        let [card] = if status.is_some() {
+            node.expect_children(Div.and(Class(ClassName::CardBack)))
+        } else {
+            node.expect_children(Div.and(Class(ClassName::CardFront)))
+        }
+        .context("inside a `.card`")?;
         status.map_or_else(
             || Self::parse_unflipped(card),
             |status| Self::parse_flipped(card, status, has_hint),
@@ -47,22 +50,14 @@ impl Card {
     }
 
     fn parse_flipped(card: Node<'_>, status: Judgment, has_hint: bool) -> Result<Self> {
-        let card = card.expect(
-            Div.and(Class(ClassName::CardBack))
-                .and(Class(status.into())),
-        )?;
-        let [name, profession, hint] =
-            card.expect_children(Any)
-                .map(|[_face, name, profession, _aria, hint]| [name, profession, hint])
-                .or_else(|_| {
-                    card.expect_children(Any).map(
-                        |[_correct, _face, name, profession, _aria, hint]| [name, profession, hint],
-                    )
-                })?;
-        let name = parse_name(name)?;
-        let profession = parse_profession(profession)?;
+        let card = card
+            .expect(Class(status.into()))
+            .context("`.card-back` should be consistent with `.card`")?;
+
+        let name = parse_name(card)?;
+        let profession = parse_profession(card)?;
         let hint = if has_hint {
-            HintText::Known(parse_hint(hint)?)
+            HintText::Known(parse_hint(card)?)
         } else {
             HintText::Flavor
         };
@@ -75,11 +70,8 @@ impl Card {
     }
 
     fn parse_unflipped(card: Node<'_>) -> Result<Self> {
-        let [_face, name, profession] = card
-            .expect(Div.and(Class(ClassName::CardFront)))?
-            .expect_children(Any)?;
-        let name = parse_name(name)?;
-        let profession = parse_profession(profession)?;
+        let name = parse_name(card)?;
+        let profession = parse_profession(card)?;
         Ok(Self {
             name,
             profession,
@@ -177,33 +169,35 @@ impl Serialize for HintText {
     }
 }
 
-fn parse_hint(hint: Node<'_>) -> Result<String> {
-    hint.expect(Paragraph.and(Class(ClassName::Hint)))?
+fn parse_hint(card: Node<'_>) -> Result<String> {
+    card.unique_child(Paragraph.and(Class(ClassName::Hint)))
+        .context("`.card-back` should have a unique `p .hint`")?
         .expect_text()
         .map(str::to_owned)
 }
 
-fn parse_profession(profession: Node<'_>) -> Result<String> {
-    profession
-        .expect(Paragraph.and(Class(ClassName::Profession)))?
+fn parse_profession(card: Node<'_>) -> Result<String> {
+    card.unique_child(Paragraph.and(Class(ClassName::Profession)))
+        .context("`.card-{back,front}` should have a unique `p .profession`")?
         .expect_text()
         .map(str::to_owned)
 }
 
-fn parse_name(name: Node<'_>) -> Result<String> {
-    name.expect(Div.and(Class(ClassName::Name)))?
-        .unique_child(Any)?
-        .expect(H3.and(Class(ClassName::Name)))?
-        .expect_text()
-        .map(|name| {
-            name.chars()
-                .with_position()
-                .map(|(position, c)| match position {
-                    itertools::Position::First | itertools::Position::Only => {
-                        c.to_ascii_uppercase()
-                    }
-                    itertools::Position::Middle | itertools::Position::Last => c,
-                })
-                .collect()
+fn parse_name(card: Node<'_>) -> Result<String> {
+    let [name] = card
+        .expect_children(Div.and(Class(ClassName::Name)))
+        .context("`.card-{back,front}` should have a unique `div .name`")?;
+    let name = name
+        .unique_child(H3.and(Class(ClassName::Name)))
+        .context("`div .name` should have a unique `h3 .name`")?
+        .expect_text()?;
+    // emulating `text-transform: capitalize`
+    Ok(name
+        .chars()
+        .with_position()
+        .map(|(position, c)| match position {
+            itertools::Position::First | itertools::Position::Only => c.to_ascii_uppercase(),
+            itertools::Position::Middle | itertools::Position::Last => c,
         })
+        .collect())
 }

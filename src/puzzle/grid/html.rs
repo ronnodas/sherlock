@@ -114,7 +114,6 @@ impl Predicate for Class {
 pub(crate) enum ClassName {
     Card,
     CardBack,
-    CardContainer,
     CardFront,
     CardGrid,
     Criminal,
@@ -124,7 +123,6 @@ pub(crate) enum ClassName {
     Innocent,
     Name,
     Profession,
-    Unflipped,
 }
 
 impl ClassName {
@@ -132,7 +130,6 @@ impl ClassName {
         match self {
             Self::Card => "card",
             Self::CardBack => "card-back",
-            Self::CardContainer => "card-container",
             Self::CardFront => "card-front",
             Self::CardGrid => "card-grid",
             Self::Criminal => "criminal",
@@ -142,7 +139,6 @@ impl ClassName {
             Self::Innocent => "innocent",
             Self::Name => "name",
             Self::Profession => "profession",
-            Self::Unflipped => "unflipped",
         }
     }
 }

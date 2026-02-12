@@ -34,12 +34,12 @@ pub(crate) struct Grid {
 
 impl Grid {
     pub(crate) fn parse(html: &str) -> Result<Self> {
-        let html = Document::from(html);
-        let Ok(cards) = html
+        let document = Document::from(html);
+        let Ok(cards) = document
             .find(Div.and(Class(ClassName::CardGrid)).and(Attr("id", "grid")))
             .exactly_one()
         else {
-            bail!("expecting unique element");
+            bail!("expecting unique element in {html}");
         };
         let cards: [Card; 20] = cards
             .expect_children::<20>(Any)?
