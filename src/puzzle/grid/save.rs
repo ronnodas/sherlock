@@ -5,19 +5,19 @@ use serde::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as};
 
 use crate::puzzle::grid::card::Card;
-use crate::puzzle::grid::{Coordinate, Grid};
-
+use crate::puzzle::grid::{Coordinate, Format, Grid};
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct CardList<'card> {
     cards: [IndexedCard<'card>; 20],
+    format: Format,
 }
 
 impl From<CardList<'_>> for Grid {
-    fn from(mut cards: CardList) -> Self {
-        cards.cards.sort_by(|a, b| a.coord.cmp(&b.coord));
-        let cards = cards.cards.map(|card| card.card.into_owned());
-        Self::new(cards)
+    fn from(mut card_list: CardList) -> Self {
+        card_list.cards.sort_by(|a, b| a.coord.cmp(&b.coord));
+        let cards = card_list.cards.map(|card| card.card.into_owned());
+        Self::new(cards, card_list.format)
     }
 }
 
@@ -27,7 +27,10 @@ impl<'card> From<&'card Grid> for CardList<'card> {
             coord: Coordinate::from_index(i),
             card: Cow::Borrowed(&grid.cards[i]),
         });
-        Self { cards }
+        Self {
+            cards,
+            format: grid.format,
+        }
     }
 }
 

@@ -13,7 +13,7 @@ use clap::Parser;
 use inquire::{Confirm, MultiSelect, Select, Text};
 use itertools::Itertools as _;
 
-use puzzle::{Name, Puzzle, Update};
+use puzzle::{Name, ParsedPuzzle, Update};
 
 const API_KEY_FILE: &str = "browserless_api_key";
 const SAVE_DIRECTORY: &str = "saved/";
@@ -21,15 +21,16 @@ const SAVE_DIRECTORY: &str = "saved/";
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let (puzzle, pending) = match args.html {
+    let parsed = match args.html {
         Some(path) => read_from_file(path)?,
         None => main_menu()?,
     };
-    play(puzzle, pending)?;
+
+    play(parsed)?;
     Ok(())
 }
 
-fn main_menu() -> Result<(Puzzle, Vec<Name>)> {
+fn main_menu() -> Result<ParsedPuzzle> {
     let mode = Select::new(
         "Which puzzle do you want to solve?",
         InputMode::ALL.to_vec(),
@@ -41,7 +42,6 @@ fn main_menu() -> Result<(Puzzle, Vec<Name>)> {
             let archive_id = Text::new("Enter puzzle archive id")
                 .with_placeholder("a0b1c2d3e4f5")
                 .prompt()?;
-            // TODO puzzles from before 2026-09-01 seem to not have the `has-hint` class, manually confirm if unparseable hints are flavor?
             let target_url = format!("https://cluesbysam.com/s/archive/{archive_id}/");
             fetch_from_url(&target_url, Some(archive_id))
         }
@@ -51,7 +51,7 @@ fn main_menu() -> Result<(Puzzle, Vec<Name>)> {
                 .prompt()?;
             read_from_file(path)
         }
-        InputMode::Paste => Puzzle::prompt(),
+        InputMode::Paste => ParsedPuzzle::prompt(),
     }
 }
 
@@ -63,7 +63,7 @@ fn date_string() -> String {
         .to_string()
 }
 
-fn fetch_from_url(target_url: &str, name: Option<Name>) -> Result<(Puzzle, Vec<Name>)> {
+fn fetch_from_url(target_url: &str, name: Option<Name>) -> Result<ParsedPuzzle> {
     let api_key = read_api_key()?;
     let json = format!(r#"{{"url": "{target_url}"}}"#);
     let html = ureq::post(format!(
@@ -73,7 +73,7 @@ fn fetch_from_url(target_url: &str, name: Option<Name>) -> Result<(Puzzle, Vec<N
     .send(&json)?
     .body_mut()
     .read_to_string()?;
-    Puzzle::parse(&html, name)
+    ParsedPuzzle::parse(&html, name)
 }
 
 fn read_api_key() -> Result<String> {
@@ -95,36 +95,51 @@ fn read_api_key() -> Result<String> {
     Ok(api_key)
 }
 
-fn read_from_file(path: impl AsRef<Path>) -> Result<(Puzzle, Vec<Name>)> {
+fn read_from_file(path: impl AsRef<Path>) -> Result<ParsedPuzzle> {
     let path = path.as_ref();
     let contents = fs::read_to_string(path)?;
     let name = path
         .file_stem()
         .and_then(|name| name.to_str())
         .map(str::to_owned);
-    let (puzzle, pending) = match path.extension() {
-        Some(extension) if extension == "hjson" => Puzzle::load(&contents, name)?,
+    let parsed = match path.extension() {
+        Some(extension) if extension == "hjson" => ParsedPuzzle::load(&contents, name)?,
         Some(extension) if extension == "html" || extension == "htm" => {
-            Puzzle::parse(&contents, name)?
+            ParsedPuzzle::parse(&contents, name)?
         }
         Some(_) | None => {
-            let (mut puzzle, pending) = Puzzle::load(&contents, None).or_else(|e_save| {
-                Puzzle::parse(&contents, None).map_err(|e_html| {
+            let mut parsed = ParsedPuzzle::load(&contents, None).or_else(|e_save| {
+                ParsedPuzzle::parse(&contents, None).map_err(|e_html| {
                     anyhow!(
                         "Could not parse as either as a saved game ({e_save}) or html ({e_html})"
                     )
                 })
             })?;
             if let Some(name) = name {
-                puzzle.set_name(name);
+                parsed.puzzle.set_name(name);
             }
-            (puzzle, pending)
+            parsed
         }
     };
-    Ok((puzzle, pending))
+    Ok(parsed)
 }
 
-fn play(mut puzzle: Puzzle, mut pending: Vec<Name>) -> Result<()> {
+fn play(puzzle: ParsedPuzzle) -> Result<()> {
+    let ParsedPuzzle {
+        mut puzzle,
+        unknown_if_flavor,
+        mut pending_hints,
+    } = puzzle;
+    for (name, hint) in unknown_if_flavor {
+        let flavor =
+            Confirm::new(&format!("Is {name}'s hint, \"{hint}\", just flavor text?")).prompt()?;
+        if flavor {
+            puzzle.mark_as_flavor(&name)?;
+        } else {
+            puzzle.add_hint(&hint, &name)?;
+        }
+    }
+
     loop {
         let new = puzzle.infer()?;
         if let Some((last, rest)) = new.split_last() {
@@ -138,13 +153,13 @@ fn play(mut puzzle: Puzzle, mut pending: Vec<Name>) -> Result<()> {
             println!("Puzzle solved!");
             break;
         }
-        pending.extend(new.into_iter().map(Update::into_name));
-        pending.sort_unstable();
+        pending_hints.extend(new.into_iter().map(Update::into_name));
+        pending_hints.sort_unstable();
 
         loop {
             let selected = Select::new(
                 "Add a logical hint:",
-                pending
+                pending_hints
                     .iter()
                     .map(HintOption::Name)
                     .chain(HintOption::FIXED)
@@ -159,7 +174,7 @@ fn play(mut puzzle: Puzzle, mut pending: Vec<Name>) -> Result<()> {
                         match puzzle.add_hint(&hint, name) {
                             Ok(()) => {
                                 let name = name.clone();
-                                pending.retain(|pending| pending != &name);
+                                pending_hints.retain(|pending| pending != &name);
                                 break;
                             }
                             Err(e) => {
@@ -169,11 +184,13 @@ fn play(mut puzzle: Puzzle, mut pending: Vec<Name>) -> Result<()> {
                     }
                 }
                 HintOption::MarkAsFlavor => {
-                    let flavor =
-                        MultiSelect::new("Select characters with flavor text", pending.clone())
-                            .prompt_skippable()?
-                            .unwrap_or_default();
-                    pending.retain(|pending| !flavor.contains(pending));
+                    let flavor = MultiSelect::new(
+                        "Select characters with flavor text",
+                        pending_hints.clone(),
+                    )
+                    .prompt_skippable()?
+                    .unwrap_or_default();
+                    pending_hints.retain(|pending| !flavor.contains(pending));
                     for name in flavor {
                         puzzle.mark_as_flavor(&name)?;
                     }

@@ -17,6 +17,8 @@ use hint::recipes::{HintRecipe, Recipe as _};
 use serde::{Deserialize, Serialize};
 use solution::Solution;
 
+use crate::puzzle::grid::Format;
+
 pub(crate) type Name = String;
 type Profession = String;
 
@@ -29,53 +31,6 @@ pub(crate) struct Puzzle {
 }
 
 impl Puzzle {
-    pub(crate) fn prompt() -> Result<(Self, Vec<Name>)> {
-        // TODO allow manual entry
-        loop {
-            let html = Editor::new("Enter path to html:").prompt()?;
-            match Self::parse(&html, None) {
-                Ok(puzzle) => return Ok(puzzle),
-                Err(e) => eprintln!("{e}"),
-            }
-        }
-    }
-
-    pub(crate) fn parse(html: &str, name: Option<String>) -> Result<(Self, Vec<Name>)> {
-        let grid = Grid::parse(html)?;
-        Self::new(grid, name)
-    }
-
-    fn new(grid: Grid, name: Option<String>) -> Result<(Self, Vec<Name>)> {
-        let pending_hints = grid.pending_hints();
-
-        let hints: Vec<(Name, HintRecipe)> = grid
-            .iter()
-            .filter_map(|card| Some((card.name().clone(), card.hint()?)))
-            .map(|(name, hint)| HintRecipe::parse(hint).map(|hints| repeat(name).zip(hints)))
-            .flatten_ok()
-            .try_collect()?;
-
-        let old = grid.fixed();
-        let fixed_values = old
-            .iter()
-            .enumerate()
-            .filter_map(|(index, &judgment)| Some((index, judgment?)));
-        let solutions = Solution::all(fixed_values);
-
-        let mut puzzle = Self {
-            name,
-            grid,
-            hints: Vec::new(),
-            solutions,
-        };
-
-        hints
-            .into_iter()
-            .try_for_each(|(speaker, hint)| puzzle.add_parsed_hint(hint, &speaker))?;
-
-        Ok((puzzle, pending_hints))
-    }
-
     pub(crate) fn solved(&self) -> bool {
         self.grid.solved()
     }
@@ -134,13 +89,97 @@ impl Puzzle {
         serde_hjson::to_string(&self.grid).map_err(Into::into)
     }
 
-    pub(crate) fn load(contents: &str, name: Option<String>) -> Result<(Self, Vec<Name>)> {
-        let grid = serde_hjson::from_str(contents)?;
+    pub(crate) fn mark_as_flavor(&mut self, name: &Name) -> Result<()> {
+        self.grid.mark_as_flavor(name)
+    }
+}
+
+// TODO Could separate this into a LoadedPuzzle but probably needs to be unified before use anyway
+pub(crate) struct ParsedPuzzle {
+    pub puzzle: Puzzle,
+    pub unknown_if_flavor: Vec<(Name, String)>,
+    pub pending_hints: Vec<Name>,
+}
+
+impl ParsedPuzzle {
+    pub(crate) fn prompt() -> Result<Self> {
+        // TODO allow manual entry
+        loop {
+            let html = Editor::new("Enter path to html:").prompt()?;
+            match Self::parse(&html, None) {
+                Ok(puzzle) => return Ok(puzzle),
+                Err(e) => eprintln!("{e}"),
+            }
+        }
+    }
+
+    pub(crate) fn parse(html: &str, name: Option<String>) -> Result<Self> {
+        let grid = Grid::parse(html)?;
         Self::new(grid, name)
     }
 
-    pub(crate) fn mark_as_flavor(&mut self, name: &Name) -> Result<()> {
-        self.grid.mark_as_flavor(name)
+    fn new(grid: Grid, name: Option<String>) -> Result<Self> {
+        let pending_hints = grid.pending_hints();
+
+        let maybe_parsed = grid
+            .iter()
+            .filter_map(|card| Some((card.name().clone(), card.hint()?)))
+            .map(|(name, hint)| {
+                let maybe_parsed =
+                    HintRecipe::parse(hint).map(|hints| repeat(name.clone()).zip(hints));
+                (name, hint, maybe_parsed)
+            });
+        let (hints, unknown_if_flavor) = match grid.format() {
+            Format::Original => {
+                let mut hints = Vec::new();
+                let mut unknown = Vec::new();
+
+                for (name, hint, maybe_parsed) in maybe_parsed {
+                    match maybe_parsed {
+                        Ok(parsed) => hints.extend(parsed),
+                        Err(_) => unknown.push((name, hint.to_owned())),
+                    }
+                }
+
+                (hints, unknown)
+            }
+            Format::Sep2025 => {
+                let hints: Vec<(Name, HintRecipe)> = maybe_parsed
+                    .map(|(_, _, hint)| hint)
+                    .flatten_ok()
+                    .try_collect()?;
+                (hints, Vec::new())
+            }
+        };
+
+        let old = grid.fixed();
+        let fixed_values = old
+            .iter()
+            .enumerate()
+            .filter_map(|(index, &judgment)| Some((index, judgment?)));
+        let solutions = Solution::all(fixed_values);
+
+        let mut puzzle = Puzzle {
+            name,
+            grid,
+            hints: Vec::new(),
+            solutions,
+        };
+
+        hints
+            .into_iter()
+            .try_for_each(|(speaker, hint)| puzzle.add_parsed_hint(hint, &speaker))?;
+
+        Ok(Self {
+            puzzle,
+            unknown_if_flavor,
+            pending_hints,
+        })
+    }
+
+    pub(crate) fn load(contents: &str, name: Option<String>) -> Result<Self> {
+        let grid = serde_hjson::from_str(contents)?;
+        Self::new(grid, name)
     }
 }
 
@@ -214,8 +253,8 @@ mod tests {
     #[test]
     fn sample_2026_02_08() {
         use Judgment::{Criminal as C, Innocent as I};
-        let (mut puzzle, pending) = read_from_file("samples/2026-02-08-6f3e400c1d18.html").unwrap();
-        assert!(pending.is_empty());
+        let parsed = read_from_file("samples/2026-02-08-6f3e400c1d18.html").unwrap();
+        assert!(parsed.pending_hints.is_empty());
         let solution = Solution::from([I, C, C, C, C, C, I, C, I, C, C, C, C, I, C, C, C, I, C, I]);
 
         let steps: &[&[(&str, Judgment, Option<&str>)]] = &[
@@ -282,6 +321,7 @@ mod tests {
             ],
         ];
 
+        let mut puzzle = parsed.puzzle;
         for &changes in steps {
             let deductions: Vec<Update> = changes
                 .iter()

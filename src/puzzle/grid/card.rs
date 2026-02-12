@@ -20,7 +20,7 @@ pub(crate) struct Card {
 }
 
 impl Card {
-    pub(crate) fn parse(node: &Node<'_>) -> Result<Self> {
+    pub(crate) fn parse(node: &Node<'_>) -> Result<(Self, bool)> {
         let node = node
             .expect(Div)?
             .unique_child(Div.and(Class(ClassName::Card)))?;
@@ -35,7 +35,6 @@ impl Card {
         } else {
             None
         };
-        let has_hint = node.is(Class(ClassName::HasHint));
         // TODO validate coord
         let [card] = if status.is_some() {
             node.expect_children(Div.and(Class(ClassName::CardBack)))
@@ -43,24 +42,22 @@ impl Card {
             node.expect_children(Div.and(Class(ClassName::CardFront)))
         }
         .context("inside a `.card`")?;
-        status.map_or_else(
-            || Self::parse_unflipped(card),
-            |status| Self::parse_flipped(card, status, has_hint),
-        )
+        status
+            .map_or_else(
+                || Self::parse_unflipped(card),
+                |status| Self::parse_flipped(card, status),
+            )
+            .map(|card| (card, node.is(Class(ClassName::HasHint))))
     }
 
-    fn parse_flipped(card: Node<'_>, status: Judgment, has_hint: bool) -> Result<Self> {
+    fn parse_flipped(card: Node<'_>, status: Judgment) -> Result<Self> {
         let card = card
             .expect(Class(status.into()))
             .context("`.card-back` should be consistent with `.card`")?;
 
         let name = parse_name(card)?;
         let profession = parse_profession(card)?;
-        let hint = if has_hint {
-            HintText::Known(parse_hint(card)?)
-        } else {
-            HintText::Flavor
-        };
+        let hint = HintText::Known(parse_hint(card)?);
         Ok(Self {
             name,
             profession,

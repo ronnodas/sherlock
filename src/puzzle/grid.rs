@@ -19,8 +19,9 @@ use select::document::Document;
 use select::predicate::{Any, Attr, Predicate as _};
 use serde::{Deserialize, Serialize};
 
-use super::hint::Set;
-use super::{Judgment, Name, Profession};
+use crate::puzzle::hint::Set;
+use crate::puzzle::{Judgment, Name, Profession};
+
 use card::Card;
 use html::{Class, ClassName, Div, NodeExt as _};
 
@@ -30,6 +31,7 @@ pub(crate) struct Grid {
     cards: [Card; 20],
     coordinates: HashMap<Name, Coordinate>,
     by_profession: HashMap<Profession, NonEmpty<Set>>,
+    format: Format,
 }
 
 impl Grid {
@@ -41,17 +43,32 @@ impl Grid {
         else {
             bail!("expecting unique element in {html}");
         };
-        let cards: [Card; 20] = cards
+        let cards: [(Card, bool); 20] = cards
             .expect_children::<20>(Any)?
             .iter()
             .map(|card| Card::parse(card))
-            .collect::<Result<Vec<Card>>>()?
+            .collect::<Result<Vec<(Card, bool)>>>()?
             .try_into()
             .unwrap_or_else(|_| unreachable!());
-        Ok(Self::new(cards))
+        // A valid puzzle must have at least one actual hint
+        let format = if cards.iter().any(|&(_, has_hint)| has_hint) {
+            Format::Sep2025
+        } else {
+            Format::Original
+        };
+        let cards = match format {
+            Format::Original => cards.map(|(card, _)| card),
+            Format::Sep2025 => cards.map(|(mut card, has_hint)| {
+                if !has_hint {
+                    card.mark_as_flavor();
+                }
+                card
+            }),
+        };
+        Ok(Self::new(cards, format))
     }
 
-    fn new(cards: [Card; 20]) -> Self {
+    fn new(cards: [Card; 20], format: Format) -> Self {
         let coordinates = cards
             .iter()
             .enumerate()
@@ -76,6 +93,7 @@ impl Grid {
             cards,
             coordinates,
             by_profession,
+            format,
         }
     }
 
@@ -136,6 +154,16 @@ impl Grid {
             .try_collect1()
             .map_err(|_empty| anyhow!("only {profession}s on grid"))
     }
+
+    pub(crate) const fn format(&self) -> Format {
+        self.format
+    }
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+pub(crate) enum Format {
+    Original,
+    Sep2025,
 }
 
 impl Serialize for Grid {
@@ -329,7 +357,6 @@ impl fmt::Display for ParseCoordinateError {
     }
 }
 
-// 2. Implement Error (Allows trait object conversion)
 impl Error for ParseCoordinateError {}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
