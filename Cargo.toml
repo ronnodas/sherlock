@@ -5,9 +5,9 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.101"
+bpaf = { version = "0.9.23", features = ["derive", "autocomplete"] }
 chrono = "0.4.43"
 chrono-tz = { version = "0.10.4", features = ["filter-by-regex"] }
-clap = { version = "4.5.57", features = ["derive"] }
 colored = "3.1.1"
 inquire = { version = "0.9.3", features = ["editor"] }
 itertools = "0.14.0"

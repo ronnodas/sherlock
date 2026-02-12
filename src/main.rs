@@ -7,9 +7,9 @@ use std::path::{Path, PathBuf};
 use std::{fmt, fs};
 
 use anyhow::{Result, anyhow};
+use bpaf::{Bpaf, Parser as _};
 use chrono::Utc;
 use chrono_tz::America::New_York;
-use clap::Parser;
 use inquire::{Confirm, MultiSelect, Select, Text};
 use itertools::Itertools as _;
 
@@ -19,12 +19,15 @@ const API_KEY_FILE: &str = "browserless_api_key";
 const SAVE_DIRECTORY: &str = "saved/";
 
 fn main() -> Result<()> {
-    let args = Args::parse();
+    let args = args().run();
 
-    let parsed = match args.html {
-        Some(path) => read_from_file(path)?,
-        None => main_menu()?,
-    };
+    let parsed = match args {
+        Args::Menu => main_menu(),
+        Args::Html { path } => read_from_file(path, Some(FileType::Html)),
+        Args::Load { path } => read_from_file(path, Some(FileType::Hjson)),
+        Args::Today => fetch_today(),
+        Args::Archive { id } => archive(id),
+    }?;
 
     play(parsed)?;
     Ok(())
@@ -37,22 +40,31 @@ fn main_menu() -> Result<ParsedPuzzle> {
     )
     .prompt()?;
     match mode {
-        InputMode::Today => fetch_from_url("https://cluesbysam.com/", Some(date_string())),
+        InputMode::Today => fetch_today(),
         InputMode::Fetch => {
             let archive_id = Text::new("Enter puzzle archive id")
                 .with_placeholder("a0b1c2d3e4f5")
                 .prompt()?;
-            let target_url = format!("https://cluesbysam.com/s/archive/{archive_id}/");
-            fetch_from_url(&target_url, Some(archive_id))
+            archive(archive_id)
         }
+        // TODO split into two instead of being clever with extensions
         InputMode::File => {
             let path = Text::new("Enter path to html or hjson:")
                 .with_initial_value(SAVE_DIRECTORY)
                 .prompt()?;
-            read_from_file(path)
+            read_from_file(path, None)
         }
         InputMode::Paste => ParsedPuzzle::prompt(),
     }
+}
+
+fn archive(archive_id: String) -> Result<ParsedPuzzle> {
+    let target_url = format!("https://cluesbysam.com/s/archive/{archive_id}/");
+    fetch_from_url(&target_url, Some(archive_id))
+}
+
+fn fetch_today() -> Result<ParsedPuzzle> {
+    fetch_from_url("https://cluesbysam.com/", Some(date_string()))
 }
 
 fn date_string() -> String {
@@ -95,19 +107,18 @@ fn read_api_key() -> Result<String> {
     Ok(api_key)
 }
 
-fn read_from_file(path: impl AsRef<Path>) -> Result<ParsedPuzzle> {
+fn read_from_file(path: impl AsRef<Path>, file_type: Option<FileType>) -> Result<ParsedPuzzle> {
     let path = path.as_ref();
     let contents = fs::read_to_string(path)?;
     let name = path
         .file_stem()
         .and_then(|name| name.to_str())
         .map(str::to_owned);
-    let parsed = match path.extension() {
-        Some(extension) if extension == "hjson" => ParsedPuzzle::load(&contents, name)?,
-        Some(extension) if extension == "html" || extension == "htm" => {
-            ParsedPuzzle::parse(&contents, name)?
-        }
-        Some(_) | None => {
+    let file_type = file_type.or_else(|| FileType::from_extension(path.extension()?));
+    let parsed = match file_type {
+        Some(FileType::Hjson) => ParsedPuzzle::load(&contents, name)?,
+        Some(FileType::Html) => ParsedPuzzle::parse(&contents, name)?,
+        None => {
             let mut parsed = ParsedPuzzle::load(&contents, None).or_else(|e_save| {
                 ParsedPuzzle::parse(&contents, None).map_err(|e_html| {
                     anyhow!(
@@ -226,9 +237,55 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
     Ok(())
 }
 
-#[derive(Parser)]
-struct Args {
-    html: Option<PathBuf>,
+#[derive(Debug, Clone, Bpaf)]
+#[bpaf(options)]
+#[bpaf(fallback(Args::Menu))]
+enum Args {
+    /// Show the main menu (default)
+    #[bpaf(command)]
+    Menu,
+
+    /// Load a save from the specified path
+    #[bpaf(command("load"), short('l'))]
+    Load {
+        #[bpaf(positional("PATH"))]
+        path: PathBuf,
+    },
+
+    /// Parse an HTML file as a puzzle
+    #[bpaf(command("html"), short('h'))]
+    Html {
+        #[bpaf(positional("PATH"))]
+        path: PathBuf,
+    },
+
+    /// Load today's puzzle
+    #[bpaf(command("today"), short('t'))]
+    Today,
+
+    /// Load a puzzle from the online archive
+    #[bpaf(command("archive"), short('a'))]
+    Archive {
+        #[bpaf(positional("ID"))]
+        id: String,
+    },
+}
+
+enum FileType {
+    Html,
+    Hjson,
+}
+
+impl FileType {
+    fn from_extension(extension: &OsStr) -> Option<Self> {
+        if extension == "html" || extension == "htm" {
+            Some(Self::Html)
+        } else if extension == "hjson" {
+            Some(Self::Hjson)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Clone, Copy)]

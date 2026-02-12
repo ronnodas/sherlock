@@ -245,15 +245,16 @@ impl fmt::Display for Update {
 
 #[cfg(test)]
 mod tests {
-    use crate::read_from_file;
+    use crate::puzzle::solution::Solution;
+    use crate::{FileType, read_from_file};
 
-    use super::solution::Solution;
     use super::{Judgment, Update};
 
     #[test]
     fn sample_2026_02_08() {
         use Judgment::{Criminal as C, Innocent as I};
-        let parsed = read_from_file("samples/2026-02-08-6f3e400c1d18.html").unwrap();
+        let parsed =
+            read_from_file("samples/2026-02-08-6f3e400c1d18.html", Some(FileType::Html)).unwrap();
         assert!(parsed.pending_hints.is_empty());
         let solution = Solution::from([I, C, C, C, C, C, I, C, I, C, C, C, C, I, C, C, C, I, C, I]);
 
