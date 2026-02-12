@@ -1,12 +1,13 @@
 mod puzzle;
 
+use std::borrow::Cow;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::{fmt, fs};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use bpaf::{Bpaf, Parser as _};
 use chrono::Utc;
 use chrono_tz::America::New_York;
@@ -26,7 +27,7 @@ fn main() -> Result<()> {
         Args::Html { path } => read_from_file(path, Some(FileType::Html)),
         Args::Load { path } => read_from_file(path, Some(FileType::Ron)),
         Args::Today => fetch_today(),
-        Args::Archive { id } => archive(id),
+        Args::Archive { id_or_url } => archive(id_or_url),
     }?;
 
     play(parsed)?;
@@ -42,8 +43,8 @@ fn main_menu() -> Result<ParsedPuzzle> {
     match mode {
         InputMode::Today => fetch_today(),
         InputMode::Fetch => {
-            let archive_id = Text::new("Enter puzzle archive id")
-                .with_placeholder("a0b1c2d3e4f5")
+            let archive_id = Text::new("Enter puzzle archive id or url")
+                .with_placeholder("s/a0b1c2d3e4f5")
                 .prompt()?;
             archive(archive_id)
         }
@@ -58,9 +59,42 @@ fn main_menu() -> Result<ParsedPuzzle> {
     }
 }
 
-fn archive(archive_id: String) -> Result<ParsedPuzzle> {
-    let target_url = format!("https://cluesbysam.com/s/archive/{archive_id}/");
-    fetch_from_url(&target_url, Some(archive_id))
+fn archive(input: String) -> Result<ParsedPuzzle> {
+    let (url, id) = if let Some(url) = input.strip_prefix("https://") {
+        if let Some(id) = is_archive_url(url) {
+            (Cow::Borrowed(&input), Cow::Borrowed(id))
+        } else {
+            bail!("archive urls should start with https://cluesbysam.com/{{s/}}archive")
+        }
+    } else if let Some(id) = is_archive_url(&input) {
+        (Cow::Owned(format!("https://{input}")), Cow::Borrowed(id))
+    } else if let Some(id) = input.strip_prefix("s/") {
+        (Cow::Owned(archive_url(id, true)), Cow::Borrowed(id))
+    } else {
+        let url_with_s = archive_url(&input, true);
+        let mut parsed = fetch_from_url(&url_with_s, None).or_else(|_e| {
+            let url_without_s = archive_url(&input, false);
+            fetch_from_url(&url_without_s, None)
+        })?;
+        parsed.puzzle.set_name(input);
+        return Ok(parsed);
+    };
+
+    fetch_from_url(url.as_str(), Some(id.into_owned()))
+}
+
+fn archive_url(input: &str, with_s: bool) -> String {
+    if with_s {
+        format!("https://cluesbysam.com/s/archive/{input}/")
+    } else {
+        format!("https://cluesbysam.com/archive/{input}/")
+    }
+}
+
+fn is_archive_url(string: &str) -> Option<&str> {
+    string
+        .strip_prefix("cluesbysam.com/s/archive/")
+        .or_else(|| string.strip_prefix("cluesbysam.com/archive/"))
 }
 
 fn fetch_today() -> Result<ParsedPuzzle> {
@@ -268,8 +302,8 @@ enum Args {
     /// Load a puzzle from the online archive
     #[bpaf(command("archive"), short('a'))]
     Archive {
-        #[bpaf(positional("ID"))]
-        id: String,
+        #[bpaf(positional("ID or URL"))]
+        id_or_url: String,
     },
 }
 
