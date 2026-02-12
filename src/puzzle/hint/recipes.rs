@@ -1,14 +1,15 @@
-use std::ops::Not;
+use std::iter::once;
+use std::ops::Not as _;
 
 use anyhow::{Result, bail};
 use mitsein::hash_set1::HashSet1;
-use mitsein::iter1::IntoIterator1 as _;
+use mitsein::iter1::{self, IntoIterator1 as _};
 use mitsein::vec1::Vec1;
 
 use crate::puzzle::Name;
 use crate::puzzle::grid::{Coordinate, Grid};
-use crate::puzzle::hint::parsers::{Sentence, Unit, UnitInSeries};
-use crate::puzzle::hint::{Hint, HintKind, Line, LineKind, Quantity, Set, WithJudgment};
+use crate::puzzle::hint::parsers::{SentenceKind, Unit};
+use crate::puzzle::hint::{HintKind, Line, Quantity, Set, WithJudgment};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone)]
@@ -20,43 +21,6 @@ pub(crate) enum NameRecipe {
 impl From<&str> for NameRecipe {
     fn from(v: &str) -> Self {
         Self::Other(v.to_owned())
-    }
-}
-
-pub(crate) type HintRecipe = WithJudgment<HintRecipeKind>;
-
-impl HintRecipe {
-    pub(crate) fn parse(hint: &str) -> Result<Vec<Self>> {
-        Ok(Sentence::parse(&hint.replace("&nbsp;", "\u{A0}"))?.collate())
-    }
-}
-
-#[cfg_attr(test, derive(PartialEq, Eq))]
-#[derive(Debug)]
-pub(crate) enum HintRecipeKind {
-    Is(NameRecipe),
-    //TODO get rid of Member, or add more general validation
-    Member(NameRecipe, Unit),
-    Count(SetRecipe, Quantity),
-    Connected(Unit),
-    EqualSize([Unit; 2]),
-    BiggerThanOthers(UnitInSeries),
-    Bigger { big: Unit, small: Unit },
-    Majority(Unit),
-    UniqueWithNeighbors(Unit, Quantity),
-    UniqueLine(LineKind, Quantity),
-    Not(Box<Self>),
-}
-
-impl Not for HintRecipeKind {
-    type Output = Self;
-
-    fn not(self) -> Self {
-        if let Self::Not(reverse) = self {
-            *reverse
-        } else {
-            Self::Not(Box::new(self))
-        }
     }
 }
 
@@ -85,72 +49,153 @@ pub(crate) trait Recipe {
     fn contextualize(self, grid: &Grid, speaker: &Name) -> Result<Self::Output>;
 }
 
-impl Recipe for HintRecipe {
-    type Output = Hint;
+impl<T: Recipe> Recipe for WithJudgment<T> {
+    type Output = WithJudgment<T::Output>;
 
     fn contextualize(self, grid: &Grid, speaker: &Name) -> Result<Self::Output> {
-        Ok(Hint {
+        Ok(WithJudgment {
             kind: self.kind.contextualize(grid, speaker)?,
             judgment: self.judgment,
         })
     }
 }
 
-impl Recipe for HintRecipeKind {
-    type Output = HintKind;
+impl Recipe for SentenceKind {
+    type Output = Vec<HintKind>;
 
     fn contextualize(self, grid: &Grid, speaker: &Name) -> Result<Self::Output> {
-        let hint = match self {
-            Self::Member(name, set) => {
-                let coordinate = name.contextualize(grid, speaker)?;
-                let set = set.contextualize(grid, speaker)?;
-                if !set.contains(&coordinate) {
-                    bail!("invalid hint: {name:?} not in {set:?}")
-                }
-                HintKind::Judgment(coordinate)
-            }
-            Self::Count(set, quantity) => {
-                HintKind::Count(set.contextualize(grid, speaker)?, quantity)
-            }
-            Self::Connected(set) => HintKind::Connected(set.contextualize(grid, speaker)?),
-            Self::Bigger { big, small } => HintKind::Bigger {
-                big: big.contextualize(grid, speaker)?,
-                small: small.contextualize(grid, speaker)?,
-            },
-            Self::UniqueWithNeighbors(unit, quantity) => {
-                let Ok(set) = HashSet1::try_from(unit.contextualize(grid, speaker)?) else {
-                    bail!("empty unit {unit:?} cannnot have unique member")
-                };
-                let sets = set
-                    .into_iter1()
-                    .map(|coord| Coordinate::neighbors(coord).collect())
-                    .collect1();
-                HintKind::UniqueWithCount(sets, quantity)
-            }
-            Self::UniqueLine(kind, quantity) => {
-                let sets = kind.all().into_iter1().map(Set::from).collect1();
-                HintKind::UniqueWithCount(sets, quantity)
-            }
-            Self::EqualSize(units) => {
-                let [a, b] = units.map(|unit| unit.contextualize(grid, speaker));
-                HintKind::Equal([a?, b?])
-            }
-            Self::BiggerThanOthers(big) => {
-                let small = big.others(grid, speaker)?;
-                let big = Unit::from(big).contextualize(grid, speaker)?;
-                HintKind::BiggerThanMany { big, small }
-            }
-            Self::Majority(unit) => {
+        let hints: Vec<HintKind> = match self {
+            Self::TraitsAreNeighborsInUnit(unit, quantity) => {
                 let set = unit.contextualize(grid, speaker)?;
-                HintKind::Majority(set)
+                quantity
+                    .map(|quantity| HintKind::Count(set.clone(), quantity))
+                    .into_iter()
+                    .chain(iter1::one(HintKind::Connected(set)))
+                    .collect()
             }
-            Self::Is(name) => {
+            Self::HasMostTraits(unit) => {
+                let small = unit.others(grid, speaker)?;
+                let big = Unit::from(unit).contextualize(grid, speaker)?;
+                small
+                    .into_iter()
+                    .map(|small| HintKind::Bigger {
+                        big: big.clone(),
+                        small,
+                    })
+                    .collect()
+            }
+            Self::IsOneOfNTraitsInUnit(unit, name, quantity) => {
+                let set = unit.contextualize(grid, speaker)?;
                 let coord = name.contextualize(grid, speaker)?;
-                HintKind::Judgment(coord)
+                if !set.contains(&coord) {
+                    bail!("{name:?} does not belong to {unit:?}")
+                }
+                vec![HintKind::Count(set, quantity), HintKind::Judgment(coord)]
             }
-            Self::Not(reverse) => HintKind::Not(Box::new(reverse.contextualize(grid, speaker)?)),
+            Self::MoreTraitsInUnitThanUnit { big, small } => {
+                vec![HintKind::Bigger {
+                    big: big.contextualize(grid, speaker)?,
+                    small: small.contextualize(grid, speaker)?,
+                }]
+            }
+            Self::NumberOfTraitsInUnit(unit, quantity) => {
+                let set = unit.contextualize(grid, speaker)?;
+                vec![HintKind::Count(set, quantity)]
+            }
+            Self::OnlyOnePersonInUnitHasNTraitNeighbors(unit, quantity, name) => {
+                let set = unit.contextualize(grid, speaker)?;
+                let coord = name
+                    .as_ref()
+                    .map(|name| name.contextualize(grid, speaker))
+                    .transpose()?;
+                if let Some(coord) = coord {
+                    if !set.contains(&coord) {
+                        bail!("{name:?} does not belong to {unit:?}")
+                    }
+                    once(HintKind::Count(
+                        Coordinate::neighbors(coord).collect(),
+                        quantity,
+                    ))
+                    .chain(
+                        set.into_iter()
+                            .filter(|&other| other != coord)
+                            .map(|other| {
+                                HintKind::Count(Coordinate::neighbors(other).collect(), quantity)
+                                    .not()
+                            }),
+                    )
+                    .collect()
+                } else {
+                    let Ok(set) = HashSet1::try_from(set) else {
+                        bail!("empty unit {unit:?} cannnot have unique member")
+                    };
+                    let sets = set
+                        .into_iter1()
+                        .map(|coord| Coordinate::neighbors(coord).collect())
+                        .collect1();
+                    vec![HintKind::UniqueWithCount(sets, quantity)]
+                }
+            }
+            Self::OnlyOneLineHasNTraits(kind, quantity) => {
+                let sets = kind.all().into_iter1().map(Set::from).collect1();
+                vec![HintKind::UniqueWithCount(sets, quantity)]
+            }
+            Self::EachLineHasNTraits(kind, quantity) => kind
+                .all()
+                .into_iter()
+                .map(|line| HintKind::Count(line.into(), quantity))
+                .collect(),
+            Self::OnlyGivenLineHasNTraits(line, quantity) => {
+                let equal = HintKind::Count(line.into(), quantity);
+                line.others()
+                    .into_iter()
+                    .map(|other| HintKind::Count(other.into(), quantity).not())
+                    .chain(once(equal))
+                    .collect()
+            }
+            Self::UnitSharesNOutOfNTraitsWithUnit {
+                quantity,
+                quantified,
+                other,
+                intersection,
+            } => {
+                let quantified = quantified.contextualize(grid, speaker)?;
+                let other = other
+                    .contextualize(grid, speaker)?
+                    .into_iter()
+                    .filter(|other| quantified.contains(other))
+                    .collect();
+                vec![
+                    HintKind::Count(quantified, quantity),
+                    HintKind::Count(other, intersection),
+                ]
+            }
+            Self::UnitsShareNTraits([a, b], quantity) => {
+                let intersection = a.and(b).contextualize(grid, speaker)?;
+                vec![HintKind::Count(intersection, quantity)]
+            }
+            Self::EqualNumberOfTraitsInUnits(units) => {
+                let [a, b] = units.map(|unit| unit.contextualize(grid, speaker));
+                vec![HintKind::Equal([a?, b?])]
+            }
+            Self::MoreTraitsInUnit(unit) => {
+                vec![HintKind::Majority(unit.contextualize(grid, speaker)?)]
+            }
+            Self::HasTrait(name) => {
+                vec![HintKind::Judgment(name.contextualize(grid, speaker)?)]
+            }
+            Self::AtMostNTraitsInNeighborsInUnit(unit, number) => unit
+                .contextualize(grid, speaker)?
+                .into_iter()
+                .map(|coord| {
+                    HintKind::Count(
+                        Coordinate::neighbors(coord).collect(),
+                        Quantity::AtMost(number),
+                    )
+                })
+                .collect(),
         };
-        Ok(hint)
+        Ok(hints)
     }
 }
 
@@ -218,68 +263,5 @@ impl Recipe for &NameRecipe {
             NameRecipe::Other(name) => name,
         };
         grid.coord(name)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::puzzle::Judgment;
-    use crate::puzzle::grid::{Direction, Row};
-    use crate::puzzle::hint::parsers::Unit;
-    use crate::puzzle::hint::{Line, Parity};
-
-    use super::{HintRecipe, HintRecipeKind, Quantity};
-
-    #[test]
-    fn sample_26_02_05_alice() {
-        assert_eq!(
-            HintRecipe::parse("Tina is one of 3 criminals in row\u{A0}4").unwrap(),
-            [
-                HintRecipe {
-                    kind: HintRecipeKind::Count(
-                        Unit::Line(Line::Row(Row::Four)).into(),
-                        Quantity::Exact(3)
-                    ),
-                    judgment: Judgment::Criminal,
-                },
-                HintRecipe {
-                    kind: HintRecipeKind::Member("Tina".into(), Row::Four.into(),),
-                    judgment: Judgment::Criminal
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn sample_26_02_05_tina() {
-        let set = Unit::Direction(Direction::Above, "Xavi".into());
-        assert_eq!(
-            HintRecipe::parse("Both criminals above Xavi are connected").unwrap(),
-            [
-                HintRecipe {
-                    kind: HintRecipeKind::Count(set.clone().into(), Quantity::Exact(2)),
-                    judgment: Judgment::Criminal
-                },
-                HintRecipe {
-                    kind: HintRecipeKind::Connected(set),
-                    judgment: Judgment::Criminal
-                }
-            ]
-        );
-    }
-
-    #[test]
-    fn sample_26_02_05_kyle() {
-        assert_eq!(
-            HintRecipe::parse("An odd number of innocents above Zara neighbor Gary").unwrap(),
-            [HintRecipe {
-                kind: HintRecipeKind::Count(
-                    Unit::Direction(Direction::Above, "Zara".into())
-                        .and(Unit::Neighbor("Gary".into())),
-                    Quantity::Parity(Parity::Odd)
-                ),
-                judgment: Judgment::Innocent,
-            }],
-        );
     }
 }

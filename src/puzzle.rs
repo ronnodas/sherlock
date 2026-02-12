@@ -3,7 +3,6 @@ mod hint;
 mod solution;
 
 use std::fmt;
-use std::iter::repeat;
 use std::ops::Not;
 
 use anyhow::{Result, bail};
@@ -13,13 +12,14 @@ use itertools::Itertools as _;
 
 use grid::Grid;
 use hint::Hint;
-use hint::recipes::{HintRecipe, Recipe as _};
+use hint::recipes::Recipe as _;
 use ron::extensions::Extensions;
 use ron::ser::{PrettyConfig, to_string_pretty};
 use serde::{Deserialize, Serialize};
 use solution::Solution;
 
 use crate::puzzle::grid::Format;
+use crate::puzzle::hint::Sentence;
 
 pub(crate) type Name = String;
 type Profession = String;
@@ -66,17 +66,16 @@ impl Puzzle {
     }
 
     pub(crate) fn add_hint(&mut self, hint: String, speaker: &Name) -> Result<()> {
-        HintRecipe::parse(&hint)?
-            .into_iter()
-            .try_for_each(|hint| self.add_parsed_hint(hint, speaker))?;
+        Sentence::parse(&hint)?
+            .contextualize(&self.grid, speaker)?
+            .spread()
+            .for_each(|hint| self.add_parsed_hint(hint));
         self.grid.add_hint(hint, speaker)
     }
 
-    fn add_parsed_hint(&mut self, hint: HintRecipe, speaker: &Name) -> Result<()> {
-        let hint = hint.contextualize(&self.grid, speaker)?;
+    fn add_parsed_hint(&mut self, hint: Hint) {
         self.solutions.retain(|solution| hint.evaluate(solution));
         self.hints.push(hint);
-        Ok(())
     }
 
     pub(crate) fn name(&self) -> Option<&str> {
@@ -131,10 +130,14 @@ impl ParsedPuzzle {
         let maybe_parsed = grid
             .iter()
             .filter_map(|card| Some((card.name().clone(), card.hint()?)))
-            .map(|(name, hint)| {
-                let maybe_parsed =
-                    HintRecipe::parse(hint).map(|hints| repeat(name.clone()).zip(hints));
-                (name, hint, maybe_parsed)
+            .map(|(speaker, hint)| {
+                let maybe_parsed = Sentence::parse(hint).and_then(|sentence| {
+                    Ok(sentence
+                        .contextualize(&grid, &speaker)?
+                        .spread()
+                        .collect_vec())
+                });
+                (speaker, hint, maybe_parsed)
             });
         let (hints, unknown_if_flavor) = match grid.format() {
             Format::Original => {
@@ -151,7 +154,7 @@ impl ParsedPuzzle {
                 (hints, unknown)
             }
             Format::Sep2025 => {
-                let hints: Vec<(Name, HintRecipe)> = maybe_parsed
+                let hints: Vec<Hint> = maybe_parsed
                     .map(|(_, _, hint)| hint)
                     .flatten_ok()
                     .try_collect()?;
@@ -173,9 +176,9 @@ impl ParsedPuzzle {
             solutions,
         };
 
-        hints
-            .into_iter()
-            .try_for_each(|(speaker, hint)| puzzle.add_parsed_hint(hint, &speaker))?;
+        for hint in hints {
+            puzzle.add_parsed_hint(hint);
+        }
 
         Ok(Self {
             puzzle,

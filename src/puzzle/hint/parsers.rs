@@ -1,6 +1,3 @@
-use std::iter::once;
-use std::ops::Not as _;
-
 use anyhow::anyhow;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::{Vec1, vec1};
@@ -11,11 +8,9 @@ use winnow::token::take_while;
 use winnow::{Parser, Result};
 
 use crate::puzzle::grid::{Column, Coordinate, Grid, Row};
-use crate::puzzle::hint::recipes::{
-    HintRecipe as Hint, HintRecipeKind as HintKind, NameRecipe, Recipe as _, SetRecipe,
-};
+use crate::puzzle::hint::recipes::{NameRecipe, Recipe as _, SetRecipe};
 use crate::puzzle::hint::{
-    Direction, Line, LineKind, Parity, Profession, Quantity, Set, WithJudgment,
+    Direction, Line, LineKind, Number, Parity, Profession, Quantity, Set, WithJudgment,
 };
 use crate::puzzle::{Judgment, Name};
 
@@ -33,17 +28,6 @@ impl Sentence {
         })
     }
 
-    pub(crate) fn collate(self) -> Vec<Hint> {
-        self.kind
-            .collate()
-            .into_iter()
-            .map(|kind| Hint {
-                kind,
-                judgment: self.judgment,
-            })
-            .collect()
-    }
-
     fn parse_cased(hint: &str) -> anyhow::Result<Self> {
         Self::any.parse(hint).map_err(|e| anyhow!("{e}"))
     }
@@ -54,7 +38,6 @@ impl Sentence {
             Self::has_most_traits,
             Self::is_one_of_n_traits_in_unit,
             Self::more_traits_in_unit_than_unit,
-            Self::n_professions_have_trait_in_dir,
             Self::units_share_n_traits,
             Self::number_of_traits_in_unit,
             Self::only_one_person_in_unit_has_exactly_n_trait_neighbors,
@@ -65,6 +48,7 @@ impl Sentence {
             Self::each_line_has_n_traits,
             Self::more_traits_in_unit,
             Self::has_trait,
+            Self::at_most_n_traits_in_neighbors_in_unit,
         ))
         .parse_next(input)
     }
@@ -153,22 +137,6 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn n_professions_have_trait_in_dir(input: &mut &str) -> Result<Self> {
-        separated_pair(
-            quantified_profession,
-            (alt((" has ", " have ")), alt(("an ", "a "))),
-            (
-                judgment_singular,
-                delimited(" directly ", direction, alt((" them", " us"))),
-            ),
-        )
-        .map(|((count, profession), (judgment, direction))| Self {
-            kind: SentenceKind::NProfessionsHaveTraitInDir(profession, direction, count),
-            judgment,
-        })
-        .parse_next(input)
-    }
-
     fn number_of_traits_in_unit(input: &mut &str) -> Result<Self> {
         alt((
             preceded(
@@ -181,6 +149,18 @@ impl Sentence {
                 terminated(quantified_judgment, (" ", neighbor_any)),
             )
             .map(|(name, (quantity, judgment))| (quantity, judgment, Unit::Neighbor(name))),
+            separated_pair(
+                quantified_profession,
+                (alt((" has ", " have ")), alt(("an ", "a "))),
+                (
+                    judgment_singular,
+                    delimited(" directly ", direction, alt((" them", " us"))),
+                ),
+            )
+            .map(|((count, profession), (judgment, direction))| {
+                let unit = Unit::ProfessionShift(profession, direction);
+                (count, judgment, unit)
+            }),
         ))
         .map(|(count, judgment, unit)| Self {
             kind: SentenceKind::NumberOfTraitsInUnit(unit, count),
@@ -404,6 +384,19 @@ impl Sentence {
             })
             .parse_next(input)
     }
+
+    fn at_most_n_traits_in_neighbors_in_unit(input: &mut &str) -> Result<Self> {
+        separated_pair(
+            preceded("No one ", unit),
+            " has more than ",
+            spaced(dec_uint, terminated(judgment_singular, (" ", neighbor_any))),
+        )
+        .map(|(unit, (number, judgment))| Self {
+            kind: SentenceKind::AtMostNTraitsInNeighborsInUnit(unit, number),
+            judgment,
+        })
+        .parse_next(input)
+    }
 }
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
@@ -420,7 +413,6 @@ pub(crate) enum SentenceKind {
         small: Unit,
     },
     MoreTraitsInUnit(Unit),
-    NProfessionsHaveTraitInDir(Profession, Direction, Quantity),
     NumberOfTraitsInUnit(Unit, Quantity),
     OnlyOnePersonInUnitHasNTraitNeighbors(Unit, Quantity, Option<NameRecipe>),
     EachLineHasNTraits(LineKind, Quantity),
@@ -433,73 +425,7 @@ pub(crate) enum SentenceKind {
         intersection: Quantity,
     },
     UnitsShareNTraits([Unit; 2], Quantity),
-}
-
-impl SentenceKind {
-    fn collate(self) -> Vec<HintKind> {
-        match self {
-            Self::TraitsAreNeighborsInUnit(unit, quantity) => quantity
-                .map(|quantity| HintKind::Count(unit.clone().into(), quantity))
-                .into_iter()
-                .chain(once(HintKind::Connected(unit)))
-                .collect(),
-            Self::HasMostTraits(unit) => vec![HintKind::BiggerThanOthers(unit)],
-            Self::IsOneOfNTraitsInUnit(unit, name, quantity) => {
-                vec![
-                    HintKind::Count(unit.clone().into(), quantity),
-                    HintKind::Member(name, unit),
-                ]
-            }
-            Self::MoreTraitsInUnitThanUnit { big, small } => vec![HintKind::Bigger { big, small }],
-            Self::NProfessionsHaveTraitInDir(profession, direction, quantity) => {
-                vec![HintKind::Count(
-                    Unit::ProfessionShift(profession, direction).into(),
-                    quantity,
-                )]
-            }
-            Self::NumberOfTraitsInUnit(unit, quantity) => {
-                vec![HintKind::Count(unit.into(), quantity)]
-            }
-            Self::OnlyOnePersonInUnitHasNTraitNeighbors(unit, quantity, name) => {
-                once(HintKind::UniqueWithNeighbors(unit, quantity))
-                    .chain(name.map(|name| HintKind::Count(Unit::Neighbor(name).into(), quantity)))
-                    .collect()
-            }
-            Self::OnlyOneLineHasNTraits(line_kind, quantity) => {
-                vec![HintKind::UniqueLine(line_kind, quantity)]
-            }
-            Self::EachLineHasNTraits(kind, quantity) => kind
-                .all()
-                .into_iter()
-                .map(|line| HintKind::Count(line.into(), quantity))
-                .collect(),
-            Self::OnlyGivenLineHasNTraits(line, quantity) => {
-                let equal = HintKind::Count(line.into(), quantity);
-                line.others()
-                    .into_iter()
-                    .map(|other| HintKind::Count(other.into(), quantity).not())
-                    .chain(once(equal))
-                    .collect()
-            }
-            Self::UnitSharesNOutOfNTraitsWithUnit {
-                quantity,
-                quantified,
-                other,
-                intersection,
-            } => vec![
-                HintKind::Count(quantified.clone().into(), quantity),
-                HintKind::Count(quantified.and(other), intersection),
-            ],
-            Self::UnitsShareNTraits([a, b], quantity) => {
-                vec![HintKind::Count(a.and(b), quantity)]
-            }
-            Self::EqualNumberOfTraitsInUnits([a, b]) => {
-                vec![HintKind::EqualSize([a, b])]
-            }
-            Self::MoreTraitsInUnit(unit) => vec![HintKind::Majority(unit)],
-            Self::HasTrait(name) => vec![HintKind::Is(name)],
-        }
-    }
+    AtMostNTraitsInNeighborsInUnit(Unit, Number),
 }
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
@@ -636,7 +562,7 @@ fn unit(input: &mut &str) -> Result<Unit> {
     alt((
         "in total".value(Unit::All),
         "on the edges".value(Unit::Edges),
-        "in a corner".value(Unit::Corners),
+        alt(("in a corner", "in the corners")).value(Unit::Corners),
         preceded(opt("in "), alt((between, line.map(Unit::Line)))),
         spaced(direction, name).map(|(direction, name)| Unit::Direction(direction, name)),
         terminated(name_possessive, (" ", neighbor_any)).map(Unit::Neighbor),

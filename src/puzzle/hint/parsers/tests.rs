@@ -13,9 +13,8 @@ use super::{NameRecipe as Name, Sentence, SentenceKind, Unit, UnitInSeries};
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",
-        SentenceKind::NProfessionsHaveTraitInDir(
-            "painter".into(),
-            Direction::Left,
+        SentenceKind::NumberOfTraitsInUnit(
+            Unit::ProfessionShift("painter".into(), Direction::Left),
             Quantity::Exact(1),
         ),
         Judgment::Innocent,
@@ -50,12 +49,29 @@ fn janet_2026_01_13() {
 }
 
 #[test]
+fn xena_2026_01_15() {
+    sentence(
+        "Vince is one of 3 innocents in the corners",
+        SentenceKind::IsOneOfNTraitsInUnit(Unit::Corners, "Vince".into(), Quantity::Exact(3)),
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn salil_2026_01_15() {
+    sentence(
+        "No one in row 4 has more than 2 criminal neighbors",
+        SentenceKind::AtMostNTraitsInNeighborsInUnit(Row::Four.into(), 2),
+        Judgment::Criminal,
+    );
+}
+
+#[test]
 fn uma_2026_02_03() {
     sentence(
         "exactly 1 judge has an innocent directly above them",
-        SentenceKind::NProfessionsHaveTraitInDir(
-            "judge".into(),
-            Direction::Above,
+        SentenceKind::NumberOfTraitsInUnit(
+            Unit::ProfessionShift("judge".into(), Direction::Above),
             Quantity::Exact(1),
         ),
         Judgment::Innocent,
@@ -202,9 +218,8 @@ fn jason_2026_02_06() {
 fn logan_2026_02_06() {
     sentence(
         "exactly 1 farmer has a criminal directly above them",
-        SentenceKind::NProfessionsHaveTraitInDir(
-            "farmer".to_owned(),
-            Direction::Above,
+        SentenceKind::NumberOfTraitsInUnit(
+            Unit::ProfessionShift("farmer".to_owned(), Direction::Above),
             Quantity::Exact(1),
         ),
         Judgment::Criminal,
@@ -382,9 +397,8 @@ fn lisa_2026_02_10() {
 fn will_2026_02_10() {
     sentence(
         "2 of us 3 singers have an innocent directly to the left of us",
-        SentenceKind::NProfessionsHaveTraitInDir(
-            "singer".into(),
-            Direction::Left,
+        SentenceKind::NumberOfTraitsInUnit(
+            Unit::ProfessionShift("singer".into(), Direction::Left),
             Quantity::Exact(2),
         ),
         Judgment::Innocent,

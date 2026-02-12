@@ -2,6 +2,7 @@ mod parsers;
 pub(crate) mod recipes;
 
 use std::collections::HashSet;
+use std::ops::Not;
 
 use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
@@ -12,12 +13,23 @@ use super::solution::Solution;
 use super::{Judgment, Profession};
 
 pub(crate) type Set = HashSet<Coordinate>;
+pub(crate) type Number = u8;
+pub(crate) use parsers::Sentence;
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone)]
 pub(crate) struct WithJudgment<T> {
     pub kind: T,
     pub judgment: Judgment,
+}
+
+impl<T> WithJudgment<Vec<T>> {
+    pub(crate) fn spread(self) -> impl Iterator<Item = WithJudgment<T>> {
+        self.kind.into_iter().map(move |kind| WithJudgment {
+            kind,
+            judgment: self.judgment,
+        })
+    }
 }
 
 pub(crate) type Hint = WithJudgment<HintKind>;
@@ -35,7 +47,6 @@ pub(crate) enum HintKind {
     Connected(Set),
     Equal([Set; 2]),
     Bigger { big: Set, small: Set },
-    BiggerThanMany { big: Set, small: Vec1<Set> },
     Majority(Set),
     UniqueWithCount(Vec1<Set>, Quantity),
     Not(Box<Self>),
@@ -55,13 +66,6 @@ impl HintKind {
             Self::Bigger { big, small } => {
                 solution.select(big, judgment).count() > solution.select(small, judgment).count()
             }
-            Self::BiggerThanMany { big, small } => {
-                solution.select(big, judgment).count()
-                    > small
-                        .iter1()
-                        .map(|small| solution.select(small, judgment).count())
-                        .max()
-            }
             Self::UniqueWithCount(sets, quantity) => {
                 sets.iter()
                     .filter(|set| quantity.matches(solution.select(set, judgment).count()))
@@ -73,6 +77,18 @@ impl HintKind {
                 count > set.len() - count
             }
             Self::Not(hint) => !hint.evaluate(judgment, solution),
+        }
+    }
+}
+
+impl Not for HintKind {
+    type Output = Self;
+
+    fn not(self) -> Self {
+        if let Self::Not(reverse) = self {
+            *reverse
+        } else {
+            Self::Not(Box::new(self))
         }
     }
 }
@@ -138,8 +154,9 @@ impl LineKind {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Quantity {
-    Exact(u8),
-    AtLeast(u8),
+    Exact(Number),
+    AtLeast(Number),
+    AtMost(Number),
     Parity(Parity),
 }
 
@@ -148,6 +165,7 @@ impl Quantity {
         match self {
             Self::Exact(value) => len == usize::from(value),
             Self::AtLeast(value) => len >= usize::from(value),
+            Self::AtMost(value) => len <= usize::from(value),
             Self::Parity(parity) => parity.matches(len),
         }
     }
