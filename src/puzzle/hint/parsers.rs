@@ -154,19 +154,19 @@ impl Sentence {
     }
 
     fn n_professions_have_trait_in_dir(input: &mut &str) -> Result<Self> {
-        (
+        separated_pair(
             quantified_profession,
             (alt((" has ", " have ")), alt(("an ", "a "))),
-            judgment_singular,
-            " directly ",
-            direction,
-            alt((" them", " us")),
+            (
+                judgment_singular,
+                delimited(" directly ", direction, alt((" them", " us"))),
+            ),
         )
-            .map(|((count, profession), _, judgment, _, direction, _)| Self {
-                kind: SentenceKind::NProfessionsHaveTraitInDir(profession, direction, count),
-                judgment,
-            })
-            .parse_next(input)
+        .map(|((count, profession), (judgment, direction))| Self {
+            kind: SentenceKind::NProfessionsHaveTraitInDir(profession, direction, count),
+            judgment,
+        })
+        .parse_next(input)
     }
 
     fn number_of_traits_in_unit(input: &mut &str) -> Result<Self> {
@@ -186,15 +186,34 @@ impl Sentence {
     }
 
     fn only_one_person_in_unit_has_exactly_n_trait_neighbors(input: &mut &str) -> Result<Self> {
-        separated_pair(
-            preceded((alt(("Only one of ", "Only one ")), opt("person ")), unit),
-            " has ",
-            terminated(spaced(quantity, judgment_singular), " neighbors"),
-        )
-        .map(|(unit, (count, judgment))| Self {
-            kind: SentenceKind::OnlyOnePersonInUnitHasNTraitNeighbors(unit, count),
-            judgment,
-        })
+        alt((
+            separated_pair(
+                preceded((alt(("Only one of ", "Only one ")), opt("person ")), unit),
+                " has ",
+                terminated(spaced(quantity, judgment_singular), " neighbors"),
+            )
+            .map(|(unit, (count, judgment))| Self {
+                kind: SentenceKind::OnlyOnePersonInUnitHasNTraitNeighbors(unit, count, None),
+                judgment,
+            }),
+            separated_pair(
+                name,
+                " is the only one ",
+                separated_pair(
+                    unit,
+                    " with ",
+                    terminated(quantified_judgment, (" neighbor", opt("s"))),
+                ),
+            )
+            .map(|(name, (unit, (quantity, judgment)))| Self {
+                kind: SentenceKind::OnlyOnePersonInUnitHasNTraitNeighbors(
+                    unit,
+                    quantity,
+                    Some(name),
+                ),
+                judgment,
+            }),
+        ))
         .parse_next(input)
     }
 
@@ -366,7 +385,7 @@ pub(crate) enum SentenceKind {
     MoreTraitsInUnit(Unit),
     NProfessionsHaveTraitInDir(Profession, Direction, Quantity),
     NumberOfTraitsInUnit(Unit, Quantity),
-    OnlyOnePersonInUnitHasNTraitNeighbors(Unit, Quantity),
+    OnlyOnePersonInUnitHasNTraitNeighbors(Unit, Quantity, Option<NameRecipe>),
     EachLineHasNTraits(LineKind, Quantity),
     OnlyOneLineHasNTraits(LineKind, Quantity),
     OnlyGivenLineHasNTraits(Line, Quantity),
@@ -404,8 +423,10 @@ impl SentenceKind {
             Self::NumberOfTraitsInUnit(unit, quantity) => {
                 vec![HintKind::Count(unit.into(), quantity)]
             }
-            Self::OnlyOnePersonInUnitHasNTraitNeighbors(unit, quantity) => {
-                vec![HintKind::UniqueWithNeighbors(unit, quantity)]
+            Self::OnlyOnePersonInUnitHasNTraitNeighbors(unit, quantity, name) => {
+                once(HintKind::UniqueWithNeighbors(unit, quantity))
+                    .chain(name.map(|name| HintKind::Count(Unit::Neighbor(name).into(), quantity)))
+                    .collect()
             }
             Self::OnlyOneLineHasNTraits(line_kind, quantity) => {
                 vec![HintKind::UniqueLine(line_kind, quantity)]
@@ -683,7 +704,10 @@ fn raw_name<'input>(input: &mut &'input str) -> Result<&'input str> {
 fn quantified_profession(input: &mut &str) -> Result<(Quantity, Profession)> {
     separated_pair(
         quantity,
-        alt((terminated(" of us ", opt((quantity, " "))), " ")),
+        alt((
+            (" of ", determiner, (" ", opt((quantity, " ")))).void(),
+            " ".void(),
+        )),
         profession_any,
     )
     .parse_next(input)
@@ -809,15 +833,42 @@ mod tests {
     use super::{NameRecipe as Name, Sentence, SentenceKind, Unit, UnitInSeries};
 
     #[test]
-    fn uma_2026_02_03() {
-        let input = "exactly 1 judge has an innocent directly above them";
-        let kind = SentenceKind::NProfessionsHaveTraitInDir(
-            "judge".into(),
-            Direction::Above,
-            Quantity::Exact(1),
+    fn ryan_2026_01_12() {
+        sentence(
+            "exactly 1 of the 2 painters has an innocent directly to the left of them",
+            SentenceKind::NProfessionsHaveTraitInDir(
+                "painter".into(),
+                Direction::Left,
+                Quantity::Exact(1),
+            ),
+            Judgment::Innocent,
         );
-        let judgment = Judgment::Innocent;
-        sentence(input, kind, judgment);
+    }
+
+    #[test]
+    fn wanda_2026_01_12() {
+        sentence(
+            "Frank is the only one on the edges with 4 innocent neighbors",
+            SentenceKind::OnlyOnePersonInUnitHasNTraitNeighbors(
+                Unit::Edges,
+                Quantity::Exact(4),
+                Some("Frank".into()),
+            ),
+            Judgment::Innocent,
+        );
+    }
+
+    #[test]
+    fn uma_2026_02_03() {
+        sentence(
+            "exactly 1 judge has an innocent directly above them",
+            SentenceKind::NProfessionsHaveTraitInDir(
+                "judge".into(),
+                Direction::Above,
+                Quantity::Exact(1),
+            ),
+            Judgment::Innocent,
+        );
     }
 
     #[test]
@@ -932,6 +983,7 @@ mod tests {
             SentenceKind::OnlyOnePersonInUnitHasNTraitNeighbors(
                 Unit::Profession("singer".to_owned()).quantify(Quantity::Exact(2)),
                 Quantity::Exact(2),
+                None,
             ),
             Judgment::Criminal,
         );
@@ -1052,7 +1104,11 @@ mod tests {
     fn hank_2026_02_08() {
         sentence(
             "Only one person in a corner has exactly 2 innocent neighbors",
-            SentenceKind::OnlyOnePersonInUnitHasNTraitNeighbors(Unit::Corners, Quantity::Exact(2)),
+            SentenceKind::OnlyOnePersonInUnitHasNTraitNeighbors(
+                Unit::Corners,
+                Quantity::Exact(2),
+                None,
+            ),
             Judgment::Innocent,
         );
     }
