@@ -7,7 +7,7 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::{fmt, fs};
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, bail};
 use bpaf::{Bpaf, Parser as _};
 use chrono::Utc;
 use chrono_tz::America::New_York;
@@ -24,8 +24,8 @@ fn main() -> Result<()> {
 
     let parsed = match args {
         Args::Menu => main_menu(),
-        Args::Html { path } => read_from_file(path, Some(FileType::Html)),
-        Args::Load { path } => read_from_file(path, Some(FileType::Ron)),
+        Args::Html { path } => read_from_file(path, FileType::Html),
+        Args::Load { path } => read_from_file(path, FileType::Ron),
         Args::Today => fetch_today(),
         Args::Archive { id_or_url } => archive(id_or_url),
     }?;
@@ -48,12 +48,22 @@ fn main_menu() -> Result<ParsedPuzzle> {
                 .prompt()?;
             archive(archive_id)
         }
-        // TODO split into two instead of being clever with extensions
-        InputMode::File => {
-            let path = Text::new("Enter path to html or ron:")
+        InputMode::Load => {
+            let path = Text::new("Enter path to ron:")
                 .with_initial_value(SAVE_DIRECTORY)
                 .prompt()?;
-            read_from_file(path, None)
+            let path = PathBuf::from(path);
+            let path = if path.extension().is_none() {
+                path.with_added_extension("ron")
+            } else {
+                path
+            };
+            read_from_file(path, FileType::Ron)
+        }
+
+        InputMode::Html => {
+            let path = Text::new("Enter path to html:").prompt()?;
+            read_from_file(path, FileType::Html)
         }
         InputMode::Paste => ParsedPuzzle::prompt(),
     }
@@ -141,30 +151,16 @@ fn read_api_key() -> Result<String> {
     Ok(api_key)
 }
 
-fn read_from_file(path: impl AsRef<Path>, file_type: Option<FileType>) -> Result<ParsedPuzzle> {
+fn read_from_file(path: impl AsRef<Path>, file_type: FileType) -> Result<ParsedPuzzle> {
     let path = path.as_ref();
     let contents = fs::read_to_string(path)?;
     let name = path
         .file_stem()
         .and_then(|name| name.to_str())
         .map(str::to_owned);
-    let file_type = file_type.or_else(|| FileType::from_extension(path.extension()?));
     let parsed = match file_type {
-        Some(FileType::Ron) => ParsedPuzzle::load(&contents, name)?,
-        Some(FileType::Html) => ParsedPuzzle::parse(&contents, name)?,
-        None => {
-            let mut parsed = ParsedPuzzle::load(&contents, None).or_else(|e_save| {
-                ParsedPuzzle::parse(&contents, None).map_err(|e_html| {
-                    anyhow!(
-                        "Could not parse as either as a saved game ({e_save}) or html ({e_html})"
-                    )
-                })
-            })?;
-            if let Some(name) = name {
-                parsed.puzzle.set_name(name);
-            }
-            parsed
-        }
+        FileType::Ron => ParsedPuzzle::load(&contents, name)?,
+        FileType::Html => ParsedPuzzle::parse(&contents, name)?,
     };
     Ok(parsed)
 }
@@ -307,41 +303,38 @@ enum Args {
     },
 }
 
+#[derive(Clone, Copy)]
 enum FileType {
     Html,
     Ron,
 }
 
-impl FileType {
-    fn from_extension(extension: &OsStr) -> Option<Self> {
-        if extension == "html" || extension == "htm" {
-            Some(Self::Html)
-        } else if extension == "ron" {
-            Some(Self::Ron)
-        } else {
-            None
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 enum InputMode {
     Today,
-    File,
+    Html,
+    Load,
     Fetch,
     Paste,
 }
 
 impl InputMode {
-    const ALL: [Self; 4] = [Self::Today, Self::File, Self::Fetch, Self::Paste];
+    const ALL: [Self; 5] = [
+        Self::Today,
+        Self::Load,
+        Self::Fetch,
+        Self::Html,
+        Self::Paste,
+    ];
 }
 
 impl fmt::Display for InputMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Today => write!(f, "download today's daily puzzle"),
+            Self::Load => write!(f, "load a previous save"),
             Self::Fetch => write!(f, "download puzzle from archive"),
-            Self::File => write!(f, "load from file"),
+            Self::Html => write!(f, "read html from file"),
             Self::Paste => write!(f, "paste html"),
         }
     }
