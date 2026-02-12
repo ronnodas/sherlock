@@ -1,18 +1,22 @@
-use anyhow::anyhow;
+use std::iter::once;
+use std::ops::Not as _;
+
+use anyhow::{anyhow, bail};
+use mitsein::hash_set1::HashSet1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
-use mitsein::vec1::{Vec1, vec1};
+use mitsein::vec1::Vec1;
 use winnow::ascii::dec_uint;
 use winnow::combinator::{alt, delimited, opt, preceded, separated_pair, terminated};
 use winnow::error::{ParserError, StrContext};
 use winnow::token::take_while;
 use winnow::{Parser, Result};
 
-use crate::puzzle::grid::{Column, Coordinate, Grid, Row};
-use crate::puzzle::hint::recipes::{NameRecipe, Recipe as _, SetRecipe};
+use crate::puzzle::Judgment;
+use crate::puzzle::grid::{Column, Coordinate, Row};
+use crate::puzzle::hint::recipes::{AddContext as _, Context, NameRecipe};
 use crate::puzzle::hint::{
-    Direction, Line, LineKind, Number, Parity, Profession, Quantity, Set, WithJudgment,
+    Direction, HintKind, Line, LineKind, Number, Parity, Profession, Quantity, Set, WithJudgment,
 };
-use crate::puzzle::{Judgment, Name};
 
 pub(crate) type Sentence = WithJudgment<SentenceKind>;
 
@@ -444,8 +448,96 @@ pub(crate) enum Unit {
 }
 
 impl Unit {
-    pub(crate) fn and(self, other: Self) -> SetRecipe {
-        SetRecipe::Intersection(vec1![self, other])
+    pub(crate) fn unique_member_has_n_neighbors(
+        &self,
+        quantity: Quantity,
+        name: Option<&NameRecipe>,
+        context: Context<'_>,
+    ) -> anyhow::Result<Vec<HintKind>> {
+        let set = self.add_context(context)?;
+        let coord = name
+            .as_ref()
+            .map(|name| name.add_context(context))
+            .transpose()?;
+        let hints = if let Some(coord) = coord {
+            if !set.contains(&coord) {
+                bail!("{name:?} does not belong to {self:?}")
+            }
+            once(HintKind::Count(
+                Coordinate::neighbors(coord).collect(),
+                quantity,
+            ))
+            .chain(
+                set.into_iter()
+                    .filter(|&other| other != coord)
+                    .map(|other| {
+                        HintKind::Count(Coordinate::neighbors(other).collect(), quantity).not()
+                    }),
+            )
+            .collect()
+        } else {
+            let Ok(set) = HashSet1::try_from(set) else {
+                bail!("empty unit {self:?} cannnot have unique member")
+            };
+            let sets = set
+                .into_iter1()
+                .map(|coord| Coordinate::neighbors(coord).collect())
+                .collect1();
+            vec![HintKind::UniqueWithCount(sets, quantity)]
+        };
+        Ok(hints)
+    }
+
+    pub(crate) fn intersects_with(
+        &self,
+        other: &Self,
+        intersection: Quantity,
+        quantity: Option<Quantity>,
+        context: Context<'_>,
+    ) -> anyhow::Result<Vec<HintKind>> {
+        let self_ = self.add_context(context)?;
+        let other = other
+            .add_context(context)?
+            .into_iter()
+            .filter(|other| self_.contains(other))
+            .collect();
+        let intersection = HintKind::Count(other, intersection);
+        let hints = quantity
+            .map(|quantity| HintKind::Count(self_, quantity))
+            .into_iter()
+            .chain(once(intersection))
+            .collect();
+        Ok(hints)
+    }
+
+    pub(crate) fn members_have_at_most_neighbors(
+        &self,
+        number: u8,
+        context: Context<'_>,
+    ) -> anyhow::Result<Vec<HintKind>> {
+        Ok(self
+            .add_context(context)?
+            .into_iter()
+            .map(|coord| {
+                HintKind::Count(
+                    Coordinate::neighbors(coord).collect(),
+                    Quantity::AtMost(number),
+                )
+            })
+            .collect())
+    }
+
+    pub(crate) fn members_are_connected(
+        self,
+        quantity: Option<Quantity>,
+        context: Context<'_>,
+    ) -> anyhow::Result<Vec<HintKind>> {
+        let set = self.add_context(context)?;
+        Ok(quantity
+            .map(|quantity| HintKind::Count(set.clone(), quantity))
+            .into_iter()
+            .chain(once(HintKind::Connected(set)))
+            .collect())
     }
 
     fn quantify(self, quantity: Quantity) -> Self {
@@ -498,12 +590,24 @@ pub(crate) enum UnitInSeries {
 }
 
 impl UnitInSeries {
-    pub(crate) fn others(&self, grid: &Grid, speaker: &Name) -> anyhow::Result<Vec1<Set>> {
+    pub(crate) fn has_most(self, context: Context<'_>) -> Result<Vec<HintKind>, anyhow::Error> {
+        let small = self.others(context)?;
+        let big = Unit::from(self).add_context(context)?;
+        Ok(small
+            .into_iter()
+            .map(|small| HintKind::Bigger {
+                big: big.clone(),
+                small,
+            })
+            .collect())
+    }
+
+    pub(crate) fn others(&self, context: Context<'_>) -> anyhow::Result<Vec1<Set>> {
         match self {
             Self::Line(line) => Ok(line.others().into_iter1().map(Set::from).collect1()),
-            Self::Profession(profession) => grid.other_professions(profession),
+            Self::Profession(profession) => context.grid.other_professions(profession),
             Self::Neighbor(name) => {
-                let coord = name.contextualize(grid, speaker)?;
+                let coord = name.add_context(context)?;
                 Ok(Coordinate::all()
                     .filter(|&other| other != coord)
                     .map(|other| Coordinate::neighbors(other).collect())

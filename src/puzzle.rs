@@ -12,7 +12,7 @@ use itertools::Itertools as _;
 
 use grid::Grid;
 use hint::Hint;
-use hint::recipes::Recipe as _;
+use hint::recipes::AddContext as _;
 use ron::extensions::Extensions;
 use ron::ser::{PrettyConfig, to_string_pretty};
 use serde::{Deserialize, Serialize};
@@ -20,6 +20,7 @@ use solution::Solution;
 
 use crate::puzzle::grid::Format;
 use crate::puzzle::hint::Sentence;
+use crate::puzzle::hint::recipes::Context;
 
 pub(crate) type Name = String;
 type Profession = String;
@@ -67,7 +68,7 @@ impl Puzzle {
 
     pub(crate) fn add_hint(&mut self, hint: String, speaker: &Name) -> Result<()> {
         Sentence::parse(&hint)?
-            .contextualize(&self.grid, speaker)?
+            .add_context(Context::new(&self.grid, speaker))?
             .spread()
             .for_each(|hint| self.add_parsed_hint(hint));
         self.grid.add_hint(hint, speaker)
@@ -133,7 +134,7 @@ impl ParsedPuzzle {
             .map(|(speaker, hint)| {
                 let maybe_parsed = Sentence::parse(hint).and_then(|sentence| {
                     Ok(sentence
-                        .contextualize(&grid, &speaker)?
+                        .add_context(Context::new(&grid, &speaker))?
                         .spread()
                         .collect_vec())
                 });
