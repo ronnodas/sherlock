@@ -84,7 +84,7 @@ pub(crate) enum Line {
 }
 
 impl Line {
-    const fn kind(self) -> LineKind {
+    fn kind(self) -> LineKind {
         match self {
             Self::Row(_) => LineKind::Row,
             Self::Column(_) => LineKind::Column,
@@ -166,7 +166,7 @@ pub(crate) enum Parity {
 }
 
 impl Parity {
-    const fn matches(self, len: usize) -> bool {
+    fn matches(self, len: usize) -> bool {
         match self {
             Self::Even => len.is_multiple_of(2),
             Self::Odd => !len.is_multiple_of(2),

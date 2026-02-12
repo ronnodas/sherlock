@@ -14,6 +14,8 @@ use itertools::Itertools as _;
 use grid::Grid;
 use hint::Hint;
 use hint::recipes::{HintRecipe, Recipe as _};
+use ron::extensions::Extensions;
+use ron::ser::{PrettyConfig, to_string_pretty};
 use serde::{Deserialize, Serialize};
 use solution::Solution;
 
@@ -63,8 +65,8 @@ impl Puzzle {
             .collect())
     }
 
-    pub(crate) fn add_hint(&mut self, hint: &str, speaker: &Name) -> Result<()> {
-        HintRecipe::parse(hint)?
+    pub(crate) fn add_hint(&mut self, hint: String, speaker: &Name) -> Result<()> {
+        HintRecipe::parse(&hint)?
             .into_iter()
             .try_for_each(|hint| self.add_parsed_hint(hint, speaker))?;
         self.grid.add_hint(hint, speaker)
@@ -86,11 +88,16 @@ impl Puzzle {
     }
 
     pub(crate) fn save_grid(&self) -> Result<String> {
-        serde_hjson::to_string(&self.grid).map_err(Into::into)
+        let config = PrettyConfig::new().extensions(
+            Extensions::IMPLICIT_SOME
+                | Extensions::UNWRAP_NEWTYPES
+                | Extensions::UNWRAP_VARIANT_NEWTYPES,
+        );
+        to_string_pretty(&self.grid, config).map_err(Into::into)
     }
 
-    pub(crate) fn mark_as_flavor(&mut self, name: &Name) -> Result<()> {
-        self.grid.mark_as_flavor(name)
+    pub(crate) fn mark_as_flavor(&mut self, suspect: &Name) -> Result<()> {
+        self.grid.mark_as_flavor(suspect)
     }
 }
 
@@ -178,7 +185,7 @@ impl ParsedPuzzle {
     }
 
     pub(crate) fn load(contents: &str, name: Option<String>) -> Result<Self> {
-        let grid = serde_hjson::from_str(contents)?;
+        let grid = ron::from_str(contents)?;
         Self::new(grid, name)
     }
 }
@@ -190,7 +197,7 @@ pub(crate) enum Judgment {
 }
 
 impl Judgment {
-    const fn color(self) -> Color {
+    fn color(self) -> Color {
         match self {
             Self::Innocent => Color::Green,
             Self::Criminal => Color::Red,
@@ -334,7 +341,9 @@ mod tests {
             assert_eq!(puzzle.infer().unwrap(), deductions);
             for &(speaker, _, hint) in changes {
                 if let Some(hint) = hint {
-                    puzzle.add_hint(hint, &speaker.to_owned()).unwrap();
+                    puzzle
+                        .add_hint(hint.to_owned(), &speaker.to_owned())
+                        .unwrap();
                 }
             }
         }

@@ -12,9 +12,9 @@ colored = "3.1.1"
 inquire = { version = "0.9.3", features = ["editor"] }
 itertools = "0.14.0"
 mitsein = { version = "0.9.0", features = ["arrayvec"] }
+ron = "0.12.0"
 select = "0.6.1"
 serde = { version = "1.0.228", features = ["derive"] }
-serde-hjson = "1.1.0"
 serde_with = "3.16.1"
 ureq = "3.2.0"
 winnow = "0.7.14"
@@ -45,6 +45,7 @@ unused_macro_rules = "warn"
 unused_qualifications = "warn"
 unused_results = "warn"
 variant_size_differences = "warn"
+
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
@@ -143,3 +144,4 @@ wildcard_enum_match_arm = "warn"
 
 ## allows
 redundant_pub_crate = "allow"
+missing_const_for_fn = "allow"

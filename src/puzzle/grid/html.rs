@@ -126,7 +126,7 @@ pub(crate) enum ClassName {
 }
 
 impl ClassName {
-    const fn as_str(self) -> &'static str {
+    fn as_str(self) -> &'static str {
         match self {
             Self::Card => "card",
             Self::CardBack => "card-back",

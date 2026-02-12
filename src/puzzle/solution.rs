@@ -9,7 +9,7 @@ use crate::puzzle::hint::Set;
 pub(crate) struct Solution([Judgment; 20]);
 
 impl Solution {
-    pub(crate) const fn as_array(&self) -> &[Judgment; 20] {
+    pub(crate) fn as_array(&self) -> &[Judgment; 20] {
         &self.0
     }
 
@@ -63,7 +63,7 @@ impl Generator {
         }
     }
 
-    pub(crate) const fn max_counter(&self) -> u32 {
+    pub(crate) fn max_counter(&self) -> u32 {
         1_u32 << self.free_indices.len()
     }
 }

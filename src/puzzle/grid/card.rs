@@ -8,15 +8,11 @@ use crate::puzzle::{Judgment, Name, Profession};
 
 use super::html::{Class, ClassName, Div, H3, NodeExt as _, Paragraph};
 
-// TODO change types so that hint can only exist if status is Some
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub(crate) struct Card {
     name: Name,
     profession: Profession,
-    #[serde(skip_serializing_if = "HintText::is_unknown")]
-    hint: HintText,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    status: Option<Judgment>,
+    back: Option<CardBack>,
 }
 
 impl Card {
@@ -42,78 +38,95 @@ impl Card {
             node.expect_children(Div.and(Class(ClassName::CardFront)))
         }
         .context("inside a `.card`")?;
-        status
-            .map_or_else(
-                || Self::parse_unflipped(card),
-                |status| Self::parse_flipped(card, status),
-            )
-            .map(|card| (card, node.is(Class(ClassName::HasHint))))
+        let name = parse_name(card)?;
+        let profession = parse_profession(card)?;
+        let back = status
+            .map(|judgment| Self::parse_back(card, judgment))
+            .transpose()?;
+        let has_hint = node.is(Class(ClassName::HasHint));
+        let card = Self {
+            name,
+            profession,
+            back,
+        };
+        Ok((card, has_hint))
     }
 
-    fn parse_flipped(card: Node<'_>, status: Judgment) -> Result<Self> {
+    fn parse_back(card: Node<'_>, judgment: Judgment) -> Result<CardBack> {
         let card = card
-            .expect(Class(status.into()))
+            .expect(Class(judgment.into()))
             .context("`.card-back` should be consistent with `.card`")?;
 
-        let name = parse_name(card)?;
-        let profession = parse_profession(card)?;
         let hint = HintText::Known(parse_hint(card)?);
-        Ok(Self {
-            name,
-            profession,
-            hint,
-            status: Some(status),
-        })
-    }
-
-    fn parse_unflipped(card: Node<'_>) -> Result<Self> {
-        let name = parse_name(card)?;
-        let profession = parse_profession(card)?;
-        Ok(Self {
-            name,
-            profession,
-            hint: HintText::Unknown,
-            status: None,
-        })
+        Ok(CardBack { judgment, hint })
     }
 
     pub(crate) fn hint(&self) -> Option<&str> {
-        self.hint.as_known()
+        self.back.as_ref()?.hint.as_known()
     }
 
-    pub(crate) const fn name(&self) -> &Name {
+    pub(crate) fn name(&self) -> &Name {
         &self.name
     }
 
-    pub(crate) const fn profession(&self) -> &Profession {
+    pub(crate) fn profession(&self) -> &Profession {
         &self.profession
     }
 
-    pub(crate) const fn is_judged(&self) -> bool {
-        self.status.is_some()
+    pub(crate) fn flipped(&self) -> bool {
+        self.back.is_some()
     }
 
-    pub(crate) const fn status(&self) -> Option<Judgment> {
-        self.status
+    pub(crate) fn back_mut(&mut self) -> Option<&mut CardBack> {
+        self.back.as_mut()
     }
 
-    pub(crate) fn set(&mut self, judgment: Judgment) -> Option<&Self> {
-        (self.status != Some(judgment)).then(|| {
-            self.status = Some(judgment);
+    pub(crate) fn judgment(&self) -> Option<Judgment> {
+        self.back.as_ref().map(|back| back.judgment)
+    }
+
+    pub(crate) fn reveal(&mut self, judgment: Judgment) -> Option<&Self> {
+        (self.back.is_none()).then(|| {
+            self.back = Some(CardBack {
+                judgment,
+                hint: HintText::Unknown,
+            });
             &*self
         })
     }
 
-    pub(crate) fn set_hint(&mut self, hint: String) {
-        self.hint = HintText::Known(hint);
+    pub(crate) fn hint_pending(&self) -> bool {
+        self.back
+            .as_ref()
+            .is_some_and(|back| back.hint.is_unknown())
     }
 
+    pub(crate) fn back(&self) -> Option<&CardBack> {
+        self.back.as_ref()
+    }
+
+    pub(super) fn new(name: String, profession: String, back: Option<CardBack>) -> Self {
+        Self {
+            name,
+            profession,
+            back,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct CardBack {
+    judgment: Judgment,
+    hint: HintText,
+}
+
+impl CardBack {
     pub(crate) fn mark_as_flavor(&mut self) {
         self.hint = HintText::Flavor;
     }
 
-    pub(crate) const fn hint_pending(&self) -> bool {
-        self.status.is_some() && self.hint.is_unknown()
+    pub(crate) fn set_hint(&mut self, hint: String) {
+        self.hint = HintText::Known(hint);
     }
 }
 
@@ -140,7 +153,7 @@ impl HintText {
     ///
     /// [`Unknown`]: HintText::Unknown
     #[must_use]
-    const fn is_unknown(&self) -> bool {
+    fn is_unknown(&self) -> bool {
         matches!(self, Self::Unknown)
     }
 }

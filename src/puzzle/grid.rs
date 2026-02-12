@@ -19,6 +19,7 @@ use select::document::Document;
 use select::predicate::{Any, Attr, Predicate as _};
 use serde::{Deserialize, Serialize};
 
+use crate::puzzle::grid::card::CardBack;
 use crate::puzzle::hint::Set;
 use crate::puzzle::{Judgment, Name, Profession};
 
@@ -59,8 +60,8 @@ impl Grid {
         let cards = match format {
             Format::Original => cards.map(|(card, _)| card),
             Format::Sep2025 => cards.map(|(mut card, has_hint)| {
-                if !has_hint && card.is_judged() {
-                    card.mark_as_flavor();
+                if !has_hint && let Some(back) = card.back_mut() {
+                    back.mark_as_flavor();
                 }
                 card
             }),
@@ -109,15 +110,15 @@ impl Grid {
     }
 
     pub(crate) fn solved(&self) -> bool {
-        self.cards.iter().all(Card::is_judged)
+        self.cards.iter().all(Card::flipped)
     }
 
     pub(crate) fn fixed(&self) -> [Option<Judgment>; 20] {
-        self.cards.each_ref().map(Card::status)
+        self.cards.each_ref().map(Card::judgment)
     }
 
     pub(crate) fn set_new(&mut self, index: usize, judgment: Judgment) -> Option<&Card> {
-        self.cards[index].set(judgment)
+        self.cards[index].reveal(judgment)
     }
 
     pub(crate) fn by_profession(&self, profession: &Profession) -> Result<&NonEmpty<Set>> {
@@ -126,15 +127,13 @@ impl Grid {
             .ok_or_else(|| anyhow!("{profession} not in grid"))
     }
 
-    pub(crate) fn add_hint(&mut self, hint: &str, speaker: &Name) -> Result<()> {
-        let index = self.coord(speaker)?;
-        self.cards[index.to_index()].set_hint(hint.to_owned());
+    pub(crate) fn add_hint(&mut self, hint: String, suspect: &Name) -> Result<()> {
+        self.card_back(suspect)?.set_hint(hint);
         Ok(())
     }
 
-    pub(crate) fn mark_as_flavor(&mut self, name: &Name) -> Result<()> {
-        let index = self.coord(name)?;
-        self.cards[index.to_index()].mark_as_flavor();
+    pub(crate) fn mark_as_flavor(&mut self, suspect: &Name) -> Result<()> {
+        self.card_back(suspect)?.mark_as_flavor();
         Ok(())
     }
 
@@ -155,14 +154,19 @@ impl Grid {
             .map_err(|_empty| anyhow!("only {profession}s on grid"))
     }
 
-    pub(crate) const fn format(&self) -> Format {
+    pub(crate) fn format(&self) -> Format {
         self.format
+    }
+
+    fn card_back(&mut self, suspect: &Name) -> Result<&mut CardBack> {
+        let index = self.coord(suspect)?;
+        self.cards[index.to_index()]
+            .back_mut()
+            .ok_or_else(|| anyhow!("{suspect}'s card is not flipped"))
     }
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
-// TODO https://github.com/hjson/hjson-rust/issues/40
-#[serde(tag = "format")]
 pub(crate) enum Format {
     Original,
     Sep2025,
@@ -202,7 +206,7 @@ impl Coordinate {
         }
     }
 
-    pub(crate) const fn to_index(self) -> usize {
+    pub(crate) fn to_index(self) -> usize {
         4 * self.row.to_index() + self.col.to_index()
     }
 
@@ -383,7 +387,7 @@ impl Row {
         }
     }
 
-    const fn to_index(self) -> usize {
+    fn to_index(self) -> usize {
         match self {
             Self::One => 0,
             Self::Two => 1,
@@ -393,7 +397,7 @@ impl Row {
         }
     }
 
-    const fn prev(self) -> Option<Self> {
+    fn prev(self) -> Option<Self> {
         match self {
             Self::One => None,
             Self::Two => Some(Self::One),
@@ -403,7 +407,7 @@ impl Row {
         }
     }
 
-    const fn next(self) -> Option<Self> {
+    fn next(self) -> Option<Self> {
         match self {
             Self::One => Some(Self::Two),
             Self::Two => Some(Self::Three),
@@ -417,7 +421,7 @@ impl Row {
         Self::ALL.into_iter().filter(move |other| other != self)
     }
 
-    const fn parse(row: char) -> Option<Self> {
+    fn parse(row: char) -> Option<Self> {
         let row = match row {
             '1' => Self::One,
             '2' => Self::Two,
@@ -470,7 +474,7 @@ impl Column {
         }
     }
 
-    const fn to_index(self) -> usize {
+    fn to_index(self) -> usize {
         match self {
             Self::A => 0,
             Self::B => 1,
@@ -479,7 +483,7 @@ impl Column {
         }
     }
 
-    const fn prev(self) -> Option<Self> {
+    fn prev(self) -> Option<Self> {
         match self {
             Self::A => None,
             Self::B => Some(Self::A),
@@ -488,7 +492,7 @@ impl Column {
         }
     }
 
-    const fn next(self) -> Option<Self> {
+    fn next(self) -> Option<Self> {
         match self {
             Self::A => Some(Self::B),
             Self::B => Some(Self::C),
@@ -501,7 +505,7 @@ impl Column {
         Self::ALL.into_iter().filter(move |other| other != self)
     }
 
-    const fn parse(col: char) -> Option<Self> {
+    fn parse(col: char) -> Option<Self> {
         let col = match col {
             'A' => Self::A,
             'B' => Self::B,

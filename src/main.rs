@@ -24,7 +24,7 @@ fn main() -> Result<()> {
     let parsed = match args {
         Args::Menu => main_menu(),
         Args::Html { path } => read_from_file(path, Some(FileType::Html)),
-        Args::Load { path } => read_from_file(path, Some(FileType::Hjson)),
+        Args::Load { path } => read_from_file(path, Some(FileType::Ron)),
         Args::Today => fetch_today(),
         Args::Archive { id } => archive(id),
     }?;
@@ -49,7 +49,7 @@ fn main_menu() -> Result<ParsedPuzzle> {
         }
         // TODO split into two instead of being clever with extensions
         InputMode::File => {
-            let path = Text::new("Enter path to html or hjson:")
+            let path = Text::new("Enter path to html or ron:")
                 .with_initial_value(SAVE_DIRECTORY)
                 .prompt()?;
             read_from_file(path, None)
@@ -116,7 +116,7 @@ fn read_from_file(path: impl AsRef<Path>, file_type: Option<FileType>) -> Result
         .map(str::to_owned);
     let file_type = file_type.or_else(|| FileType::from_extension(path.extension()?));
     let parsed = match file_type {
-        Some(FileType::Hjson) => ParsedPuzzle::load(&contents, name)?,
+        Some(FileType::Ron) => ParsedPuzzle::load(&contents, name)?,
         Some(FileType::Html) => ParsedPuzzle::parse(&contents, name)?,
         None => {
             let mut parsed = ParsedPuzzle::load(&contents, None).or_else(|e_save| {
@@ -141,13 +141,15 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
         unknown_if_flavor,
         mut pending_hints,
     } = puzzle;
-    for (name, hint) in unknown_if_flavor {
-        let flavor =
-            Confirm::new(&format!("Is {name}'s hint, \"{hint}\", just flavor text?")).prompt()?;
+    for (suspect, hint) in unknown_if_flavor {
+        let flavor = Confirm::new(&format!(
+            "Is {suspect}'s hint, \"{hint}\", just flavor text?"
+        ))
+        .prompt()?;
         if flavor {
-            puzzle.mark_as_flavor(&name)?;
+            puzzle.mark_as_flavor(&suspect)?;
         } else {
-            puzzle.add_hint(&hint, &name)?;
+            puzzle.add_hint(hint, &suspect)?;
         }
     }
 
@@ -172,19 +174,19 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
                 "Add a logical hint:",
                 pending_hints
                     .iter()
-                    .map(HintOption::Name)
+                    .map(HintOption::Suspect)
                     .chain(HintOption::FIXED)
                     .collect(),
             )
             .prompt()?;
             match selected {
-                HintOption::Name(name) => {
+                HintOption::Suspect(suspect) => {
                     if let Some(hint) =
-                        Text::new(&format!("Enter {name}'s hint:")).prompt_skippable()?
+                        Text::new(&format!("Enter {suspect}'s hint:")).prompt_skippable()?
                     {
-                        match puzzle.add_hint(&hint, name) {
+                        match puzzle.add_hint(hint, suspect) {
                             Ok(()) => {
-                                let name = name.clone();
+                                let name = suspect.clone();
                                 pending_hints.retain(|pending| pending != &name);
                                 break;
                             }
@@ -214,7 +216,7 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
                     let prompt = if let Some(name) = name {
                         path = Path::new(SAVE_DIRECTORY)
                             .join(name)
-                            .with_extension("hjson")
+                            .with_extension("ron")
                             .display()
                             .to_string();
                         prompt.with_initial_value(&path)
@@ -273,15 +275,15 @@ enum Args {
 
 enum FileType {
     Html,
-    Hjson,
+    Ron,
 }
 
 impl FileType {
     fn from_extension(extension: &OsStr) -> Option<Self> {
         if extension == "html" || extension == "htm" {
             Some(Self::Html)
-        } else if extension == "hjson" {
-            Some(Self::Hjson)
+        } else if extension == "ron" {
+            Some(Self::Ron)
         } else {
             None
         }
@@ -312,7 +314,7 @@ impl fmt::Display for InputMode {
 }
 
 enum HintOption<'name> {
-    Name(&'name Name),
+    Suspect(&'name Name),
     MarkAsFlavor,
     Save,
 }
@@ -324,7 +326,7 @@ impl HintOption<'_> {
 impl fmt::Display for HintOption<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Name(name) => write!(f, "{name}"),
+            Self::Suspect(name) => write!(f, "{name}"),
             Self::MarkAsFlavor => write!(f, "mark hints as flavor"),
             Self::Save => write!(f, "save progress to file"),
         }
