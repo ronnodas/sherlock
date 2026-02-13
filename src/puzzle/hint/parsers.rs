@@ -315,9 +315,21 @@ impl Sentence {
                 .map(|(names, _, (count, judgment), _)| {
                     (names.map(Unit::Neighbor), judgment, count)
                 }),
+            separated_pair(
+                separated_pair(
+                    quantity,
+                    " of ",
+                    separated_pair(name_possessive, " neighbors ", unit),
+                ),
+                alt((" is ", " are ")),
+                judgment_singular,
+            )
+            .map(|((quantity, (name, unit)), judgment)| {
+                ([Unit::Neighbor(name), unit], judgment, quantity)
+            }),
         ))
-        .map(|([a, b], judgment, count)| Self {
-            kind: SentenceKind::UnitsShareNTraits([a, b], count),
+        .map(|([a, b], judgment, quantity)| Self {
+            kind: SentenceKind::UnitsShareNTraits([a, b], quantity),
             judgment,
         })
         .parse_next(input)

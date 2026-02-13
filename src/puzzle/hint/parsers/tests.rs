@@ -436,6 +436,18 @@ fn ollie_2026_02_12() {
 }
 
 #[test]
+fn olive_2026_02_13() {
+    sentence(
+        "2 of my neighbors on the edges are innocent",
+        SentenceKind::UnitsShareNTraits(
+            [Unit::Neighbor(Name::Me), Unit::Edges],
+            Quantity::Exact(2),
+        ),
+        Judgment::Innocent,
+    );
+}
+
+#[test]
 fn diane_0cf47() {
     sentence(
         "Xavi has more criminal neighbors than Ben",
