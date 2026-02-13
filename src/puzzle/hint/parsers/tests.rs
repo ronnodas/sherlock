@@ -67,6 +67,18 @@ fn salil_2026_01_15() {
 }
 
 #[test]
+fn katie_2026_02_03() {
+    sentence(
+        "Ryan and I have no innocent neighbors in common",
+        SentenceKind::UnitsShareNTraits(
+            [Unit::neighbor("Ryan"), Unit::Neighbor(Name::Me)],
+            Quantity::Exact(0),
+        ),
+        Judgment::Innocent,
+    );
+}
+
+#[test]
 fn uma_2026_02_03() {
     sentence(
         "exactly 1 judge has an innocent directly above them",

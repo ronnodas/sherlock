@@ -180,17 +180,19 @@ impl Serialize for HintText {
 }
 
 fn parse_hint(card: Node<'_>) -> Result<String> {
-    card.unique_child(Paragraph.and(Class(ClassName::Hint)))
-        .context("`.card-back` should have a unique `p .hint`")?
-        .expect_text()
-        .map(str::to_owned)
+    let hint = card
+        .unique_child(Paragraph.and(Class(ClassName::Hint)))
+        .with_context(|| format!("`.card-back` should have a unique `p .hint`: {card:?}"))?;
+    Ok(hint.text().trim().to_owned())
 }
 
 fn parse_profession(card: Node<'_>) -> Result<String> {
-    card.unique_child(Paragraph.and(Class(ClassName::Profession)))
-        .context("`.card-{back,front}` should have a unique `p .profession`")?
-        .expect_text()
-        .map(str::to_owned)
+    let profession = card
+        .unique_child(Paragraph.and(Class(ClassName::Profession)))
+        .with_context(|| {
+            format!("`.card-{{back,front}}` should have a unique `p .profession`: {card:?}")
+        })?;
+    Ok(profession.text().trim().to_owned())
 }
 
 fn parse_name(card: Node<'_>) -> Result<String> {
@@ -200,9 +202,10 @@ fn parse_name(card: Node<'_>) -> Result<String> {
     let name = name
         .unique_child(H3.and(Class(ClassName::Name)))
         .context("`div .name` should have a unique `h3 .name`")?
-        .expect_text()?;
+        .text();
     // emulating `text-transform: capitalize`
     Ok(name
+        .trim()
         .chars()
         .with_position()
         .map(|(position, c)| match position {

@@ -906,7 +906,9 @@ fn name_possessive(input: &mut &str) -> Result<NameRecipe> {
 
 fn name(input: &mut &str) -> Result<NameRecipe> {
     alt((
-        "me".value(NameRecipe::Me),
+        take_while(1.., |c| c != ' ')
+            .verify(|name: &str| name == "I" || name == "me")
+            .value(NameRecipe::Me),
         raw_name.map(|name| NameRecipe::Other(name.to_owned())),
     ))
     .parse_next(input)

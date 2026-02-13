@@ -359,3 +359,29 @@ impl fmt::Display for HintOption<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::puzzle::ParsedPuzzle;
+
+    #[test]
+    fn solved_puzzles() {
+        let solved_htmls = [
+            include_str!("../samples/0cf47a07fe08-solved.html"),
+            include_str!("../samples/2026-02-02-97bc1d4791fd-solved.html"),
+            include_str!("../samples/2026-02-03-e3f23640d8dc-solved.html"),
+            include_str!("../samples/2026-02-04-798a12bae192-solved.html"),
+            include_str!("../samples/2026-02-05-a3dc0d40384d-solved.html"),
+            include_str!("../samples/2026-02-06-ee75de2710b5-solved.html"),
+            include_str!("../samples/2026-02-07-b254ea7c89c4-solved.html"),
+            include_str!("../samples/2026-02-08-6f3e400c1d18-solved.html"),
+            include_str!("../samples/2026-02-09-432137b5980e-solved.html"),
+            include_str!("../samples/2026-02-10-solved.html"),
+        ];
+
+        for html in solved_htmls {
+            let parsed = ParsedPuzzle::parse(html, None).unwrap();
+            assert!(parsed.pending_hints.is_empty());
+        }
+    }
+}

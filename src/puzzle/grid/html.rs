@@ -38,18 +38,6 @@ pub(crate) trait NodeExt<'html>: Sized + fmt::Debug {
         })
     }
 
-    fn expect_text(&self) -> Result<&'html str> {
-        match self.children().collect_array() {
-            Some([child]) => child
-                .as_text()
-                .ok_or_else(|| anyhow!("expecting text, found {child:?}")),
-            None => Err(anyhow!(
-                "expecting unique child, found {}",
-                self.children().count()
-            )),
-        }
-    }
-
     fn unique_child(&self, predicate: impl Predicate + Copy) -> Result<Node<'html>> {
         let [child] = self.expect_children(predicate)?;
         Ok(child)
