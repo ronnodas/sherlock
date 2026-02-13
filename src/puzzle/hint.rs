@@ -4,13 +4,15 @@ pub(crate) mod recipes;
 use std::collections::HashSet;
 use std::ops::Not;
 
+use anyhow::Result;
 use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
-use super::grid::{Column, Coordinate, Direction, Row};
-use super::solution::Solution;
-use super::{Judgment, Profession};
+use crate::puzzle::grid::{Column, Coordinate, Direction, Row};
+use crate::puzzle::hint::recipes::{AddContext, Context};
+use crate::puzzle::solution::Solution;
+use crate::puzzle::{Judgment, Profession};
 
 pub(crate) type Set = HashSet<Coordinate>;
 pub(crate) type Number = u8;
@@ -27,6 +29,17 @@ impl<T> WithJudgment<Vec<T>> {
     pub(crate) fn spread(self) -> impl Iterator<Item = WithJudgment<T>> {
         self.kind.into_iter().map(move |kind| WithJudgment {
             kind,
+            judgment: self.judgment,
+        })
+    }
+}
+
+impl<T: AddContext> AddContext for WithJudgment<T> {
+    type Output = WithJudgment<T::Output>;
+
+    fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
+        Ok(WithJudgment {
+            kind: self.kind.add_context(context)?,
             judgment: self.judgment,
         })
     }
