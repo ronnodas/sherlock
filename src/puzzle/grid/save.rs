@@ -2,7 +2,6 @@ use std::array;
 use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
-use serde_with::{DisplayFromStr, serde_as};
 
 use crate::puzzle::grid::card::{Card, CardBack};
 use crate::puzzle::grid::{Coordinate, Format, Grid};
@@ -12,13 +11,15 @@ use crate::puzzle::{Name, Profession};
 pub(crate) struct CardList<'card> {
     cards: [IndexedCard<'card>; 20],
     format: Format,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    start: Option<Coordinate>,
 }
 
 impl From<CardList<'_>> for Grid {
     fn from(mut card_list: CardList) -> Self {
         card_list.cards.sort_by(|a, b| a.coord.cmp(&b.coord));
         let cards = card_list.cards.map(Card::from);
-        Self::new(cards, card_list.format)
+        Self::new(cards, card_list.format, card_list.start)
     }
 }
 
@@ -36,14 +37,13 @@ impl<'card> From<&'card Grid> for CardList<'card> {
         Self {
             cards,
             format: grid.format,
+            start: grid.start,
         }
     }
 }
 
-#[serde_as]
 #[derive(Serialize, Deserialize)]
 struct IndexedCard<'card> {
-    #[serde_as(as = "DisplayFromStr")]
     coord: Coordinate,
 
     name: Cow<'card, Name>,

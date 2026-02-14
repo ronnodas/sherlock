@@ -1,4 +1,4 @@
-mod grid;
+pub(crate) mod grid;
 mod hint;
 mod solution;
 
@@ -29,7 +29,7 @@ type Profession = String;
 pub(crate) struct Puzzle {
     name: Option<String>,
     grid: Grid,
-    hints: Vec<Hint>,
+
     solutions: Vec<Solution>,
 }
 
@@ -70,13 +70,12 @@ impl Puzzle {
         Sentence::parse(&hint)?
             .add_context(Context::new(&self.grid, speaker))?
             .spread()
-            .for_each(|hint| self.add_parsed_hint(hint));
+            .for_each(|hint| self.add_parsed_hint(&hint));
         self.grid.add_hint(hint, speaker)
     }
 
-    fn add_parsed_hint(&mut self, hint: Hint) {
+    fn add_parsed_hint(&mut self, hint: &Hint) {
         self.solutions.retain(|solution| hint.evaluate(solution));
-        self.hints.push(hint);
     }
 
     pub(crate) fn name(&self) -> Option<&str> {
@@ -173,12 +172,12 @@ impl ParsedPuzzle {
         let mut puzzle = Puzzle {
             name,
             grid,
-            hints: Vec::new(),
+
             solutions,
         };
 
         for hint in hints {
-            puzzle.add_parsed_hint(hint);
+            puzzle.add_parsed_hint(&hint);
         }
 
         Ok(Self {

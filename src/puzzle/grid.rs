@@ -18,6 +18,7 @@ use mitsein::vec1::Vec1;
 use select::document::Document;
 use select::predicate::{Any, Attr, Predicate as _};
 use serde::{Deserialize, Serialize};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 use crate::puzzle::grid::card::CardBack;
 use crate::puzzle::hint::Set;
@@ -34,6 +35,7 @@ pub(crate) struct Grid {
     // TODO make this non-empty once mitsein supports that
     by_profession: HashMap<Profession, NonEmpty<Set>>,
     format: Format,
+    start: Option<Coordinate>,
 }
 
 impl Grid {
@@ -67,10 +69,10 @@ impl Grid {
                 card
             }),
         };
-        Ok(Self::new(cards, format))
+        Ok(Self::new(cards, format, None))
     }
 
-    fn new(cards: [Card; 20], format: Format) -> Self {
+    fn new(cards: [Card; 20], format: Format, start: Option<Coordinate>) -> Self {
         let coordinates = cards
             .iter()
             .enumerate()
@@ -91,12 +93,15 @@ impl Grid {
                 );
                 Some(set)
             });
-        Self {
+        let mut grid = Self {
             cards,
             coordinates,
             by_profession,
             format,
-        }
+            start,
+        };
+        grid.set_start();
+        grid
     }
 
     pub(crate) fn iter(&self) -> impl Iterator<Item = &Card> {
@@ -135,6 +140,7 @@ impl Grid {
 
     pub(crate) fn mark_as_flavor(&mut self, suspect: &Name) -> Result<()> {
         self.card_back(suspect)?.mark_as_flavor();
+        self.set_start();
         Ok(())
     }
 
@@ -169,6 +175,18 @@ impl Grid {
     pub(crate) fn _by_profession(&self) -> &HashMap<Profession, NonEmpty<Set>> {
         &self.by_profession
     }
+
+    pub(crate) fn set_start(&mut self) {
+        self.start = self.start.or_else(|| {
+            self.cards
+                .iter()
+                .enumerate()
+                .filter(|(_, card)| card.hint().is_some())
+                .exactly_one()
+                .ok()
+                .map(|(index, _)| Coordinate::from_index(index))
+        });
+    }
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -197,7 +215,7 @@ impl IndexMut<Coordinate> for Grid {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, SerializeDisplay, DeserializeFromStr)]
 pub(crate) struct Coordinate {
     row: Row,
     col: Column,
