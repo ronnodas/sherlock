@@ -13,7 +13,7 @@ use anyhow::{Result, anyhow, bail};
 use itertools::Itertools as _;
 use mitsein::NonEmpty;
 use mitsein::hash_set1::HashSet1;
-use mitsein::iter1::IteratorExt as _;
+use mitsein::iter1::{IntoIterator1 as _, Iterator1, IteratorExt as _};
 use mitsein::vec1::Vec1;
 use select::document::Document;
 use select::predicate::{Any, Attr, Predicate as _};
@@ -31,6 +31,7 @@ use html::{Class, ClassName, Div, NodeExt as _};
 pub(crate) struct Grid {
     cards: [Card; 20],
     coordinates: HashMap<Name, Coordinate>,
+    // TODO make this non-empty once mitsein supports that
     by_profession: HashMap<Profession, NonEmpty<Set>>,
     format: Format,
 }
@@ -121,7 +122,7 @@ impl Grid {
         self.cards[index].reveal(judgment)
     }
 
-    pub(crate) fn by_profession(&self, profession: &Profession) -> Result<&NonEmpty<Set>> {
+    pub(crate) fn profession_as_set(&self, profession: &Profession) -> Result<&NonEmpty<Set>> {
         self.by_profession
             .get(profession)
             .ok_or_else(|| anyhow!("{profession} not in grid"))
@@ -163,6 +164,10 @@ impl Grid {
         self.cards[index.to_index()]
             .back_mut()
             .ok_or_else(|| anyhow!("{suspect}'s card is not flipped"))
+    }
+
+    pub(crate) fn _by_profession(&self) -> &HashMap<Profession, NonEmpty<Set>> {
+        &self.by_profession
     }
 }
 
@@ -267,13 +272,13 @@ impl Coordinate {
         successors(start.step(direction), move |coord| coord.step(direction))
     }
 
-    pub(crate) fn neighbors(center: Self) -> impl Iterator<Item = Self> {
+    pub(crate) fn neighbors(self) -> impl Iterator<Item = Self> {
         use Direction::{Above, Below, Left, Right};
-        [center.step(Above), center.step(Below)]
+        [self.step(Above), self.step(Below)]
             .into_iter()
             .flatten()
             .flat_map(|vert| [Some(vert), vert.step(Right), vert.step(Left)])
-            .chain([center.step(Left), center.step(Right)])
+            .chain([self.step(Left), self.step(Right)])
             .flatten()
     }
 
@@ -320,11 +325,11 @@ impl Coordinate {
         }
     }
 
-    pub(crate) fn all() -> impl Iterator<Item = Self> {
+    pub(crate) fn all() -> Iterator1<impl Iterator<Item = Self>> {
+        // TODO replace with `cartesian_product()`
         Row::ALL
-            .into_iter()
-            .cartesian_product(Column::ALL)
-            .map(|(row, col)| Self { row, col })
+            .into_iter1()
+            .flat_map(|row| Column::ALL.into_iter1().map(move |col| Self { row, col }))
     }
 }
 

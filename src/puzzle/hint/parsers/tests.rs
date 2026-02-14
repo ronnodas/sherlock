@@ -5,6 +5,7 @@ use winnow::error::ParserError;
 
 use crate::puzzle::Judgment;
 use crate::puzzle::grid::{Column, Row};
+use crate::puzzle::hint::parsers::Series;
 use crate::puzzle::hint::{Direction, LineKind, Parity, Quantity};
 
 use super::{NameRecipe as Name, Sentence, SentenceKind, Unit, UnitInSeries};
@@ -63,6 +64,27 @@ fn salil_2026_01_15() {
         "No one in row 4 has more than 2 criminal neighbors",
         SentenceKind::AtMostNTraitsInNeighborsInUnit(Row::Four.into(), 2),
         Judgment::Criminal,
+    );
+}
+
+#[test]
+fn uma_2026_01_31() {
+    sentence(
+        "2 out of the 3 teachers have a criminal directly below them",
+        SentenceKind::NumberOfTraitsInUnit(
+            Unit::ProfessionShift("teacher".into(), Direction::Below),
+            Quantity::Exact(2),
+        ),
+        Judgment::Criminal,
+    );
+}
+
+#[test]
+fn zara_2026_01_31() {
+    sentence(
+        "Everyone has at least one innocent neighbor",
+        SentenceKind::EachUnitInSeriesHasNTraits(Series::Neighbor, Quantity::AtLeast(1)),
+        Judgment::Innocent,
     );
 }
 
@@ -183,7 +205,7 @@ fn tina_2026_02_05() {
 fn vera_2026_02_05() {
     sentence(
         "Each column has at least 3 innocents",
-        SentenceKind::EachLineHasNTraits(LineKind::Column, Quantity::AtLeast(3)),
+        SentenceKind::EachUnitInSeriesHasNTraits(LineKind::Column.into(), Quantity::AtLeast(3)),
         Judgment::Innocent,
     );
 }
@@ -506,6 +528,45 @@ fn vicky_0cf47() {
         "Paul has the most criminal neighbors",
         SentenceKind::HasMostTraits(UnitInSeries::neighbor("Paul")),
         Judgment::Criminal,
+    );
+}
+
+#[test]
+fn jose_879da349c27d() {
+    sentence(
+        "I have exactly 5 innocent neighbors",
+        SentenceKind::NumberOfTraitsInUnit(Unit::Neighbor(Name::Me), Quantity::Exact(5)),
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn ryan_327a79cc5a8c() {
+    sentence(
+        "Zoe is the only one with exactly 1 criminal neighbors",
+        SentenceKind::OnlyGivenUnitHasNTraits(UnitInSeries::neighbor("Zoe"), Quantity::Exact(1)),
+        Judgment::Criminal,
+    );
+}
+
+#[test]
+fn gary_dd0a4616a658() {
+    sentence(
+        "Nancy has only one innocent neighbor on the edges",
+        SentenceKind::UnitsShareNTraits(
+            [Unit::neighbor("Nancy"), (Unit::Edges)],
+            Quantity::Exact(1),
+        ),
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn olga_d9b7f6418e96() {
+    sentence(
+        "2 of Gus' neighbors on the edges are innocent",
+        SentenceKind::UnitsShareNTraits([Unit::neighbor("Gus"), Unit::Edges], Quantity::Exact(2)),
+        Judgment::Innocent,
     );
 }
 

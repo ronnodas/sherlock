@@ -43,13 +43,13 @@ impl Sentence {
             Self::is_one_of_n_traits_in_unit,
             Self::more_traits_in_unit_than_unit,
             Self::units_share_n_traits,
+            Self::each_unit_in_series_has_n_traits,
             Self::number_of_traits_in_unit,
             Self::only_one_person_in_unit_has_exactly_n_trait_neighbors,
-            Self::only_one_line_has_exactly_n_traits,
-            Self::only_line_has_exactly_n_traits,
+            Self::only_one_unit_in_series_has_exactly_n_traits,
+            Self::only_given_unit_has_exactly_n_traits,
             Self::unit_shares_n_out_of_n_traits_with_unit,
             Self::equal_number_of_traits_in_units,
-            Self::each_line_has_n_traits,
             Self::more_traits_in_unit,
             Self::has_trait,
             Self::at_most_n_traits_in_neighbors_in_unit,
@@ -149,12 +149,20 @@ impl Sentence {
             ),
             separated_pair(
                 name,
-                " has ",
+                alt((" has ", " have ")),
                 terminated(quantified_judgment, (" ", neighbor_any)),
             )
             .map(|(name, (quantity, judgment))| (quantity, judgment, Unit::Neighbor(name))),
             separated_pair(
-                quantified_profession,
+                alt((
+                    separated_pair(
+                        quantity,
+                        (" out of ", determiner, " "),
+                        quantified_profession,
+                    )
+                    .map(|(quantity, (_total, profession))| (quantity, profession)),
+                    quantified_profession,
+                )),
                 (alt((" has ", " have ")), alt(("an ", "a "))),
                 (
                     judgment_singular,
@@ -205,34 +213,41 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn only_one_line_has_exactly_n_traits(input: &mut &str) -> Result<Self> {
+    fn only_one_unit_in_series_has_exactly_n_traits(input: &mut &str) -> Result<Self> {
         separated_pair(
             preceded("Only one ", line_kind),
             " has ",
             quantified_judgment,
         )
         .map(|(kind, (count, judgment))| Self {
-            kind: SentenceKind::OnlyOneLineHasNTraits(kind, count),
+            kind: SentenceKind::OnlyOneUnitInSeriesHasNTraits(kind.into(), count),
             judgment,
         })
         .parse_next(input)
     }
 
-    fn only_line_has_exactly_n_traits(input: &mut &str) -> Result<Self> {
-        (
-            line,
-            " is the only ",
-            line_kind,
-            " with ",
-            quantified_judgment,
-        )
-            .verify(|&(line, _, kind, _, _)| line.kind() == kind)
+    fn only_given_unit_has_exactly_n_traits(input: &mut &str) -> Result<Self> {
+        alt((
+            separated_pair(
+                line,
+                " is the only ",
+                separated_pair(line_kind, " with ", quantified_judgment),
+            )
+            .verify(|&(line, (kind, _))| line.kind() == kind)
             .context(StrContext::Label("a matching row/column"))
-            .map(|(line, _, _, _, (count, judgment))| Self {
-                kind: SentenceKind::OnlyGivenLineHasNTraits(line, count),
-                judgment,
-            })
-            .parse_next(input)
+            .map(|(line, (_, (quantity, judgment)))| (line.into(), quantity, judgment)),
+            separated_pair(
+                name,
+                " is the only one with ",
+                terminated(quantified_judgment, (" ", neighbor_any)),
+            )
+            .map(|(name, (quantity, judgment))| (UnitInSeries::Neighbor(name), quantity, judgment)),
+        ))
+        .map(|(unit, count, judgment)| Self {
+            kind: SentenceKind::OnlyGivenUnitHasNTraits(unit, count),
+            judgment,
+        })
+        .parse_next(input)
     }
 
     fn unit_shares_n_out_of_n_traits_with_unit(input: &mut &str) -> Result<Self> {
@@ -327,6 +342,14 @@ impl Sentence {
             .map(|((quantity, (name, unit)), judgment)| {
                 ([Unit::Neighbor(name), unit], judgment, quantity)
             }),
+            separated_pair(
+                name,
+                " has ",
+                separated_pair(quantified_judgment, delimited(" ", neighbor_any, " "), unit),
+            )
+            .map(|(name, ((quantity, judgment), unit))| {
+                ([Unit::Neighbor(name), unit], judgment, quantity)
+            }),
         ))
         .map(|([a, b], judgment, quantity)| Self {
             kind: SentenceKind::UnitsShareNTraits([a, b], quantity),
@@ -367,13 +390,24 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn each_line_has_n_traits(input: &mut &str) -> Result<Self> {
-        separated_pair(preceded("Each ", line_kind), " has ", quantified_judgment)
-            .map(|(kind, (quantity, judgment))| Self {
-                kind: SentenceKind::EachLineHasNTraits(kind, quantity),
-                judgment,
-            })
-            .parse_next(input)
+    fn each_unit_in_series_has_n_traits(input: &mut &str) -> Result<Self> {
+        alt((
+            separated_pair(
+                preceded("Each ", line_kind).map(Series::from),
+                " has ",
+                quantified_judgment,
+            ),
+            separated_pair(
+                "Everyone".value(Series::Neighbor),
+                " has ",
+                terminated(quantified_judgment, (" ", neighbor_any)),
+            ),
+        ))
+        .map(|(series, (quantity, judgment))| Self {
+            kind: SentenceKind::EachUnitInSeriesHasNTraits(series, quantity),
+            judgment,
+        })
+        .parse_next(input)
     }
 
     fn more_traits_in_unit(input: &mut &str) -> Result<Self> {
@@ -431,9 +465,9 @@ pub(crate) enum SentenceKind {
     MoreTraitsInUnit(Unit),
     NumberOfTraitsInUnit(Unit, Quantity),
     OnlyOnePersonInUnitHasNTraitNeighbors(Unit, Quantity, Option<NameRecipe>),
-    EachLineHasNTraits(LineKind, Quantity),
-    OnlyOneLineHasNTraits(LineKind, Quantity),
-    OnlyGivenLineHasNTraits(Line, Quantity),
+    EachUnitInSeriesHasNTraits(Series, Quantity),
+    OnlyOneUnitInSeriesHasNTraits(Series, Quantity),
+    OnlyGivenUnitHasNTraits(UnitInSeries, Quantity),
     UnitSharesNOutOfNTraitsWithUnit {
         quantity: Quantity,
         quantified: Unit,
@@ -474,20 +508,21 @@ impl AddContext for SentenceKind {
             Self::OnlyOnePersonInUnitHasNTraitNeighbors(unit, quantity, name) => {
                 unit.unique_member_has_n_neighbors(quantity, name.as_ref(), context)?
             }
-            Self::OnlyOneLineHasNTraits(kind, quantity) => {
-                let sets = kind.all().into_iter1().map(Set::from).collect1();
+            Self::OnlyOneUnitInSeriesHasNTraits(series, quantity) => {
+                let sets = series.all(context);
                 vec![HintKind::UniqueWithCount(sets, quantity)]
             }
-            Self::EachLineHasNTraits(kind, quantity) => kind
-                .all()
+            Self::EachUnitInSeriesHasNTraits(kind, quantity) => kind
+                .all(context)
                 .into_iter()
-                .map(|line| HintKind::Count(line.into(), quantity))
+                .map(|set| HintKind::Count(set, quantity))
                 .collect(),
-            Self::OnlyGivenLineHasNTraits(line, quantity) => {
-                let equal = HintKind::Count(line.into(), quantity);
-                line.others()
+            Self::OnlyGivenUnitHasNTraits(unit, quantity) => {
+                let others = unit.others(context)?;
+                let equal = HintKind::Count(Unit::from(unit).add_context(context)?, quantity);
+                others
                     .into_iter()
-                    .map(|other| HintKind::Count(other.into(), quantity).not())
+                    .map(|other| HintKind::Count(other, quantity).not())
                     .chain(once(equal))
                     .collect()
             }
@@ -549,25 +584,20 @@ impl Unit {
             if !set.contains(&coord) {
                 bail!("{name:?} does not belong to {self:?}")
             }
-            once(HintKind::Count(
-                Coordinate::neighbors(coord).collect(),
-                quantity,
-            ))
-            .chain(
-                set.into_iter()
-                    .filter(|&other| other != coord)
-                    .map(|other| {
-                        HintKind::Count(Coordinate::neighbors(other).collect(), quantity).not()
-                    }),
-            )
-            .collect()
+            once(HintKind::Count(coord.neighbors().collect(), quantity))
+                .chain(
+                    set.into_iter()
+                        .filter(|&other| other != coord)
+                        .map(|other| HintKind::Count(other.neighbors().collect(), quantity).not()),
+                )
+                .collect()
         } else {
             let Ok(set) = HashSet1::try_from(set) else {
                 bail!("empty unit {self:?} cannnot have unique member")
             };
             let sets = set
                 .into_iter1()
-                .map(|coord| Coordinate::neighbors(coord).collect())
+                .map(|coord| coord.neighbors().collect())
                 .collect1();
             vec![HintKind::UniqueWithCount(sets, quantity)]
         };
@@ -604,12 +634,7 @@ impl Unit {
         Ok(self
             .add_context(context)?
             .into_iter()
-            .map(|coord| {
-                HintKind::Count(
-                    Coordinate::neighbors(coord).collect(),
-                    Quantity::AtMost(number),
-                )
-            })
+            .map(|coord| HintKind::Count(coord.neighbors().collect(), Quantity::AtMost(number)))
             .collect())
     }
 
@@ -661,18 +686,18 @@ impl AddContext for &Unit {
             }
             Unit::Neighbor(name) => {
                 let center = name.add_context(context)?;
-                Coordinate::neighbors(center).collect()
+                center.neighbors().collect()
             }
             Unit::Profession(profession) => context
                 .grid
-                .by_profession(profession)?
+                .profession_as_set(profession)?
                 .clone()
                 .into_hash_set(),
             Unit::Edges => Coordinate::edges().collect(),
             Unit::Corners => Coordinate::corners().collect(),
             Unit::ProfessionShift(profession, direction) => context
                 .grid
-                .by_profession(profession)?
+                .profession_as_set(profession)?
                 .into_iter()
                 .filter_map(|coord| coord.step(*direction))
                 .collect(),
@@ -680,7 +705,7 @@ impl AddContext for &Unit {
                 let [a, b] = names.each_ref().map(|name| name.add_context(context));
                 Coordinate::between([a?, b?])?
             }
-            Unit::All => Coordinate::all().collect(),
+            Unit::All => Coordinate::all().into_iter().collect(),
             Unit::Quantified(inner, quantity) => {
                 let set = inner.add_context(context)?;
                 if !quantity.matches(set.len()) {
@@ -739,8 +764,9 @@ impl UnitInSeries {
             Self::Neighbor(name) => {
                 let coord = name.add_context(context)?;
                 Ok(Coordinate::all()
+                    .into_iter()
                     .filter(|&other| other != coord)
-                    .map(|other| Coordinate::neighbors(other).collect())
+                    .map(|other| other.neighbors().collect())
                     .try_collect1()
                     .unwrap_or_else(|_empty| unreachable!()))
             }
@@ -783,6 +809,38 @@ impl From<UnitInSeries> for Unit {
             UnitInSeries::Profession(profession) => Self::Profession(profession),
             UnitInSeries::Neighbor(name) => Self::Neighbor(name),
         }
+    }
+}
+
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Series {
+    Line(LineKind),
+    // Profession,
+    Neighbor,
+}
+
+impl Series {
+    fn all(self, _context: Context) -> Vec1<Set> {
+        match self {
+            Self::Line(line_kind) => line_kind.all().into_iter1().map(Set::from).collect1(),
+            // Self::Profession => context
+            //     .grid
+            //     .by_profession()
+            //     .values()
+            //     .map(|set| set.clone().into_hash_set())
+            //     .try_collect1()
+            //     .expect("total len 20"),
+            Self::Neighbor => Coordinate::all()
+                .map(|center| center.neighbors().collect())
+                .collect1(),
+        }
+    }
+}
+
+impl From<LineKind> for Series {
+    fn from(kind: LineKind) -> Self {
+        Self::Line(kind)
     }
 }
 
@@ -898,7 +956,10 @@ fn name_possessive(input: &mut &str) -> Result<NameRecipe> {
     alt((
         "my".value(NameRecipe::Me),
         raw_name
-            .verify_map(|s| s.strip_suffix("'s"))
+            .verify_map(|s| {
+                s.strip_suffix("'s")
+                    .or_else(|| s.strip_suffix("'").filter(|name| name.ends_with('s')))
+            })
             .map(|name| NameRecipe::Other(name.to_owned())),
     ))
     .parse_next(input)
