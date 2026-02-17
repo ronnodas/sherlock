@@ -570,6 +570,55 @@ fn olga_d9b7f6418e96() {
     );
 }
 
+#[test]
+fn julie_puzzle_pack_1_1() {
+    sentence(
+        "Terry is one of two or more innocents on the edges",
+        SentenceKind::IsOneOfNTraitsInUnit(Unit::Edges, "Terry".into(), Quantity::AtLeast(2)),
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn olof_puzzle_pack_1_1() {
+    sentence(
+        "The only criminal below Julie is Terry's neighbor",
+        SentenceKind::UnitSharesNOutOfNTraitsWithUnit {
+            quantity: Quantity::Exact(1),
+            quantified: Unit::Direction(Direction::Below, "Julie".into()),
+            other: Unit::neighbor("Terry"),
+            intersection: Quantity::Exact(1),
+        },
+        Judgment::Criminal,
+    );
+}
+
+#[test]
+fn flora_puzzle_pack_1_2() {
+    sentence(
+        "Nicole's only innocent neighbor is Martin's neighbor",
+        SentenceKind::UnitSharesNOutOfNTraitsWithUnit {
+            quantity: Quantity::Exact(1),
+            quantified: Unit::neighbor("Nicole"),
+            other: Unit::neighbor("Martin"),
+            intersection: Quantity::Exact(1),
+        },
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn xia_puzzle_pack_1_2() {
+    sentence(
+        "I have more innocent neighbors than Olivia",
+        SentenceKind::MoreTraitsInUnitThanUnit {
+            big: Unit::Neighbor(Name::Me),
+            small: Unit::neighbor("Olivia"),
+        },
+        Judgment::Innocent,
+    );
+}
+
 fn sentence(input: &str, kind: SentenceKind, judgment: Judgment) {
     parser(Sentence::any, input, &Sentence { kind, judgment });
 }

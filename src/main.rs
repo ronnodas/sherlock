@@ -377,6 +377,8 @@ mod tests {
             include_str!("../samples/2026-02-08-6f3e400c1d18-solved.html"),
             include_str!("../samples/2026-02-09-432137b5980e-solved.html"),
             include_str!("../samples/2026-02-10-solved.html"),
+            include_str!("../samples/puzzle-pack-1-1-solved.html"),
+            include_str!("../samples/puzzle-pack-1-2-solved.html"),
         ];
 
         for html in solved_htmls {

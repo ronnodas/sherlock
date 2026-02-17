@@ -6,9 +6,11 @@ use mitsein::hash_set1::HashSet1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 use winnow::ascii::dec_uint;
-use winnow::combinator::{alt, delimited, opt, preceded, separated_pair, terminated};
+use winnow::combinator::{
+    alt, delimited, dispatch, empty, fail, opt, preceded, separated_pair, terminated,
+};
 use winnow::error::{ParserError, StrContext};
-use winnow::token::take_while;
+use winnow::token::{any, take_while};
 use winnow::{Parser, Result};
 
 use crate::puzzle::Judgment;
@@ -24,11 +26,13 @@ impl Sentence {
     pub(crate) fn parse(hint: &str) -> anyhow::Result<Self> {
         Self::parse_cased(hint).or_else(|e| {
             let mut hint = hint.to_owned();
-            let Some(first) = hint.get_mut(..1) else {
-                return Err(e);
-            };
-            first.make_ascii_lowercase();
-            Self::parse_cased(&hint).map_err(|_lower_case_err| e)
+            if let Some(first) = hint.get_mut(..1) {
+                first.make_ascii_lowercase();
+                if let Ok(parsed) = Self::parse_cased(&hint) {
+                    return Ok(parsed);
+                }
+            }
+            Err(e)
         })
     }
 
@@ -127,7 +131,11 @@ impl Sentence {
             }),
             (
                 name,
-                delimited(" has more ", judgment_singular, " neighbors than "),
+                delimited(
+                    (alt((" has ", " have ")), "more "),
+                    judgment_singular,
+                    " neighbors than ",
+                ),
                 name,
             )
                 .map(|(big, judgment, small)| Self {
@@ -295,6 +303,31 @@ impl Sentence {
                     judgment,
                 },
             ),
+            separated_pair(preceded("The only ", judged_unit), " is ", unit).map(
+                |((judgment, quantified), other)| Self {
+                    kind: SentenceKind::UnitSharesNOutOfNTraitsWithUnit {
+                        quantity: Quantity::Exact(1),
+                        quantified,
+                        other,
+                        intersection: Quantity::Exact(1),
+                    },
+                    judgment,
+                },
+            ),
+            separated_pair(
+                separated_pair(name_possessive, " only ", judgment_singular),
+                " neighbor is ",
+                terminated(name_possessive, " neighbor"),
+            )
+            .map(|((quantified, judgment), other)| Self {
+                kind: SentenceKind::UnitSharesNOutOfNTraitsWithUnit {
+                    quantity: Quantity::Exact(1),
+                    quantified: Unit::Neighbor(quantified),
+                    other: Unit::Neighbor(other),
+                    intersection: Quantity::Exact(1),
+                },
+                judgment,
+            }),
         ))
         .parse_next(input)
     }
@@ -913,6 +946,7 @@ fn quantity(input: &mut &str) -> Result<Quantity> {
     alt((
         "both".value(Quantity::Exact(2)),
         "no".value(Quantity::Exact(0)),
+        terminated(number, " or more").map(Quantity::AtLeast),
         preceded(opt(alt(("exactly ", "only "))), number).map(Quantity::Exact),
         preceded("at least ", number).map(Quantity::AtLeast),
         delimited("an ", parity, " number of").map(Quantity::Parity),
@@ -921,7 +955,7 @@ fn quantity(input: &mut &str) -> Result<Quantity> {
 }
 
 fn number(input: &mut &str) -> Result<u8> {
-    alt((dec_uint, "one".value(1))).parse_next(input)
+    alt((dec_uint, "one".value(1), "two".value(2))).parse_next(input)
 }
 
 fn parity(input: &mut &str) -> Result<Parity> {
@@ -1066,13 +1100,14 @@ fn line_prefixed<'input, T, E: ParserError<&'input str>>(
 }
 
 fn row_bare(input: &mut &str) -> Result<Row> {
-    alt((
-        "1".value(Row::One),
-        "2".value(Row::Two),
-        "3".value(Row::Three),
-        "4".value(Row::Four),
-        "5".value(Row::Five),
-    ))
+    dispatch!(any;
+        '1' => empty.value(Row::One),
+        '2' => empty.value(Row::Two),
+        '3' => empty.value(Row::Three),
+        '4' => empty.value(Row::Four),
+        '5' => empty.value(Row::Five),
+        _ => fail,
+    )
     .parse_next(input)
 }
 
@@ -1081,12 +1116,13 @@ fn column(input: &mut &str) -> Result<Column> {
 }
 
 fn column_bare(input: &mut &str) -> Result<Column> {
-    alt((
-        "A".value(Column::A),
-        "B".value(Column::B),
-        "C".value(Column::C),
-        "D".value(Column::D),
-    ))
+    dispatch!(any;
+        'A' => empty.value(Column::A),
+        'B' => empty.value(Column::B),
+        'C' => empty.value(Column::C),
+        'D' => empty.value(Column::D),
+        _ => fail,
+    )
     .parse_next(input)
 }
 
