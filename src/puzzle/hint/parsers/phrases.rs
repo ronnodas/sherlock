@@ -121,7 +121,7 @@ pub(crate) enum Unit {
     Direction(Direction, NameRecipe),
     Line(Line),
     Profession(Profession),
-    ProfessionShift(Profession, Direction),
+    ProfessionShift(Profession, Direction, Option<Quantity>),
     Neighbor(NameRecipe),
     Between([NameRecipe; 2]),
     Edges,
@@ -257,12 +257,15 @@ impl AddContext for &Unit {
                 .into_hash_set(),
             Unit::Edges => Coordinate::edges().collect(),
             Unit::Corners => Coordinate::corners().collect(),
-            Unit::ProfessionShift(profession, direction) => context
-                .grid
-                .profession_as_set(profession)?
-                .into_iter()
-                .filter_map(|coord| coord.step(*direction))
-                .collect(),
+            Unit::ProfessionShift(profession, direction, total) => {
+                let set = context.grid.profession_as_set(profession)?;
+                if total.is_some_and(|total| !total.matches(set.len().get())) {
+                    bail!("{profession:?} does not have {total:?} members")
+                }
+                set.into_iter()
+                    .filter_map(|coord| coord.step(*direction))
+                    .collect()
+            }
             Unit::Between(names) => {
                 let [a, b] = names.each_ref().map(|name| name.add_context(context));
                 Coordinate::between([a?, b?])?

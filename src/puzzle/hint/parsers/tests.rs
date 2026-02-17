@@ -17,7 +17,7 @@ fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",
         SentenceKind::NumberOfTraitsInUnit(
-            Unit::ProfessionShift("painter".into(), Direction::Left),
+            Unit::ProfessionShift("painter".into(), Direction::Left, Some(Quantity::Exact(2))),
             Quantity::Exact(1),
         ),
         Judgment::Innocent,
@@ -74,7 +74,7 @@ fn uma_2026_01_31() {
     sentence(
         "2 out of the 3 teachers have a criminal directly below them",
         SentenceKind::NumberOfTraitsInUnit(
-            Unit::ProfessionShift("teacher".into(), Direction::Below),
+            Unit::ProfessionShift("teacher".into(), Direction::Below, Some(Quantity::Exact(3))),
             Quantity::Exact(2),
         ),
         Judgment::Criminal,
@@ -107,7 +107,7 @@ fn uma_2026_02_03() {
     sentence(
         "exactly 1 judge has an innocent directly above them",
         SentenceKind::NumberOfTraitsInUnit(
-            Unit::ProfessionShift("judge".into(), Direction::Above),
+            Unit::ProfessionShift("judge".into(), Direction::Above, None),
             Quantity::Exact(1),
         ),
         Judgment::Innocent,
@@ -255,7 +255,7 @@ fn logan_2026_02_06() {
     sentence(
         "exactly 1 farmer has a criminal directly above them",
         SentenceKind::NumberOfTraitsInUnit(
-            Unit::ProfessionShift("farmer".to_owned(), Direction::Above),
+            Unit::ProfessionShift("farmer".to_owned(), Direction::Above, None),
             Quantity::Exact(1),
         ),
         Judgment::Criminal,
@@ -434,7 +434,7 @@ fn will_2026_02_10() {
     sentence(
         "2 of us 3 singers have an innocent directly to the left of us",
         SentenceKind::NumberOfTraitsInUnit(
-            Unit::ProfessionShift("singer".into(), Direction::Left),
+            Unit::ProfessionShift("singer".into(), Direction::Left, Some(Quantity::Exact(3))),
             Quantity::Exact(2),
         ),
         Judgment::Innocent,

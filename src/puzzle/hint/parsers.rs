@@ -184,8 +184,8 @@ impl Sentence {
                         (words(["out", "of"]), word(determiner)),
                         quantified_profession,
                     )
-                    .map(|(quantity, (_total, profession))| (quantity, profession)),
-                    quantified_profession,
+                    .map(|(quantity, (total, profession))| (quantity, Some(total), profession)),
+                    subset_of_profession,
                 )),
                 (word(has_have), word(alt(("an", "a")))),
                 (
@@ -193,8 +193,8 @@ impl Sentence {
                     delimited(word("directly"), direction, word(alt(("them", "us")))),
                 ),
             )
-            .map(|((count, profession), (judgment, direction))| {
-                let unit = Unit::ProfessionShift(profession, direction);
+            .map(|((count, total, profession), (judgment, direction))| {
+                let unit = Unit::ProfessionShift(profession, direction, total);
                 (count, judgment, unit)
             }),
         ))
@@ -653,13 +653,16 @@ fn raw_name<'input>(input: &mut &'input str) -> Result<&'input str> {
 }
 
 fn quantified_profession(input: &mut &[&str]) -> Result<(Quantity, Profession)> {
-    // TODO return another Option<Quantity>
-    separated_pair(
+    separated_pair(quantity, opt(words(["of", "the"])), profession_any).parse_next(input)
+}
+
+fn subset_of_profession(input: &mut &[&str]) -> Result<(Quantity, Option<Quantity>, Profession)> {
+    (
         quantity,
-        opt((word("of"), word(determiner), (opt(quantity)))),
+        opt(preceded(words(("of", determiner)), opt(quantity))).map(Option::flatten),
         profession_any,
     )
-    .parse_next(input)
+        .parse_next(input)
 }
 
 fn direction(input: &mut &[&str]) -> Result<Direction> {
