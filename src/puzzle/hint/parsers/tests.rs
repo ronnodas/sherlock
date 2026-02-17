@@ -1,14 +1,16 @@
 use std::fmt;
 
+use itertools::Itertools as _;
 use winnow::Parser;
 use winnow::error::ParserError;
+use winnow::stream::{Stream, StreamIsPartial};
 
 use crate::puzzle::Judgment;
 use crate::puzzle::grid::{Column, Row};
-use crate::puzzle::hint::parsers::Series;
+use crate::puzzle::hint::recipes::NameRecipe as Name;
 use crate::puzzle::hint::{Direction, LineKind, Parity, Quantity};
 
-use super::{NameRecipe as Name, Sentence, SentenceKind, Unit, UnitInSeries};
+use super::{Sentence, SentenceKind, Series, Unit, UnitInSeries};
 
 #[test]
 fn ryan_2026_01_12() {
@@ -620,17 +622,18 @@ fn xia_puzzle_pack_1_2() {
 }
 
 fn sentence(input: &str, kind: SentenceKind, judgment: Judgment) {
-    parser(Sentence::any, input, &Sentence { kind, judgment });
+    let input = input.split(' ').filter(|s| !s.is_empty()).collect_vec();
+    parser(Sentence::any, &input, &Sentence { kind, judgment });
 }
 
 fn parser<
-    'input,
-    P: Parser<&'input str, T, E>,
+    I: Stream + StreamIsPartial,
+    P: Parser<I, T, E>,
     T: PartialEq + fmt::Debug,
-    E: ParserError<&'input str, Inner: fmt::Debug + ParserError<&'input str>>,
+    E: ParserError<I, Inner: fmt::Debug + ParserError<I>>,
 >(
     mut parser: P,
-    input: &'input str,
+    input: I,
     expected: &T,
 ) {
     let output = parser.parse(input).unwrap();

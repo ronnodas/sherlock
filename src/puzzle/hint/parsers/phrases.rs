@@ -1,0 +1,407 @@
+use std::iter::once;
+use std::ops::Not as _;
+
+use anyhow::bail;
+use mitsein::hash_set1::HashSet1;
+use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
+use mitsein::vec1::Vec1;
+
+use crate::puzzle::Profession;
+use crate::puzzle::grid::{Column, Coordinate, Direction, Row};
+use crate::puzzle::hint::recipes::{AddContext, Context, NameRecipe};
+use crate::puzzle::hint::{HintKind, Line, LineKind, Number, Quantity, Set};
+
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug)]
+pub(crate) enum SentenceKind {
+    // This I think can't actually be "Me"
+    HasTrait(NameRecipe),
+    TraitsAreNeighborsInUnit(Unit, Option<Quantity>),
+    HasMostTraits(UnitInSeries),
+    IsOneOfNTraitsInUnit(Unit, NameRecipe, Quantity),
+    EqualNumberOfTraitsInUnits([Unit; 2]),
+    MoreTraitsInUnitThanUnit {
+        big: Unit,
+        small: Unit,
+    },
+    MoreTraitsInUnit(Unit),
+    NumberOfTraitsInUnit(Unit, Quantity),
+    OnlyOnePersonInUnitHasNTraitNeighbors(Unit, Quantity, Option<NameRecipe>),
+    EachUnitInSeriesHasNTraits(Series, Quantity),
+    OnlyOneUnitInSeriesHasNTraits(Series, Quantity),
+    OnlyGivenUnitHasNTraits(UnitInSeries, Quantity),
+    UnitSharesNOutOfNTraitsWithUnit {
+        quantity: Quantity,
+        quantified: Unit,
+        other: Unit,
+        intersection: Quantity,
+    },
+    UnitsShareNTraits([Unit; 2], Quantity),
+    AtMostNTraitsInNeighborsInUnit(Unit, Number),
+}
+
+impl AddContext for SentenceKind {
+    type Output = Vec<HintKind>;
+
+    fn add_context(self, context: Context<'_>) -> anyhow::Result<Self::Output> {
+        let hints: Vec<HintKind> = match self {
+            Self::TraitsAreNeighborsInUnit(unit, quantity) => {
+                unit.members_are_connected(quantity, context)?
+            }
+            Self::HasMostTraits(unit) => unit.has_most(context)?,
+            Self::IsOneOfNTraitsInUnit(unit, name, quantity) => {
+                let set = unit.add_context(context)?;
+                let coord = name.add_context(context)?;
+                if !set.contains(&coord) {
+                    bail!("{name:?} does not belong to {unit:?}")
+                }
+                vec![HintKind::Count(set, quantity), HintKind::Judgment(coord)]
+            }
+            Self::MoreTraitsInUnitThanUnit { big, small } => {
+                vec![HintKind::Bigger {
+                    big: big.add_context(context)?,
+                    small: small.add_context(context)?,
+                }]
+            }
+            Self::NumberOfTraitsInUnit(unit, quantity) => {
+                let set = unit.add_context(context)?;
+                vec![HintKind::Count(set, quantity)]
+            }
+            Self::OnlyOnePersonInUnitHasNTraitNeighbors(unit, quantity, name) => {
+                unit.unique_member_has_n_neighbors(quantity, name.as_ref(), context)?
+            }
+            Self::OnlyOneUnitInSeriesHasNTraits(series, quantity) => {
+                let sets = series.all(context);
+                vec![HintKind::UniqueWithCount(sets, quantity)]
+            }
+            Self::EachUnitInSeriesHasNTraits(kind, quantity) => kind
+                .all(context)
+                .into_iter()
+                .map(|set| HintKind::Count(set, quantity))
+                .collect(),
+            Self::OnlyGivenUnitHasNTraits(unit, quantity) => {
+                let others = unit.others(context)?;
+                let equal = HintKind::Count(Unit::from(unit).add_context(context)?, quantity);
+                others
+                    .into_iter()
+                    .map(|other| HintKind::Count(other, quantity).not())
+                    .chain(once(equal))
+                    .collect()
+            }
+            Self::UnitSharesNOutOfNTraitsWithUnit {
+                quantity,
+                quantified,
+                other,
+                intersection,
+            } => quantified.intersects_with(&other, intersection, Some(quantity), context)?,
+            Self::UnitsShareNTraits([a, b], quantity) => {
+                a.intersects_with(&b, quantity, None, context)?
+            }
+            Self::EqualNumberOfTraitsInUnits(units) => {
+                let [a, b] = units.map(|unit| unit.add_context(context));
+                vec![HintKind::Equal([a?, b?])]
+            }
+            Self::MoreTraitsInUnit(unit) => {
+                vec![HintKind::Majority(unit.add_context(context)?)]
+            }
+            Self::HasTrait(name) => {
+                vec![HintKind::Judgment(name.add_context(context)?)]
+            }
+            Self::AtMostNTraitsInNeighborsInUnit(unit, number) => {
+                unit.members_have_at_most_neighbors(number, context)?
+            }
+        };
+        Ok(hints)
+    }
+}
+
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Clone, Debug)]
+pub(crate) enum Unit {
+    Direction(Direction, NameRecipe),
+    Line(Line),
+    Profession(Profession),
+    ProfessionShift(Profession, Direction),
+    Neighbor(NameRecipe),
+    Between([NameRecipe; 2]),
+    Edges,
+    Corners,
+    All,
+    Quantified(Box<Self>, Quantity),
+}
+
+impl Unit {
+    pub(crate) fn unique_member_has_n_neighbors(
+        &self,
+        quantity: Quantity,
+        name: Option<&NameRecipe>,
+        context: Context<'_>,
+    ) -> anyhow::Result<Vec<HintKind>> {
+        let set = self.add_context(context)?;
+        let coord = name
+            .as_ref()
+            .map(|name| name.add_context(context))
+            .transpose()?;
+        let hints = if let Some(coord) = coord {
+            if !set.contains(&coord) {
+                bail!("{name:?} does not belong to {self:?}")
+            }
+            once(HintKind::Count(coord.neighbors().collect(), quantity))
+                .chain(
+                    set.into_iter()
+                        .filter(|&other| other != coord)
+                        .map(|other| HintKind::Count(other.neighbors().collect(), quantity).not()),
+                )
+                .collect()
+        } else {
+            let Ok(set) = HashSet1::try_from(set) else {
+                bail!("empty unit {self:?} cannnot have unique member")
+            };
+            let sets = set
+                .into_iter1()
+                .map(|coord| coord.neighbors().collect())
+                .collect1();
+            vec![HintKind::UniqueWithCount(sets, quantity)]
+        };
+        Ok(hints)
+    }
+
+    pub(crate) fn intersects_with(
+        &self,
+        other: &Self,
+        intersection: Quantity,
+        quantity: Option<Quantity>,
+        context: Context<'_>,
+    ) -> anyhow::Result<Vec<HintKind>> {
+        let self_ = self.add_context(context)?;
+        let other = other
+            .add_context(context)?
+            .into_iter()
+            .filter(|other| self_.contains(other))
+            .collect();
+        let intersection = HintKind::Count(other, intersection);
+        let hints = quantity
+            .map(|quantity| HintKind::Count(self_, quantity))
+            .into_iter()
+            .chain(once(intersection))
+            .collect();
+        Ok(hints)
+    }
+
+    pub(crate) fn members_have_at_most_neighbors(
+        &self,
+        number: u8,
+        context: Context<'_>,
+    ) -> anyhow::Result<Vec<HintKind>> {
+        Ok(self
+            .add_context(context)?
+            .into_iter()
+            .map(|coord| HintKind::Count(coord.neighbors().collect(), Quantity::AtMost(number)))
+            .collect())
+    }
+
+    pub(crate) fn members_are_connected(
+        self,
+        quantity: Option<Quantity>,
+        context: Context<'_>,
+    ) -> anyhow::Result<Vec<HintKind>> {
+        let set = self.add_context(context)?;
+        Ok(quantity
+            .map(|quantity| HintKind::Count(set.clone(), quantity))
+            .into_iter()
+            .chain(once(HintKind::Connected(set)))
+            .collect())
+    }
+
+    pub(crate) fn quantify(self, quantity: Quantity) -> Self {
+        Self::Quantified(Box::new(self), quantity)
+    }
+
+    pub(crate) fn maybe_quantify(self, quantity: Option<Quantity>) -> Self {
+        if let Some(quantity) = quantity {
+            self.quantify(quantity)
+        } else {
+            self
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn profession(profession: impl Into<Profession>) -> Self {
+        Self::Profession(profession.into())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn neighbor(name: impl Into<NameRecipe>) -> Self {
+        Self::Neighbor(name.into())
+    }
+}
+
+impl AddContext for &Unit {
+    type Output = Set;
+
+    fn add_context(self, context: Context<'_>) -> anyhow::Result<Self::Output> {
+        let set = match self {
+            &Unit::Line(line) => line.into(),
+            Unit::Direction(direction, name) => {
+                let start = name.add_context(context)?;
+                Coordinate::direction(start, *direction).collect()
+            }
+            Unit::Neighbor(name) => {
+                let center = name.add_context(context)?;
+                center.neighbors().collect()
+            }
+            Unit::Profession(profession) => context
+                .grid
+                .profession_as_set(profession)?
+                .clone()
+                .into_hash_set(),
+            Unit::Edges => Coordinate::edges().collect(),
+            Unit::Corners => Coordinate::corners().collect(),
+            Unit::ProfessionShift(profession, direction) => context
+                .grid
+                .profession_as_set(profession)?
+                .into_iter()
+                .filter_map(|coord| coord.step(*direction))
+                .collect(),
+            Unit::Between(names) => {
+                let [a, b] = names.each_ref().map(|name| name.add_context(context));
+                Coordinate::between([a?, b?])?
+            }
+            Unit::All => Coordinate::all().into_iter().collect(),
+            Unit::Quantified(inner, quantity) => {
+                let set = inner.add_context(context)?;
+                if !quantity.matches(set.len()) {
+                    bail!("{inner:?} does not have {quantity:?} members")
+                }
+                set
+            }
+        };
+        Ok(set)
+    }
+}
+
+impl From<Line> for Unit {
+    fn from(v: Line) -> Self {
+        Self::Line(v)
+    }
+}
+
+impl From<Row> for Unit {
+    fn from(row: Row) -> Self {
+        Self::Line(Line::Row(row))
+    }
+}
+
+impl From<Column> for Unit {
+    fn from(column: Column) -> Self {
+        Self::Line(Line::Column(column))
+    }
+}
+
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug)]
+pub(crate) enum UnitInSeries {
+    Line(Line),
+    Profession(Profession),
+    Neighbor(NameRecipe),
+}
+
+impl UnitInSeries {
+    pub(crate) fn has_most(self, context: Context<'_>) -> Result<Vec<HintKind>, anyhow::Error> {
+        let small = self.others(context)?;
+        let big = Unit::from(self).add_context(context)?;
+        Ok(small
+            .into_iter()
+            .map(|small| HintKind::Bigger {
+                big: big.clone(),
+                small,
+            })
+            .collect())
+    }
+
+    pub(crate) fn others(&self, context: Context<'_>) -> anyhow::Result<Vec1<Set>> {
+        match self {
+            Self::Line(line) => Ok(line.others().into_iter1().map(Set::from).collect1()),
+            Self::Profession(profession) => context.grid.other_professions(profession),
+            Self::Neighbor(name) => {
+                let coord = name.add_context(context)?;
+                Ok(Coordinate::all()
+                    .into_iter()
+                    .filter(|&other| other != coord)
+                    .map(|other| other.neighbors().collect())
+                    .try_collect1()
+                    .unwrap_or_else(|_empty| unreachable!()))
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn neighbor(name: impl Into<NameRecipe>) -> Self {
+        Self::Neighbor(name.into())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn profession(profession: impl Into<Profession>) -> Self {
+        Self::Profession(profession.into())
+    }
+}
+
+impl From<Line> for UnitInSeries {
+    fn from(v: Line) -> Self {
+        Self::Line(v)
+    }
+}
+
+impl From<Row> for UnitInSeries {
+    fn from(row: Row) -> Self {
+        Self::Line(Line::Row(row))
+    }
+}
+
+impl From<Column> for UnitInSeries {
+    fn from(column: Column) -> Self {
+        Self::Line(Line::Column(column))
+    }
+}
+
+impl From<UnitInSeries> for Unit {
+    fn from(value: UnitInSeries) -> Self {
+        match value {
+            UnitInSeries::Line(line) => Self::Line(line),
+            UnitInSeries::Profession(profession) => Self::Profession(profession),
+            UnitInSeries::Neighbor(name) => Self::Neighbor(name),
+        }
+    }
+}
+
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Series {
+    Line(LineKind),
+    // Profession,
+    Neighbor,
+}
+
+impl Series {
+    pub(crate) fn all(self, _context: Context) -> Vec1<Set> {
+        match self {
+            Self::Line(line_kind) => line_kind.all().into_iter1().map(Set::from).collect1(),
+            // Self::Profession => context
+            //     .grid
+            //     .by_profession()
+            //     .values()
+            //     .map(|set| set.clone().into_hash_set())
+            //     .try_collect1()
+            //     .expect("total len 20"),
+            Self::Neighbor => Coordinate::all()
+                .map(|center| center.neighbors().collect())
+                .collect1(),
+        }
+    }
+}
+
+impl From<LineKind> for Series {
+    fn from(kind: LineKind) -> Self {
+        Self::Line(kind)
+    }
+}
