@@ -171,12 +171,8 @@ impl Sentence {
     fn number_of_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
         alt((
             preceded(there_is, quantified_judged_unit),
-            separated_pair(
-                word(name),
-                word(has_have),
-                terminated(quantified_judgment, word(neighbor_any)),
-            )
-            .map(|(name, (quantity, judgment))| (quantity, judgment, Unit::Neighbor(name))),
+            separated_pair(word(name), word(has_have), quantified_judged_neighbors)
+                .map(|(name, (quantity, judgment))| (quantity, judgment, Unit::Neighbor(name))),
             separated_pair(
                 alt((
                     separated_pair(
@@ -209,17 +205,11 @@ impl Sentence {
         alt((
             separated_pair(
                 preceded(
-                    (
-                        alt((
-                            words(["Only", "one", "of"]).take(),
-                            words(["Only", "one"]).take(),
-                        )),
-                        opt(word("person")),
-                    ),
+                    (words(["Only", "one"]), opt(word(alt(("of", "person"))))),
                     unit,
                 ),
                 word("has"),
-                terminated((quantity, word(judgment_singular)), word(neighbor_any)),
+                quantified_judged_neighbors,
             )
             .map(|(unit, (count, judgment))| Self {
                 kind: SentenceKind::OnlyOnePersonInUnitHasNTraitNeighbors(unit, count, None),
@@ -228,11 +218,7 @@ impl Sentence {
             separated_pair(
                 word(name),
                 words(["is", "the", "only", "one"]),
-                separated_pair(
-                    unit,
-                    word("with"),
-                    terminated(quantified_judgment, word(neighbor_any)),
-                ),
+                separated_pair(unit, word("with"), quantified_judged_neighbors),
             )
             .map(|(name, (unit, (quantity, judgment)))| Self {
                 kind: SentenceKind::OnlyOnePersonInUnitHasNTraitNeighbors(
@@ -272,7 +258,7 @@ impl Sentence {
             separated_pair(
                 word(name),
                 words(["is", "the", "only", "one", "with"]),
-                terminated(quantified_judgment, word(neighbor_any)),
+                quantified_judged_neighbors,
             )
             .map(|(name, (quantity, judgment))| (UnitInSeries::Neighbor(name), quantity, judgment)),
         ))
@@ -306,19 +292,12 @@ impl Sentence {
                 },
             ),
             separated_pair(
-                separated_pair(
-                    quantity,
-                    word("of"),
-                    (
-                        word(name_possessive),
-                        terminated(quantified_judgment, word(neighbor_any)),
-                    ),
-                ),
+                separated_pair(quantity, word("of"), possessive_quantified_judged_neighbors),
                 (word("also"), word(neighbor_any)),
                 word(name),
             )
             .map(
-                |((intersection, (quantified, (quantity, judgment))), other)| Self {
+                |((intersection, (quantified, quantity, judgment)), other)| Self {
                     kind: SentenceKind::UnitSharesNOutOfNTraitsWithUnit {
                         quantity,
                         quantified: Unit::Neighbor(quantified),
@@ -365,16 +344,7 @@ impl Sentence {
             (
                 preceded(opt(there_is), quantified_judged_unit),
                 alt((
-                    preceded(
-                        alt((
-                            words(["who", "neighbor"]).void(),
-                            word("neighbor").void(),
-                            words(["is", "neighboring"]).void(),
-                            words(["are", "neighboring"]).void(),
-                        )),
-                        word(name),
-                    )
-                    .map(Unit::Neighbor),
+                    preceded(neighboring_verb, word(name)).map(Unit::Neighbor),
                     preceded(opt(alt((word("is"), word("are")))), unit),
                 )),
             )
@@ -426,7 +396,7 @@ impl Sentence {
                 words(["There", "are", "as", "many"]),
                 separated_pair(
                     judged_unit,
-                    terminated(word("as"), opt(words(["there", "are"]))),
+                    (word("as"), opt(words(["there", "are"]))),
                     judged_unit,
                 ),
             )
@@ -458,7 +428,7 @@ impl Sentence {
             separated_pair(
                 word("Everyone").value(Series::Neighbor),
                 word("has"),
-                terminated(quantified_judgment, word(neighbor_any)),
+                quantified_judged_neighbors,
             ),
         ))
         .map(|(series, (quantity, judgment))| Self {
@@ -560,12 +530,9 @@ fn quantified_judged_unit(input: &mut &[&str]) -> Result<(Quantity, Judgment, Un
             word("neighboring"),
             word(name),
         )
-        .map(|((count, judgment), name)| (count, judgment, Unit::Neighbor(name))),
-        (
-            word(name_possessive),
-            terminated(quantified_judgment, word("neighbors")),
-        )
-            .map(|(name, (quantity, judgment))| (quantity, judgment, Unit::Neighbor(name))),
+        .map(|((quantity, judgment), name)| (quantity, judgment, Unit::Neighbor(name))),
+        possessive_quantified_judged_neighbors
+            .map(|(name, quantity, judgment)| (quantity, judgment, Unit::Neighbor(name))),
         qualified_unit.verify_map(|(count, judgment, unit)| Some((count?, judgment?, unit))),
     ))
     .parse_next(input)
@@ -601,6 +568,18 @@ fn parity(input: &mut &[&str]) -> Result<Parity> {
 
 fn quantified_judgment(input: &mut &[&str]) -> Result<(Quantity, Judgment)> {
     (quantity, word(judgment_any)).parse_next(input)
+}
+
+fn quantified_judged_neighbors(input: &mut &[&str]) -> Result<(Quantity, Judgment)> {
+    terminated(quantified_judgment, word(neighbor_any)).parse_next(input)
+}
+
+fn possessive_quantified_judged_neighbors(
+    input: &mut &[&str],
+) -> Result<(NameRecipe, Quantity, Judgment)> {
+    (word(name_possessive), quantified_judged_neighbors)
+        .map(|(name, (quantity, judgment))| (name, quantity, judgment))
+        .parse_next(input)
 }
 
 fn judgment_any(input: &mut &str) -> Result<Judgment> {
@@ -720,6 +699,18 @@ fn there_is<'input, 'inner: 'input>(
 
 fn has_have<'input>(input: &mut &'input str) -> Result<&'input str> {
     alt(("has", "have")).parse_next(input)
+}
+
+fn neighboring_verb<'input, 'inner: 'input>(
+    input: &mut &'input [&'inner str],
+) -> Result<&'input [&'inner str]> {
+    alt((
+        words(["who", "neighbor"]).take(),
+        word("neighbor").take(),
+        words(["is", "neighboring"]).take(),
+        words(["are", "neighboring"]).take(),
+    ))
+    .parse_next(input)
 }
 
 fn between(input: &mut &[&str]) -> Result<Unit> {
@@ -873,7 +864,9 @@ words_impl!(3; a, b, c);
 words_impl!(4; a, b, c, d);
 words_impl!(5; a, b, c, d, e);
 
-words_impl!((P1, O1), (P2, O2); a, b);
+words_impl!((P0, O0), (P1, O1); a, b);
+words_impl!((P0, O0), (P1, O1), (P2, O2); a, b, c);
+words_impl!((P0, O0), (P1, O1), (P2, O2), (P3, O3); a, b, c, d);
 
 #[cfg(test)]
 mod tests;
