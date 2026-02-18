@@ -240,20 +240,18 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
                 }
                 HintOption::Save => {
                     let save = puzzle.save_grid()?;
-                    let name = puzzle.name();
-                    let prompt = Text::new("Save file:");
-                    let path;
-                    let prompt = if let Some(name) = name {
-                        path = Path::new(SAVE_DIRECTORY)
-                            .join(name)
-                            .with_extension("ron")
-                            .display()
-                            .to_string();
-                        prompt.with_initial_value(&path)
-                    } else {
-                        prompt
-                    };
-                    let path = PathBuf::from(prompt.prompt()?);
+                    let path = puzzle.name().map_or_else(
+                        || SAVE_DIRECTORY.to_owned(),
+                        |name| {
+                            Path::new(SAVE_DIRECTORY)
+                                .join(name)
+                                .with_added_extension("ron")
+                                .display()
+                                .to_string()
+                        },
+                    );
+                    let path = Text::new("Save file:").with_initial_value(&path).prompt()?;
+                    let path = PathBuf::from(path);
                     if let Some(file_stem) = path.file_stem().and_then(OsStr::to_str) {
                         puzzle.set_name(file_stem.to_owned());
                     }

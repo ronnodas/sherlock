@@ -22,24 +22,23 @@ pub(crate) use phrases::{SentenceKind, Series, Unit, UnitInSeries};
 
 impl Sentence {
     pub(crate) fn parse(hint: &str) -> anyhow::Result<Self> {
-        let mut hint = hint
+        let words = hint
             .split(' ')
             .filter(|word| !word.is_empty())
             .collect_vec();
-        Self::parse_cased(&hint).or_else(move |e| {
-            if let Some(first) = hint.first_mut() {
-                let mut word = (*first).to_owned();
-                if let Some(first_char) = word.get_mut(..1) {
-                    first_char.make_ascii_lowercase();
-                    let hint = once(&*word).chain(hint.into_iter().skip(1)).collect_vec();
-
-                    if let Ok(parsed) = Self::parse_cased(&hint) {
-                        return Ok(parsed);
+        Self::parse_cased(&words)
+            .or_else(move |e| {
+                if let Some(&word) = words.first() {
+                    let mut word = word.to_owned();
+                    if let Some(first_char) = word.get_mut(..1) {
+                        first_char.make_ascii_lowercase();
+                        let words = once(&*word).chain(words.into_iter().skip(1)).collect_vec();
+                        return Self::parse_cased(&words);
                     }
                 }
-            }
-            Err(e)
-        })
+                Err(e)
+            })
+            .map_err(|_err| anyhow!("{hint}"))
     }
 
     fn parse_cased(hint: &[&str]) -> anyhow::Result<Self> {
