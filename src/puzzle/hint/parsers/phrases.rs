@@ -9,34 +9,34 @@ use mitsein::vec1::Vec1;
 use crate::puzzle::Profession;
 use crate::puzzle::grid::{Column, Coordinate, Direction, Row};
 use crate::puzzle::hint::recipes::{AddContext, Context, NameRecipe};
-use crate::puzzle::hint::{HintKind, Line, LineKind, Number, Quantity, Set};
+use crate::puzzle::hint::{Cardinal, HintKind, Line, LineKind, Number, Set};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug)]
 pub(crate) enum SentenceKind {
     // This I think can't actually be "Me"
     HasTrait(NameRecipe),
-    TraitsAreNeighborsInUnit(Unit, Option<Quantity>),
+    TraitsAreNeighborsInUnit(Unit, Option<Number>),
     HasMostTraits(UnitInSeries),
-    IsOneOfNTraitsInUnit(Unit, NameRecipe, Quantity),
+    IsOneOfNTraitsInUnit(Unit, NameRecipe, Cardinal),
     EqualNumberOfTraitsInUnits([Unit; 2]),
     MoreTraitsInUnitThanUnit {
         big: Unit,
         small: Unit,
     },
     MoreTraitsInUnit(Unit),
-    NumberOfTraitsInUnit(Unit, Quantity),
-    OnlyOnePersonInUnitHasNTraitNeighbors(Unit, Quantity, Option<NameRecipe>),
-    EachUnitInSeriesHasNTraits(Series, Quantity),
-    OnlyOneUnitInSeriesHasNTraits(Series, Quantity),
-    OnlyGivenUnitHasNTraits(UnitInSeries, Quantity),
+    NumberOfTraitsInUnit(Unit, Cardinal),
+    OnlyOnePersonInUnitHasNTraitNeighbors(Unit, Cardinal, Option<NameRecipe>),
+    EachUnitInSeriesHasNTraits(Series, Cardinal),
+    OnlyOneUnitInSeriesHasNTraits(Series, Cardinal),
+    OnlyGivenUnitHasNTraits(UnitInSeries, Cardinal),
     UnitSharesNOutOfNTraitsWithUnit {
-        quantity: Quantity,
+        total: Number,
         quantified: Unit,
         other: Unit,
-        intersection: Quantity,
+        intersection: Number,
     },
-    UnitsShareNTraits([Unit; 2], Quantity),
+    UnitsShareNTraits([Unit; 2], Cardinal),
     AtMostNTraitsInNeighborsInUnit(Unit, Number),
 }
 
@@ -89,11 +89,16 @@ impl AddContext for SentenceKind {
                     .collect()
             }
             Self::UnitSharesNOutOfNTraitsWithUnit {
-                quantity,
+                total: quantity,
                 quantified,
                 other,
                 intersection,
-            } => quantified.intersects_with(&other, intersection, Some(quantity), context)?,
+            } => quantified.intersects_with(
+                &other,
+                Cardinal::Exact(intersection),
+                Some(quantity),
+                context,
+            )?,
             Self::UnitsShareNTraits([a, b], quantity) => {
                 a.intersects_with(&b, quantity, None, context)?
             }
@@ -121,19 +126,19 @@ pub(crate) enum Unit {
     Direction(Direction, NameRecipe),
     Line(Line),
     Profession(Profession),
-    ProfessionShift(Profession, Direction, Option<Quantity>),
+    ProfessionShift(Profession, Direction, Option<Number>),
     Neighbor(NameRecipe),
     Between([NameRecipe; 2]),
     Edges,
     Corners,
     All,
-    Quantified(Box<Self>, Quantity),
+    Quantified(Box<Self>, Number),
 }
 
 impl Unit {
     pub(crate) fn unique_member_has_n_neighbors(
         &self,
-        quantity: Quantity,
+        quantity: Cardinal,
         name: Option<&NameRecipe>,
         context: Context<'_>,
     ) -> anyhow::Result<Vec<HintKind>> {
@@ -169,8 +174,8 @@ impl Unit {
     pub(crate) fn intersects_with(
         &self,
         other: &Self,
-        intersection: Quantity,
-        quantity: Option<Quantity>,
+        intersection: Cardinal,
+        quantity: Option<Number>,
         context: Context<'_>,
     ) -> anyhow::Result<Vec<HintKind>> {
         let self_ = self.add_context(context)?;
@@ -181,7 +186,7 @@ impl Unit {
             .collect();
         let intersection = HintKind::Count(other, intersection);
         let hints = quantity
-            .map(|quantity| HintKind::Count(self_, quantity))
+            .map(|quantity| HintKind::Count(self_, Cardinal::Exact(quantity)))
             .into_iter()
             .chain(once(intersection))
             .collect();
@@ -196,33 +201,25 @@ impl Unit {
         Ok(self
             .add_context(context)?
             .into_iter()
-            .map(|coord| HintKind::Count(coord.neighbors().collect(), Quantity::AtMost(number)))
+            .map(|coord| HintKind::Count(coord.neighbors().collect(), Cardinal::AtMost(number)))
             .collect())
     }
 
     pub(crate) fn members_are_connected(
         self,
-        quantity: Option<Quantity>,
+        quantity: Option<Number>,
         context: Context<'_>,
     ) -> anyhow::Result<Vec<HintKind>> {
         let set = self.add_context(context)?;
         Ok(quantity
-            .map(|quantity| HintKind::Count(set.clone(), quantity))
+            .map(|quantity| HintKind::Count(set.clone(), Cardinal::Exact(quantity)))
             .into_iter()
             .chain(once(HintKind::Connected(set)))
             .collect())
     }
 
-    pub(crate) fn quantify(self, quantity: Quantity) -> Self {
+    pub(crate) fn quantify(self, quantity: Number) -> Self {
         Self::Quantified(Box::new(self), quantity)
-    }
-
-    pub(crate) fn maybe_quantify(self, quantity: Option<Quantity>) -> Self {
-        if let Some(quantity) = quantity {
-            self.quantify(quantity)
-        } else {
-            self
-        }
     }
 
     #[cfg(test)]
@@ -233,6 +230,11 @@ impl Unit {
     #[cfg(test)]
     pub(crate) fn neighbor(name: impl Into<NameRecipe>) -> Self {
         Self::Neighbor(name.into())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn direction(direction: Direction, name: impl Into<NameRecipe>) -> Self {
+        Self::Direction(direction, name.into())
     }
 }
 
@@ -259,7 +261,7 @@ impl AddContext for &Unit {
             Unit::Corners => Coordinate::corners().collect(),
             Unit::ProfessionShift(profession, direction, total) => {
                 let set = context.grid.profession_as_set(profession)?;
-                if total.is_some_and(|total| !total.matches(set.len().get())) {
+                if total.is_some_and(|total| usize::from(total) != set.len().get()) {
                     bail!("{profession:?} does not have {total:?} members")
                 }
                 set.into_iter()
@@ -273,7 +275,7 @@ impl AddContext for &Unit {
             Unit::All => Coordinate::all().into_iter().collect(),
             Unit::Quantified(inner, quantity) => {
                 let set = inner.add_context(context)?;
-                if !quantity.matches(set.len()) {
+                if usize::from(*quantity) != set.len() {
                     bail!("{inner:?} does not have {quantity:?} members")
                 }
                 set
@@ -406,5 +408,33 @@ impl Series {
 impl From<LineKind> for Series {
     fn from(kind: LineKind) -> Self {
         Self::Line(kind)
+    }
+}
+
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Quantifier {
+    Simple(Cardinal),
+    // Maybe this needs to be Quantity, Quantity?
+    Subset(Number, Number),
+}
+
+impl Quantifier {
+    #[must_use]
+    pub(crate) fn simple(self) -> Option<Cardinal> {
+        if let Self::Simple(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn exact(self) -> Option<u8> {
+        match self {
+            Self::Subset(count, total) if count == total => Some(total),
+            Self::Simple(Cardinal::Exact(total)) => Some(total),
+            Self::Simple(Cardinal::AtLeast(_) | Cardinal::AtMost(_) | Cardinal::Parity(_))
+            | Self::Subset(_, _) => None,
+        }
     }
 }

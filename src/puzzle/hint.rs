@@ -56,12 +56,12 @@ impl Hint {
 #[derive(Clone, Debug)]
 pub(crate) enum HintKind {
     Judgment(Coordinate),
-    Count(Set, Quantity),
+    Count(Set, Cardinal),
     Connected(Set),
     Equal([Set; 2]),
     Bigger { big: Set, small: Set },
     Majority(Set),
-    UniqueWithCount(Vec1<Set>, Quantity),
+    UniqueWithCount(Vec1<Set>, Cardinal),
     Not(Box<Self>),
 }
 
@@ -166,14 +166,14 @@ impl LineKind {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum Quantity {
+pub(crate) enum Cardinal {
     Exact(Number),
     AtLeast(Number),
     AtMost(Number),
     Parity(Parity),
 }
 
-impl Quantity {
+impl Cardinal {
     pub(crate) fn matches(self, len: usize) -> bool {
         match self {
             Self::Exact(value) => len == usize::from(value),
@@ -184,7 +184,7 @@ impl Quantity {
     }
 }
 
-impl From<Parity> for Quantity {
+impl From<Parity> for Cardinal {
     fn from(v: Parity) -> Self {
         Self::Parity(v)
     }
