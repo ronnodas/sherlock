@@ -101,6 +101,7 @@ impl Puzzle {
 }
 
 // TODO Could separate this into a LoadedPuzzle but probably needs to be unified before use anyway
+#[derive(Debug)]
 pub(crate) struct ParsedPuzzle {
     pub puzzle: Puzzle,
     pub unknown_if_flavor: Vec<(Name, String)>,
@@ -255,16 +256,22 @@ impl fmt::Display for Update {
 
 #[cfg(test)]
 mod tests {
+    use std::{fs, io};
+
+    use crate::puzzle::ParsedPuzzle;
     use crate::puzzle::solution::Solution;
-    use crate::{FileType, read_from_file};
 
     use super::{Judgment, Update};
 
     #[test]
     fn sample_2026_02_08() {
         use Judgment::{Criminal as C, Innocent as I};
-        let parsed =
-            read_from_file("samples/2026-02-08-6f3e400c1d18.html", FileType::Html).unwrap();
+        let contents = match fs::read_to_string("samples/2026-02-08-6f3e400c1d18.html") {
+            Ok(contents) => contents,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return,
+            Err(e) => panic!("Failed to read sample: {e}"),
+        };
+        let parsed = ParsedPuzzle::parse(&contents, None).unwrap();
         assert!(parsed.pending_hints.is_empty());
         let solution = Solution::from([I, C, C, C, C, C, I, C, I, C, C, C, C, I, C, C, C, I, C, I]);
 
@@ -352,5 +359,31 @@ mod tests {
         }
 
         assert_eq!(puzzle.solutions, [solution]);
+    }
+
+    #[test]
+    fn parse_all_samples() {
+        let read_dir = match fs::read_dir("samples") {
+            Ok(read_dir) => read_dir,
+            Err(e)
+                if e.kind() == io::ErrorKind::NotFound
+                    || e.kind() == io::ErrorKind::NotADirectory =>
+            {
+                return;
+            }
+            Err(e) => panic!("error reading `samples` directory: {e}"),
+        };
+        for entry in read_dir {
+            let entry = entry.unwrap();
+            #[expect(
+                clippy::filetype_is_file,
+                reason = "actual tests should be plain files"
+            )]
+            if !entry.file_type().unwrap().is_file() {
+                continue;
+            }
+            let contents = fs::read_to_string(entry.path()).unwrap();
+            drop(ParsedPuzzle::parse(&contents, None).unwrap());
+        }
     }
 }
