@@ -222,7 +222,7 @@ pub(crate) struct Coordinate {
 }
 
 impl Coordinate {
-    fn from_index(index: usize) -> Self {
+    pub(crate) fn from_index(index: usize) -> Self {
         Self {
             row: Row::from_index(index / 4),
             col: Column::from_index(index % 4),

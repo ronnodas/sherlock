@@ -18,7 +18,7 @@ use ron::ser::{PrettyConfig, to_string_pretty};
 use serde::{Deserialize, Serialize};
 use solution::Solution;
 
-use crate::puzzle::grid::Format;
+use crate::puzzle::grid::{Coordinate, Format};
 use crate::puzzle::hint::Sentence;
 use crate::puzzle::hint::recipes::Context;
 
@@ -59,8 +59,11 @@ impl Puzzle {
             .enumerate()
             .filter_map(|(index, judgment)| {
                 let judgment = judgment?;
-                let name = self.grid.set_new(index, judgment)?.name().to_owned();
-                Some(Update { name, judgment })
+                Some(Update {
+                    name: self.grid.set_new(index, judgment)?.name().to_owned(),
+                    coord: Coordinate::from_index(index),
+                    judgment,
+                })
             })
             .sorted_by(|a, b| a.name.cmp(&b.name))
             .collect())
@@ -233,6 +236,7 @@ impl fmt::Display for Judgment {
 #[derive(Debug)]
 pub(crate) struct Update {
     name: Name,
+    coord: Coordinate,
     judgment: Judgment,
 }
 
@@ -247,8 +251,9 @@ impl fmt::Display for Update {
         let color = self.judgment.color();
         write!(
             f,
-            "{} as {}",
+            "{} ({}) as {}",
             self.name.color(color),
+            self.coord,
             self.judgment.to_string().color(color)
         )
     }
@@ -258,10 +263,12 @@ impl fmt::Display for Update {
 mod tests {
     use std::{fs, io};
 
+    use itertools::Itertools as _;
+
     use crate::puzzle::ParsedPuzzle;
     use crate::puzzle::solution::Solution;
 
-    use super::{Judgment, Update};
+    use super::Judgment;
 
     #[test]
     fn sample_2026_02_08() {
@@ -341,14 +348,17 @@ mod tests {
 
         let mut puzzle = parsed.puzzle;
         for &changes in steps {
-            let deductions: Vec<Update> = changes
+            let deductions = changes
                 .iter()
-                .map(|&(name, judgment, _)| Update {
-                    name: name.to_owned(),
-                    judgment,
-                })
-                .collect();
-            assert_eq!(puzzle.infer().unwrap(), deductions);
+                .map(|&(name, judgment, _)| (name.to_owned(), judgment))
+                .collect_vec();
+            let inferences = puzzle
+                .infer()
+                .unwrap()
+                .into_iter()
+                .map(|update| (update.name, update.judgment))
+                .collect_vec();
+            assert_eq!(inferences, deductions);
             for &(speaker, _, hint) in changes {
                 if let Some(hint) = hint {
                     puzzle
