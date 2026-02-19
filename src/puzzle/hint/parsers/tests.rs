@@ -734,6 +734,44 @@ fn will_puzzle_pack_1_17() {
     );
 }
 
+#[test]
+fn cheryl_puzzle_pack_1_27() {
+    sentence(
+        "2 of Isaac's innocent neighbors are in row&nbsp;3",
+        SentenceKind::UnitsShareNTraits(
+            [Unit::neighbor("Isaac"), Row::Three.into()],
+            Cardinal::Exact(2),
+        ),
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn freya_puzzle_pack_1_45() {
+    sentence(
+        "exactly 1 innocent neighboring Wally is builder",
+        SentenceKind::UnitsShareNTraits(
+            [Unit::neighbor("Wally"), Unit::profession("builder")],
+            Cardinal::Exact(1),
+        ),
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn eve_puzzle_pack_1_49() {
+    sentence(
+        "Katie shares neither of her 2 innocent neighbors with Laura",
+        SentenceKind::UnitSharesNOutOfNTraitsWithUnit {
+            total: 2,
+            quantified: Unit::neighbor("Katie"),
+            other: Unit::neighbor("Laura"),
+            intersection: 0,
+        },
+        Judgment::Innocent,
+    );
+}
+
 fn sentence(input: &str, kind: SentenceKind, judgment: Judgment) {
     let input = input.split(' ').filter(|s| !s.is_empty()).collect_vec();
     parser(Sentence::any, &input, &Sentence { kind, judgment });

@@ -9,7 +9,7 @@ use winnow::combinator::{
     alt, delimited, dispatch, empty, eof, fail, opt, preceded, separated_pair, terminated,
 };
 use winnow::error::{ParserError, StrContext};
-use winnow::token::{any, rest, take_while};
+use winnow::token::{any, rest};
 use winnow::{Parser, Result};
 
 use crate::puzzle::Judgment;
@@ -26,7 +26,7 @@ pub(crate) use phrases::{SentenceKind, Series, Unit, UnitInSeries};
 impl Sentence {
     pub(crate) fn parse(hint: &str) -> anyhow::Result<Self> {
         let words = hint
-            .split(' ')
+            .split_ascii_whitespace()
             .filter(|word| !word.is_empty())
             .collect_vec();
         Self::parse_cased(&words)
@@ -303,6 +303,23 @@ impl Sentence {
                     judgment,
                 )
             }),
+            separated_pair(
+                word(name),
+                word("shares"),
+                separated_pair(
+                    (quantifier, word(judgment_any)),
+                    (word(neighbor_any), word("with")),
+                    word(name),
+                ),
+            )
+            .map(|(quantified, ((quantifier, judgment), other))| {
+                (
+                    quantifier,
+                    Unit::Neighbor(quantified),
+                    Unit::Neighbor(other),
+                    judgment,
+                )
+            }),
         ))
         .map(|(quantifier, quantified, other, judgment)| {
             let kind = match quantifier {
@@ -511,67 +528,47 @@ fn unit(input: &mut &[&str]) -> Result<Unit> {
     alt((
         words(("in", "total")).value(Unit::All),
         words(("on", "the", "edges")).value(Unit::Edges),
-        alt((
-            words(("in", "a", "corner")),
-            words(("in", "the", "corners")),
-        ))
-        .value(Unit::Corners),
+        (
+            word("in"),
+            alt((words(("a", "corner")), words(("the", "corners")))),
+        )
+            .value(Unit::Corners),
         preceded(opt(word("in")), alt((between, line.map(Unit::Line)))),
         (direction, word(name)).map(|(direction, name)| Unit::Direction(direction, name)),
-        terminated(word(name_possessive), word(neighbor_any)).map(Unit::Neighbor),
+        alt((
+            preceded(neighboring_verb, word(name)),
+            terminated(word(name_possessive), word(neighbor_any)),
+        ))
+        .map(Unit::Neighbor),
         profession_any.map(Unit::Profession),
     ))
     .parse_next(input)
 }
 
 fn maybe_judged_unit(input: &mut &[&str]) -> Result<(Option<Judgment>, Unit)> {
-    qualified_unit
-        .verify_map(|(count, judgment, unit)| count.is_none().then_some((judgment, unit)))
-        .parse_next(input)
+    (opt(word(judgment_any)), unit).parse_next(input)
 }
 
 fn judged_unit(input: &mut &[&str]) -> Result<(Judgment, Unit)> {
-    qualified_unit
-        .verify_map(|(count, judgment, unit)| {
-            let judgment = judgment?;
-            count.is_none().then_some((judgment, unit))
-        })
-        .parse_next(input)
+    (word(judgment_any), unit).parse_next(input)
 }
 
 fn quantified_judged_unit(input: &mut &[&str]) -> Result<(Quantifier, Judgment, Unit)> {
     alt((
-        separated_pair(
-            (quantifier, word(judgment_plural)),
-            word("neighboring"),
-            word(name),
-        )
-        .map(|((quantity, judgment), name)| (quantity, judgment, Unit::Neighbor(name))),
         quantified_possessive_judged_neighbors
             .map(|(name, quantity, judgment)| (quantity, judgment, Unit::Neighbor(name))),
-        qualified_unit.verify_map(|(count, judgment, unit)| Some((count?, judgment?, unit))),
+        (quantifier, word(judgment_any), unit),
     ))
     .parse_next(input)
 }
 
 fn cardinal_judged_unit(input: &mut &[&str]) -> Result<(Cardinal, Judgment, Unit)> {
     alt((
-        separated_pair(
-            (cardinal, word(judgment_plural)),
-            word("neighboring"),
-            word(name),
-        )
-        .map(|((quantity, judgment), name)| (quantity, judgment, Unit::Neighbor(name))),
+        (cardinal, word(judgment_any), unit),
         (word(name_possessive), cardinal_judged_neighbors)
             .map(|(name, (quantity, judgment))| (quantity, judgment, Unit::Neighbor(name))),
-        qualified_unit
-            .verify_map(|(count, judgment, unit)| Some((count?.simple()?, judgment?, unit))),
     ))
     .parse_next(input)
-}
-
-fn qualified_unit(input: &mut &[&str]) -> Result<(Option<Quantifier>, Option<Judgment>, Unit)> {
-    (opt(quantifier), opt(word(judgment_any)), unit).parse_next(input)
 }
 
 fn quantifier(input: &mut &[&str]) -> Result<Quantifier> {
@@ -579,8 +576,7 @@ fn quantifier(input: &mut &[&str]) -> Result<Quantifier> {
         word("both").value(Quantifier::Subset(2, 2)),
         (
             word("neither"),
-            opt(word("of")),
-            opt(words((determiner, "2"))),
+            opt((word("of"), opt(words((determiner, "2"))))),
         )
             .value(Quantifier::Subset(0, 2)),
         separated_pair(
@@ -633,21 +629,20 @@ fn cardinal_judged_neighbors(input: &mut &[&str]) -> Result<(Cardinal, Judgment)
 fn quantified_possessive_judged_neighbors(
     input: &mut &[&str],
 ) -> Result<(NameRecipe, Quantifier, Judgment)> {
-    alt((
-        separated_pair(
-            number_phrase,
-            word("of"),
-            terminated(
-                words((name_possessive, number, judgment_any)),
-                word(neighbor_any),
-            ),
-        )
-        .map(|(number, (name, total, judgment))| {
-            (name, Quantifier::Subset(number, total), judgment)
-        }),
-        (word(name_possessive), cardinal_judged_neighbors)
-            .map(|(name, (cardinal, judgment))| (name, Quantifier::Simple(cardinal), judgment)),
-    ))
+    separated_pair(
+        number_phrase,
+        word("of"),
+        terminated(
+            (word(name_possessive), opt(word(number)), word(judgment_any)),
+            word(neighbor_any),
+        ),
+    )
+    .map(|(number, (name, total, judgment))| {
+        let quantifier = total.map_or(Quantifier::Simple(Cardinal::Exact(number)), |total| {
+            Quantifier::Subset(number, total)
+        });
+        (name, quantifier, judgment)
+    })
     .parse_next(input)
 }
 
@@ -686,17 +681,20 @@ fn name_possessive(input: &mut &str) -> Result<NameRecipe> {
 
 fn name(input: &mut &str) -> Result<NameRecipe> {
     alt((
-        take_while(1.., |c| c != ' ')
-            .verify(|name: &str| name == "I" || name == "me")
-            .value(NameRecipe::Me),
-        raw_name.map(|name| NameRecipe::Other(name.to_owned())),
+        raw_name.map(|name| {
+            if name == "I" || name == "Me" {
+                NameRecipe::Me
+            } else {
+                NameRecipe::Other(name.to_owned())
+            }
+        }),
+        "me".value(NameRecipe::Me),
     ))
     .parse_next(input)
 }
 
 fn raw_name<'input>(input: &mut &'input str) -> Result<&'input str> {
-    take_while(1.., |c| c != ' ')
-        .verify(|s: &str| s.chars().next().is_some_and(|c| c.is_ascii_uppercase()))
+    rest.verify(|s: &str| s.chars().next().is_some_and(char::is_uppercase))
         .parse_next(input)
 }
 
@@ -726,7 +724,7 @@ fn direction(input: &mut &[&str]) -> Result<Direction> {
 }
 
 fn determiner<'input>(input: &mut &'input str) -> Result<&'input str> {
-    alt(("the", "a", "an", "us")).parse_next(input)
+    alt(("the", "a", "an", "us", "her", "his")).parse_next(input)
 }
 
 fn profession_any(input: &mut &[&str]) -> Result<Profession> {
@@ -765,10 +763,8 @@ fn neighboring_verb<'input, 'inner: 'input>(
     input: &mut &'input [&'inner str],
 ) -> Result<&'input [&'inner str]> {
     alt((
-        words(("also", "neighbor")).take(),
-        words(("who", "neighbor")).take(),
-        word("neighbor").take(),
-        words((be_verb, "neighboring")).take(),
+        (opt(word(alt(("who", "also")))), word("neighbor")).take(),
+        (opt(word(be_verb)), word("neighboring")).take(),
     ))
     .parse_next(input)
 }
@@ -907,7 +903,6 @@ impl<'inner, $($o),*, E, $($p: Parser<&'inner str, $o, E>),*>
         ($(word($a)),*,)
     }
 }
-
     };
 }
 

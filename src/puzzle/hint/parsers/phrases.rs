@@ -438,15 +438,6 @@ pub(crate) enum Quantifier {
 }
 
 impl Quantifier {
-    #[must_use]
-    pub(crate) fn simple(self) -> Option<Cardinal> {
-        if let Self::Simple(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
-
     pub(crate) fn exact(self) -> Option<u8> {
         match self {
             Self::Subset(count, total) if count == total => Some(total),

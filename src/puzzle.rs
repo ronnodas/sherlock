@@ -251,12 +251,12 @@ impl fmt::Display for Update {
 mod tests {
     use std::{fs, io};
 
+    use anyhow::Context as _;
     use itertools::Itertools as _;
 
-    use crate::puzzle::ParsedPuzzle;
     use crate::puzzle::solution::Solution;
 
-    use super::Judgment;
+    use super::{Judgment, ParsedPuzzle};
 
     #[test]
     fn sample_2026_02_08() {
@@ -380,8 +380,13 @@ mod tests {
             if !entry.file_type().unwrap().is_file() {
                 continue;
             }
-            let contents = fs::read_to_string(entry.path()).unwrap();
-            drop(ParsedPuzzle::parse(&contents, None).unwrap());
+            let path = entry.path();
+            let contents = fs::read_to_string(&path).unwrap();
+            drop(
+                ParsedPuzzle::parse(&contents, None)
+                    .with_context(|| format!("parsing {}", path.to_string_lossy()))
+                    .unwrap(),
+            );
         }
     }
 }
