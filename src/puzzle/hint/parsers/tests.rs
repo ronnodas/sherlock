@@ -658,6 +658,82 @@ fn katie_puzzle_pack_1_6() {
     );
 }
 
+#[test]
+fn zara_puzzle_pack_1_6() {
+    sentence(
+        "neither of the 2 innocents neighboring Olive are to the left of Noah",
+        SentenceKind::UnitSharesNOutOfNTraitsWithUnit {
+            total: 2,
+            quantified: Unit::neighbor("Olive"),
+            other: Unit::direction(Direction::Left, "Noah"),
+            intersection: 0,
+        },
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn bonnie_puzzle_pack_1_13() {
+    sentence(
+        "none of the 7 criminals on the edges is a painter",
+        SentenceKind::UnitSharesNOutOfNTraitsWithUnit {
+            total: 7,
+            quantified: Unit::Edges,
+            other: Unit::profession("painter"),
+            intersection: 0,
+        },
+        Judgment::Criminal,
+    );
+}
+
+#[test]
+fn mary_puzzle_pack_1_14() {
+    sentence(
+        "Zach has more criminal than innocent neighbors",
+        SentenceKind::MoreTraitsInUnit(Unit::neighbor("Zach")),
+        Judgment::Criminal,
+    );
+}
+
+#[test]
+fn tom_puzzle_pack_1_15() {
+    sentence(
+        "There are as many criminals as innocents below Linda",
+        SentenceKind::EqualTraitsInUnit(Unit::direction(Direction::Below, "Linda")),
+        Judgment::Criminal,
+    );
+}
+
+#[test]
+fn zoe_puzzle_pack_1_15() {
+    sentence(
+        "Linda and Tom have 4 innocent neighbors in total",
+        SentenceKind::TotalNumberOfTraitsInUnits(
+            ["Linda", "Tom"].map(Unit::neighbor),
+            Cardinal::Exact(4),
+        ),
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn zoe_puzzle_pack_1_16() {
+    sentence(
+        "There are more criminal than innocent guards",
+        SentenceKind::MoreTraitsInUnit(Unit::profession("guard")),
+        Judgment::Criminal,
+    );
+}
+
+#[test]
+fn will_puzzle_pack_1_17() {
+    sentence(
+        "I am one of Xia's 4 criminal neighbors",
+        SentenceKind::IsOneOfNTraitsInUnit(Unit::neighbor("Xia"), Name::Me, Cardinal::Exact(4)),
+        Judgment::Criminal,
+    );
+}
+
 fn sentence(input: &str, kind: SentenceKind, judgment: Judgment) {
     let input = input.split(' ').filter(|s| !s.is_empty()).collect_vec();
     parser(Sentence::any, &input, &Sentence { kind, judgment });

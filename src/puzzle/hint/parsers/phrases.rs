@@ -24,6 +24,7 @@ pub(crate) enum SentenceKind {
         big: Unit,
         small: Unit,
     },
+    EqualTraitsInUnit(Unit),
     MoreTraitsInUnit(Unit),
     NumberOfTraitsInUnit(Unit, Cardinal),
     OnlyOnePersonInUnitHasNTraitNeighbors(Unit, Cardinal, Option<NameRecipe>),
@@ -38,6 +39,7 @@ pub(crate) enum SentenceKind {
     },
     UnitsShareNTraits([Unit; 2], Cardinal),
     AtMostNTraitsInNeighborsInUnit(Unit, Number),
+    TotalNumberOfTraitsInUnits([Unit; 2], Cardinal),
 }
 
 impl AddContext for SentenceKind {
@@ -66,6 +68,10 @@ impl AddContext for SentenceKind {
             Self::NumberOfTraitsInUnit(unit, quantity) => {
                 let set = unit.add_context(context)?;
                 vec![HintKind::Count(set, quantity)]
+            }
+            Self::TotalNumberOfTraitsInUnits(units, quantity) => {
+                let [a, b] = units.map(|unit| unit.add_context(context));
+                vec![HintKind::CountTotal([a?, b?], quantity)]
             }
             Self::OnlyOnePersonInUnitHasNTraitNeighbors(unit, quantity, name) => {
                 unit.unique_member_has_n_neighbors(quantity, name.as_ref(), context)?
@@ -106,8 +112,20 @@ impl AddContext for SentenceKind {
                 let [a, b] = units.map(|unit| unit.add_context(context));
                 vec![HintKind::Equal([a?, b?])]
             }
+            Self::EqualTraitsInUnit(unit) => {
+                let set = unit.add_context(context)?;
+                //TODO use div_exact
+                if !set.len().is_multiple_of(2) {
+                    bail!("{unit:?} cannot be split equally")
+                }
+                let cardinal = Cardinal::Exact(u8::try_from(set.len() / 2).expect("at most 20"));
+                vec![HintKind::Count(set, cardinal)]
+            }
             Self::MoreTraitsInUnit(unit) => {
-                vec![HintKind::Majority(unit.add_context(context)?)]
+                let set = unit.add_context(context)?;
+                let cardinal =
+                    Cardinal::AtLeast(u8::try_from(set.len() / 2 + 1).expect("at most 20"));
+                vec![HintKind::Count(set, cardinal)]
             }
             Self::HasTrait(name) => {
                 vec![HintKind::Judgment(name.add_context(context)?)]

@@ -41,7 +41,7 @@ impl Sentence {
                 }
                 Err(e)
             })
-            .map_err(|_err| anyhow!("{hint}"))
+            .map_err(|_err| anyhow!("\"{hint}\""))
     }
 
     fn parse_cased(hint: &[&str]) -> anyhow::Result<Self> {
@@ -63,8 +63,10 @@ impl Sentence {
             Self::only_given_unit_has_exactly_n_traits,
             Self::equal_number_of_traits_in_units,
             Self::more_traits_in_unit,
+            Self::equal_traits_in_unit,
             Self::has_trait,
             Self::at_most_n_traits_in_neighbors_in_unit,
+            Self::total_number_of_traits_in_units,
         ))
         .parse_next(input)
     }
@@ -129,12 +131,16 @@ impl Sentence {
     }
 
     fn is_one_of_n_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
-        separated_pair(word(name), words(("is", "one", "of")), cardinal_judged_unit)
-            .map(|(name, (count, judgment, unit))| Self {
-                kind: SentenceKind::IsOneOfNTraitsInUnit(unit, name, count),
-                judgment,
-            })
-            .parse_next(input)
+        separated_pair(
+            word(name),
+            words((alt(("is", "am")), "one", "of")),
+            cardinal_judged_unit,
+        )
+        .map(|(name, (count, judgment, unit))| Self {
+            kind: SentenceKind::IsOneOfNTraitsInUnit(unit, name, count),
+            judgment,
+        })
+        .parse_next(input)
     }
 
     fn more_traits_in_unit_than_unit(input: &mut &[&str]) -> Result<Self> {
@@ -280,7 +286,7 @@ impl Sentence {
                 preceded(opt(there_is), quantified_judged_unit),
                 alt((
                     preceded(neighboring_verb, word(name)).map(Unit::Neighbor),
-                    preceded(opt(word(alt(("is", "are")))), unit),
+                    preceded(opt(word(be_verb)), unit),
                 )),
             )
                 .map(|((quantifier, judgment, unit), other)| (quantifier, unit, other, judgment)),
@@ -329,7 +335,7 @@ impl Sentence {
                     cardinal,
                     separated_pair(word(name_possessive), word("neighbors"), unit),
                 ),
-                word(alt(("is", "are"))),
+                word(be_verb),
                 word(judgment_singular),
             )
             .map(|((quantity, (name, unit)), judgment)| {
@@ -406,16 +412,48 @@ impl Sentence {
     }
 
     fn more_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
+        alt((
+            preceded(
+                words(("There", "are", "more")),
+                (
+                    separated_pair(word(judgment_any), word("than"), word(judgment_any)),
+                    unit,
+                ),
+            )
+            .map(|((more, less), unit)| (unit, more, less)),
+            separated_pair(
+                word(name),
+                words(("has", "more")),
+                terminated(
+                    separated_pair(
+                        word(judgment_singular),
+                        word("than"),
+                        word(judgment_singular),
+                    ),
+                    word("neighbors"),
+                ),
+            )
+            .map(|(name, (more, less))| (Unit::Neighbor(name), more, less)),
+        ))
+        .verify(|&(_, more, less)| more == !less)
+        .map(|(unit, judgment, _)| Self {
+            kind: SentenceKind::MoreTraitsInUnit(unit),
+            judgment,
+        })
+        .parse_next(input)
+    }
+
+    fn equal_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
         preceded(
-            words(("There", "are", "more")),
+            words(("There", "are", "as", "many")),
             (
-                separated_pair(word(judgment_plural), word("than"), word(judgment_plural)),
+                separated_pair(word(judgment_plural), word("as"), word(judgment_plural)),
                 unit,
             ),
         )
-        .verify(|&((more, less), _)| more == !less)
+        .verify(|&((a, b), _)| a == !b)
         .map(|((judgment, _), unit)| Self {
-            kind: SentenceKind::MoreTraitsInUnit(unit),
+            kind: SentenceKind::EqualTraitsInUnit(unit),
             judgment,
         })
         .parse_next(input)
@@ -445,6 +483,18 @@ impl Sentence {
         )
         .map(|(unit, (number, judgment))| Self {
             kind: SentenceKind::AtMostNTraitsInNeighborsInUnit(unit, number),
+            judgment,
+        })
+        .parse_next(input)
+    }
+
+    fn total_number_of_traits_in_units(input: &mut &[&str]) -> Result<Self> {
+        terminated(
+            separated_pair(pair(name), word("have"), cardinal_judged_neighbors),
+            words(("in", "total")),
+        )
+        .map(|(names, (quantity, judgment))| Self {
+            kind: SentenceKind::TotalNumberOfTraitsInUnits(names.map(Unit::Neighbor), quantity),
             judgment,
         })
         .parse_next(input)
@@ -527,6 +577,12 @@ fn qualified_unit(input: &mut &[&str]) -> Result<(Option<Quantifier>, Option<Jud
 fn quantifier(input: &mut &[&str]) -> Result<Quantifier> {
     alt((
         word("both").value(Quantifier::Subset(2, 2)),
+        (
+            word("neither"),
+            opt(word("of")),
+            opt(words((determiner, "2"))),
+        )
+            .value(Quantifier::Subset(0, 2)),
         separated_pair(
             number_phrase,
             (opt(word("out")), word("of"), opt(word(determiner))),
@@ -555,7 +611,7 @@ fn number_phrase(input: &mut &[&str]) -> Result<Number> {
 }
 
 fn number(input: &mut &str) -> Result<Number> {
-    alt((dec_uint, "one".value(1), "two".value(2))).parse_next(input)
+    alt((dec_uint, "none".value(0), "one".value(1), "two".value(2))).parse_next(input)
 }
 
 fn parity(input: &mut &[&str]) -> Result<Parity> {
@@ -698,12 +754,7 @@ fn neighbor_any(input: &mut &str) -> Result<()> {
 fn there_is<'input, 'inner: 'input>(
     input: &mut &'input [&'inner str],
 ) -> Result<&'input [&'inner str]> {
-    alt((
-        words(("There", "are")).take(),
-        words(("There", "is")).take(),
-        word("There's").take(),
-    ))
-    .parse_next(input)
+    alt((words(("There", be_verb)).take(), word("There's").take())).parse_next(input)
 }
 
 fn has_have<'input>(input: &mut &'input str) -> Result<&'input str> {
@@ -717,10 +768,13 @@ fn neighboring_verb<'input, 'inner: 'input>(
         words(("also", "neighbor")).take(),
         words(("who", "neighbor")).take(),
         word("neighbor").take(),
-        words(("is", "neighboring")).take(),
-        words(("are", "neighboring")).take(),
+        words((be_verb, "neighboring")).take(),
     ))
     .parse_next(input)
+}
+
+fn be_verb<'input>(input: &mut &'input str) -> Result<&'input str> {
+    alt(("is", "are")).parse_next(input)
 }
 
 fn between(input: &mut &[&str]) -> Result<Unit> {

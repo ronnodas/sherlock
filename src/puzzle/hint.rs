@@ -57,10 +57,10 @@ impl Hint {
 pub(crate) enum HintKind {
     Judgment(Coordinate),
     Count(Set, Cardinal),
+    CountTotal([Set; 2], Cardinal),
     Connected(Set),
     Equal([Set; 2]),
     Bigger { big: Set, small: Set },
-    Majority(Set),
     UniqueWithCount(Vec1<Set>, Cardinal),
     Not(Box<Self>),
 }
@@ -70,6 +70,13 @@ impl HintKind {
         match self {
             &Self::Judgment(coord) => solution[coord] == judgment,
             Self::Count(set, quantity) => quantity.matches(solution.select(set, judgment).count()),
+            Self::CountTotal(sets, quantity) => {
+                let total = sets
+                    .iter()
+                    .map(|set| solution.select(set, judgment).count())
+                    .sum();
+                quantity.matches(total)
+            }
             Self::Connected(set) => {
                 Coordinate::connected(&solution.select(set, judgment).collect())
             }
@@ -84,10 +91,6 @@ impl HintKind {
                     .filter(|set| quantity.matches(solution.select(set, judgment).count()))
                     .count()
                     == 1
-            }
-            Self::Majority(set) => {
-                let count = solution.select(set, judgment).count();
-                count > set.len() - count
             }
             Self::Not(hint) => !hint.evaluate(judgment, solution),
         }
