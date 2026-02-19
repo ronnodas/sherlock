@@ -11,7 +11,7 @@ use anyhow::{Result, bail};
 use bpaf::{Bpaf, Parser as _};
 use chrono::Utc;
 use chrono_tz::America::New_York;
-use inquire::{Confirm, MultiSelect, Select, Text};
+use inquire::{Confirm, Editor, MultiSelect, Select, Text};
 use itertools::Itertools as _;
 
 use puzzle::{Name, ParsedPuzzle, Update};
@@ -65,7 +65,10 @@ fn main_menu() -> Result<ParsedPuzzle> {
             let path = Text::new("Enter path to html:").prompt()?;
             read_from_file(path, FileType::Html)
         }
-        InputMode::Paste => ParsedPuzzle::prompt(),
+        InputMode::Paste => {
+            let html = Editor::new("Enter HTML in your editor:").prompt()?;
+            ParsedPuzzle::parse(&html, None)
+        }
     }
 }
 

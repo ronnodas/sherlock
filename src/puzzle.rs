@@ -7,7 +7,6 @@ use std::ops::Not;
 
 use anyhow::{Result, bail};
 use colored::{Color, Colorize as _};
-use inquire::Editor;
 use itertools::Itertools as _;
 
 use grid::Grid;
@@ -112,17 +111,6 @@ pub(crate) struct ParsedPuzzle {
 }
 
 impl ParsedPuzzle {
-    pub(crate) fn prompt() -> Result<Self> {
-        // TODO allow manual entry
-        loop {
-            let html = Editor::new("Enter path to html:").prompt()?;
-            match Self::parse(&html, None) {
-                Ok(puzzle) => return Ok(puzzle),
-                Err(e) => eprintln!("{e}"),
-            }
-        }
-    }
-
     pub(crate) fn parse(html: &str, name: Option<String>) -> Result<Self> {
         let grid = Grid::parse(html)?;
         Self::new(grid, name)
