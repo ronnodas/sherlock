@@ -60,8 +60,8 @@ impl Card {
         Ok(CardBack { judgment, hint })
     }
 
-    pub(crate) fn hint(&self) -> Option<&str> {
-        self.back.as_ref()?.hint.as_known()
+    pub(crate) fn known_hint(&self) -> Option<&str> {
+        self.back.as_ref()?.hint().as_known()
     }
 
     pub(crate) fn name(&self) -> &Name {
@@ -104,7 +104,11 @@ impl Card {
         self.back.as_ref()
     }
 
-    pub(super) fn new(name: String, profession: String, back: Option<CardBack>) -> Self {
+    pub(crate) fn into_parts(self) -> (Name, Profession, Option<CardBack>) {
+        (self.name, self.profession, self.back)
+    }
+
+    pub(crate) fn new(name: String, profession: String, back: Option<CardBack>) -> Self {
         Self {
             name,
             profession,
@@ -128,11 +132,27 @@ impl CardBack {
     pub(crate) fn set_hint(&mut self, hint: String) {
         self.hint = HintText::Known(hint);
     }
+
+    pub(crate) fn new(judgment: Judgment, hint: HintText) -> Self {
+        Self { judgment, hint }
+    }
+
+    pub(crate) fn judgment(&self) -> Judgment {
+        self.judgment
+    }
+
+    pub(crate) fn hint(&self) -> &HintText {
+        &self.hint
+    }
+
+    pub(crate) fn set_judgment(&mut self, judgment: Judgment) {
+        self.judgment = judgment;
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
 #[serde(from = "Option<String>")]
-enum HintText {
+pub(crate) enum HintText {
     #[default]
     Unknown,
     Flavor,
@@ -141,7 +161,7 @@ enum HintText {
 
 impl HintText {
     #[must_use]
-    fn as_known(&self) -> Option<&str> {
+    pub(crate) fn as_known(&self) -> Option<&str> {
         if let Self::Known(v) = self {
             Some(v)
         } else {
@@ -153,8 +173,13 @@ impl HintText {
     ///
     /// [`Unknown`]: HintText::Unknown
     #[must_use]
-    fn is_unknown(&self) -> bool {
+    pub(crate) fn is_unknown(&self) -> bool {
         matches!(self, Self::Unknown)
+    }
+
+    #[must_use]
+    pub(crate) fn is_flavor(&self) -> bool {
+        matches!(self, Self::Flavor)
     }
 }
 

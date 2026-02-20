@@ -1,4 +1,5 @@
-mod card;
+pub(crate) mod card;
+pub(crate) mod editor;
 mod html;
 mod save;
 
@@ -108,6 +109,10 @@ impl Grid {
         self.cards.iter()
     }
 
+    pub(crate) fn into_cards(self) -> [Card; 20] {
+        self.cards
+    }
+
     pub(crate) fn coord(&self, name: &Name) -> Result<Coordinate> {
         self.coordinates
             .get(name)
@@ -172,7 +177,7 @@ impl Grid {
             .ok_or_else(|| anyhow!("{suspect}'s card is not flipped"))
     }
 
-    pub(crate) fn _by_profession(&self) -> &HashMap<Profession, NonEmpty<Set>> {
+    pub(crate) fn by_profession(&self) -> &HashMap<Profession, NonEmpty<Set>> {
         &self.by_profession
     }
 
@@ -181,7 +186,7 @@ impl Grid {
             self.cards
                 .iter()
                 .enumerate()
-                .filter(|(_, card)| card.hint().is_some())
+                .filter(|(_, card)| card.known_hint().is_some())
                 .exactly_one()
                 .ok()
                 .map(|(index, _)| Coordinate::from_index(index))
@@ -348,6 +353,28 @@ impl Coordinate {
         Row::ALL
             .into_iter1()
             .flat_map(|row| Column::ALL.into_iter1().map(move |col| Self { row, col }))
+    }
+
+    fn prev(self) -> Option<Self> {
+        if let Some(col) = self.col.prev() {
+            Some(Self { row: self.row, col })
+        } else {
+            Some(Self {
+                row: self.row.prev()?,
+                col: Column::D,
+            })
+        }
+    }
+
+    fn next(self) -> Option<Self> {
+        if let Some(col) = self.col.next() {
+            Some(Self { row: self.row, col })
+        } else {
+            Some(Self {
+                row: self.row.next()?,
+                col: Column::A,
+            })
+        }
     }
 }
 
@@ -568,4 +595,21 @@ pub(crate) enum Direction {
 
 impl Direction {
     pub(crate) const ALL: [Self; 4] = [Self::Above, Self::Below, Self::Left, Self::Right];
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn coordinate_all_order() {
+        let coords = Coordinate::all().into_iter().collect_vec();
+        assert_eq!(coords.len(), 20);
+        assert_eq!(coords[0].to_string(), "A1");
+        assert_eq!(coords[1].to_string(), "B1");
+        assert_eq!(coords[2].to_string(), "C1");
+        assert_eq!(coords[3].to_string(), "D1");
+        assert_eq!(coords[4].to_string(), "A2");
+        assert_eq!(coords[19].to_string(), "D5");
+    }
 }

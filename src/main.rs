@@ -14,6 +14,7 @@ use chrono_tz::America::New_York;
 use inquire::{Confirm, Editor, MultiSelect, Select, Text};
 use itertools::Itertools as _;
 
+use puzzle::grid::editor::GridEditor;
 use puzzle::{Name, ParsedPuzzle, Update};
 
 const API_KEY_FILE: &str = "browserless_api_key";
@@ -35,40 +36,49 @@ fn main() -> Result<()> {
 }
 
 fn main_menu() -> Result<ParsedPuzzle> {
-    let mode = Select::new(
-        "Which puzzle do you want to solve?",
-        InputMode::ALL.to_vec(),
-    )
-    .prompt()?;
-    match mode {
-        InputMode::Today => fetch_today(),
-        InputMode::Fetch => {
-            let archive_id = Text::new("Enter puzzle archive id or url")
-                .with_placeholder("s/a0b1c2d3e4f5")
-                .prompt()?;
-            archive(archive_id)
-        }
-        InputMode::Load => {
-            let path = Text::new("Enter path to ron:")
-                .with_initial_value(SAVE_DIRECTORY)
-                .prompt()?;
-            let path = PathBuf::from(path);
-            let path = if path.extension().is_none() {
-                path.with_added_extension("ron")
-            } else {
-                path
-            };
-            read_from_file(path, FileType::Ron)
-        }
+    loop {
+        let mode = Select::new(
+            "Which puzzle do you want to solve?",
+            InputMode::ALL.to_vec(),
+        )
+        .prompt()?;
+        return match mode {
+            InputMode::Today => fetch_today(),
+            InputMode::Fetch => {
+                let archive_id = Text::new("Enter puzzle archive id or url")
+                    .with_placeholder("s/a0b1c2d3e4f5")
+                    .prompt()?;
+                archive(archive_id)
+            }
+            InputMode::Load => {
+                let path = Text::new("Enter path to ron:")
+                    .with_initial_value(SAVE_DIRECTORY)
+                    .prompt()?;
+                let path = PathBuf::from(path);
+                let path = if path.extension().is_none() {
+                    path.with_added_extension("ron")
+                } else {
+                    path
+                };
+                read_from_file(path, FileType::Ron)
+            }
 
-        InputMode::Html => {
-            let path = Text::new("Enter path to html:").prompt()?;
-            read_from_file(path, FileType::Html)
-        }
-        InputMode::Paste => {
-            let html = Editor::new("Enter HTML in your editor:").prompt()?;
-            ParsedPuzzle::parse(&html, None)
-        }
+            InputMode::Html => {
+                let path = Text::new("Enter path to html:").prompt()?;
+                read_from_file(path, FileType::Html)
+            }
+            InputMode::Paste => {
+                let html = Editor::new("Enter HTML in your editor:").prompt()?;
+                ParsedPuzzle::parse(&html, None)
+            }
+            InputMode::Manual => {
+                if let Some(puzzle) = manual_mode()? {
+                    Ok(puzzle)
+                } else {
+                    continue;
+                }
+            }
+        };
     }
 }
 
@@ -317,15 +327,17 @@ enum InputMode {
     Load,
     Fetch,
     Paste,
+    Manual,
 }
 
 impl InputMode {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 6] = [
         Self::Today,
         Self::Load,
         Self::Fetch,
         Self::Html,
         Self::Paste,
+        Self::Manual,
     ];
 }
 
@@ -337,8 +349,16 @@ impl fmt::Display for InputMode {
             Self::Fetch => write!(f, "download puzzle from archive"),
             Self::Html => write!(f, "read html from file"),
             Self::Paste => write!(f, "paste html"),
+            Self::Manual => write!(f, "manually enter puzzle"),
         }
     }
+}
+
+fn manual_mode() -> Result<Option<ParsedPuzzle>> {
+    GridEditor::new()
+        .interact()?
+        .map(|grid| ParsedPuzzle::new(grid, None))
+        .transpose()
 }
 
 enum HintOption<'name> {

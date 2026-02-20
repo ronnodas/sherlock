@@ -22,7 +22,7 @@ use crate::puzzle::hint::Sentence;
 use crate::puzzle::hint::recipes::Context;
 
 pub(crate) type Name = String;
-type Profession = String;
+pub(crate) type Profession = String;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Puzzle {
@@ -116,12 +116,12 @@ impl ParsedPuzzle {
         Self::new(grid, name)
     }
 
-    fn new(grid: Grid, name: Option<String>) -> Result<Self> {
+    pub(crate) fn new(grid: Grid, name: Option<String>) -> Result<Self> {
         let pending_hints = grid.pending_hints();
 
         let maybe_parsed = grid
             .iter()
-            .filter_map(|card| Some((card.name().clone(), card.hint()?)))
+            .filter_map(|card| Some((card.name().clone(), card.known_hint()?)))
             .map(|(speaker, hint)| {
                 let maybe_parsed = Sentence::parse(hint).and_then(|sentence| {
                     Ok(sentence
@@ -192,7 +192,7 @@ pub(crate) enum Judgment {
 }
 
 impl Judgment {
-    fn color(self) -> Color {
+    pub(crate) fn color(self) -> Color {
         match self {
             Self::Innocent => Color::Green,
             Self::Criminal => Color::Red,
