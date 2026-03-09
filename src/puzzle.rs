@@ -121,7 +121,7 @@ impl ParsedPuzzle {
 
         let maybe_parsed = grid
             .iter()
-            .filter_map(|card| Some((card.name().clone(), card.known_hint()?)))
+            .filter_map(|card| Some((card.name().clone(), card.logical_hint()?)))
             .map(|(speaker, hint)| {
                 let maybe_parsed = Sentence::parse(hint).and_then(|sentence| {
                     Ok(sentence

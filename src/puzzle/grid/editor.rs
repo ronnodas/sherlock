@@ -1,3 +1,4 @@
+use std::array::from_fn;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::ops::{Index, IndexMut};
@@ -8,9 +9,13 @@ use anyhow::{Result, anyhow};
 use colored::Colorize as _;
 use inquire::{Autocomplete, Select, Text};
 use itertools::Itertools as _;
+use tabled::Table;
+use tabled::settings::Alignment;
+use tabled::settings::formatting::AlignmentStrategy;
+use tabled::settings::{Color as TabledColor, Style, object::Cell};
 
 use crate::puzzle::grid::card::{Card, CardBack, HintText};
-use crate::puzzle::grid::{Coordinate, Format, Grid};
+use crate::puzzle::grid::{Column, Coordinate, Format, Grid, Row};
 use crate::puzzle::{Judgment, Name, Profession};
 
 pub(crate) struct GridEditor {
@@ -30,7 +35,7 @@ impl GridEditor {
         self.cards
             .iter()
             .all(|card| matches!(card, CardEdit::Draft(..)))
-            && self.cards.iter().any(|card| card.known_hint().is_some())
+            && self.cards.iter().any(|card| card.logical_hint().is_some())
     }
 
     pub(crate) fn build(self) -> Result<Grid> {
@@ -64,33 +69,36 @@ impl GridEditor {
         }
     }
 
-    fn render_grid(&self) -> String {
-        use std::fmt::Write as _;
-        let mut out = String::new();
-        writeln!(out, "\n=== Grid Editor ===").expect("writing to a string should not fail");
-        let coords = Coordinate::all().into_iter().collect_vec();
-        let width = 35;
-        for chunk in coords.chunks(4) {
-            let cells = chunk
-                .iter()
-                .map(|&coord| self[coord].render(coord, width))
-                .collect_vec();
+    fn render_grid(&self) -> Table {
+        let (rows, _) = self.cards.as_chunks();
+        let mut table = Table::nohead(rows.iter().zip(Row::ALL).map(
+            |(cards, row): (&[CardEdit; 4], Row)| -> [IndexedCard<'_>; 4] {
+                from_fn(|col| IndexedCard::new(row, Column::from_index(col), &cards[col]))
+            },
+        ));
+        _ = table
+            .with(Style::modern_rounded())
+            .with(AlignmentStrategy::PerLine)
+            .with(Alignment::center());
 
-            let max_lines = cells.iter().map(Vec::len).max().unwrap_or(0);
-            for i in 0..max_lines {
-                for cell in &cells {
-                    let line = cell.get(i).map_or("", String::as_str);
-                    write!(out, "{line:<width$}").expect("writing to a string should not fail");
-                }
-                out.push('\n');
+        for coordinate in Coordinate::all() {
+            if let Some(judgment) = self.cards[coordinate.to_index()].judgment() {
+                let color = match judgment {
+                    Judgment::Innocent => TabledColor::FG_GREEN,
+                    Judgment::Criminal => TabledColor::FG_RED,
+                };
+                _ = table.modify(
+                    Cell::new(coordinate.row.to_index(), coordinate.col.to_index()),
+                    color,
+                );
             }
-            out.push('\n');
         }
-        out
+        table
     }
 
     fn print_grid(&self) {
-        print!("{}", self.render_grid());
+        let table = self.render_grid();
+        println!("{table}");
     }
 
     fn select_cell_and_edit(&mut self) -> Result<()> {
@@ -106,7 +114,7 @@ impl GridEditor {
             loop {
                 let professions = ProfessionAutocomplete::new(&self.professions);
                 let card = &mut self.cards[coord.to_index()];
-                let update = card.edit(coord, professions)?;
+                let update = card.edit(professions)?;
                 let profession = card.profession().cloned();
                 self.professions.extend(profession);
                 match update {
@@ -143,6 +151,27 @@ impl IndexMut<Coordinate> for GridEditor {
     }
 }
 
+struct IndexedCard<'edit> {
+    coord: Coordinate,
+    card: &'edit CardEdit,
+}
+
+impl<'edit> IndexedCard<'edit> {
+    fn new(row: Row, col: Column, card: &'edit CardEdit) -> Self {
+        let coord = Coordinate { row, col };
+        Self { coord, card }
+    }
+}
+
+impl fmt::Display for IndexedCard<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.card {
+            CardEdit::Empty => write!(f, "{}", self.coord),
+            CardEdit::Draft(front, _) => write!(f, "{}\n{}", self.coord, front),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) enum CardEdit {
     #[default]
@@ -151,16 +180,9 @@ pub(crate) enum CardEdit {
 }
 
 impl CardEdit {
-    pub(crate) fn judgment(&self) -> Option<Judgment> {
+    pub(crate) fn logical_hint(&self) -> Option<&str> {
         match self {
-            Self::Draft(_, Some(back)) => Some(back.judgment()),
-            Self::Empty | Self::Draft(_, None) => None,
-        }
-    }
-
-    pub(crate) fn known_hint(&self) -> Option<&str> {
-        match self {
-            Self::Draft(_, Some(back)) => back.hint().as_known(),
+            Self::Draft(_, Some(back)) => back.hint().as_logical(),
             Self::Empty | Self::Draft(_, None) => None,
         }
     }
@@ -172,72 +194,46 @@ impl CardEdit {
         }
     }
 
-    fn edit(
-        &mut self,
-        coord: Coordinate,
-        professions: ProfessionAutocomplete<'_>,
-    ) -> Result<Option<Coordinate>> {
+    fn edit(&mut self, professions: ProfessionAutocomplete<'_>) -> Result<Option<Coordinate>> {
         let Self::Draft(front, back) = self else {
             let name = Text::new("Name:").prompt()?;
             let profession = Text::new("Profession:")
                 .with_autocomplete(professions)
                 .prompt()?;
             *self = Self::Draft(CardFront { name, profession }, None);
-            return self.edit(coord, professions);
+            return self.edit(professions);
         };
 
-        if back.is_none() {
-            match front.edit_unflipped(coord, professions)? {
-                UnflippedUpdate::None => {}
-                UnflippedUpdate::Back(new_back) => *back = Some(new_back),
-                UnflippedUpdate::Scroll(scroll) => return Ok(Some(scroll)),
-            }
+        if back.is_none()
+            && let Some(new_back) = front.edit_unflipped(professions)?
+        {
+            *back = Some(new_back);
         }
 
         if let Some(b) = back {
-            match front.edit_flipped(b, coord, professions)? {
+            match front.edit_flipped(b, professions)? {
                 FlippedUpdate::None => {}
                 FlippedUpdate::Unflip => *back = None,
-                FlippedUpdate::Scroll(scroll) => return Ok(Some(scroll)),
             }
         }
         Ok(None)
-    }
-
-    fn render(&self, coord: Coordinate, width: usize) -> Vec<String> {
-        match self {
-            Self::Empty => vec![
-                format!("{:<width$}", format!("[{coord}]"))
-                    .dimmed()
-                    .to_string(),
-                format!("{:<width$}", "____").dimmed().to_string(),
-                format!("{:<width$}", ""),
-                format!("{:<width$}", ""),
-            ],
-            Self::Draft(front, _) => {
-                let mut lines = vec![
-                    format!("{:<width$}", format!("[{coord}]")),
-                    format!("{:<width$}", front.name),
-                    format!("{:<width$}", format!("({})", front.profession)),
-                ];
-                if let Some(j) = self.judgment() {
-                    lines.push(
-                        format!("{:<width$}", format!(" {j} "))
-                            .on_color(j.color())
-                            .white()
-                            .bold()
-                            .to_string(),
-                    );
-                }
-                lines
-            }
-        }
     }
 
     fn profession(&self) -> Option<&Profession> {
         match self {
             Self::Empty => None,
             Self::Draft(front, _) => Some(&front.profession),
+        }
+    }
+
+    fn judgment(&self) -> Option<Judgment> {
+        Some(self.back()?.judgment())
+    }
+
+    fn back(&self) -> Option<&CardBack> {
+        match self {
+            Self::Empty => None,
+            Self::Draft(_, back) => back.as_ref(),
         }
     }
 }
@@ -258,27 +254,25 @@ pub(crate) struct CardFront {
 impl CardFront {
     fn edit_unflipped(
         &mut self,
-        coord: Coordinate,
         professions: ProfessionAutocomplete<'_>,
-    ) -> Result<UnflippedUpdate> {
-        let options = UnflippedAction::options(self, coord);
+    ) -> Result<Option<CardBack>> {
+        let options = UnflippedAction::options(self);
 
         let Some(action) = Select::new("Edit cell:", options).prompt_skippable()? else {
-            return Ok(UnflippedUpdate::None);
+            return Ok(None);
         };
         let update = match action {
             UnflippedAction::Common(common) => {
                 let update = common.prompt(professions)?;
                 self.handle(update);
-                UnflippedUpdate::None
+                None
             }
             UnflippedAction::SetInnocent => {
-                UnflippedUpdate::Back(CardBack::new(Judgment::Innocent, HintText::Unknown))
+                Some(CardBack::new(Judgment::Innocent, HintText::Unknown))
             }
             UnflippedAction::SetCriminal => {
-                UnflippedUpdate::Back(CardBack::new(Judgment::Criminal, HintText::Unknown))
+                Some(CardBack::new(Judgment::Criminal, HintText::Unknown))
             }
-            UnflippedAction::Scroll(scroll, _) => UnflippedUpdate::Scroll(scroll),
         };
         Ok(update)
     }
@@ -286,10 +280,9 @@ impl CardFront {
     fn edit_flipped(
         &mut self,
         back: &mut CardBack,
-        coord: Coordinate,
         professions: ProfessionAutocomplete<'_>,
     ) -> Result<FlippedUpdate> {
-        let options = FlippedAction::options(self, back, coord);
+        let options = FlippedAction::options(self, back);
 
         if let Some(action) = Select::new("Edit cell:", options).prompt_skippable()? {
             match action {
@@ -302,7 +295,7 @@ impl CardFront {
                 }
                 FlippedAction::EditHint(current) => {
                     if let Some(hint) = Text::new("Hint:")
-                        .with_initial_value(current.as_known().unwrap_or(""))
+                        .with_initial_value(current.as_logical().unwrap_or(""))
                         .prompt_skippable()?
                     {
                         back.set_hint(hint);
@@ -312,7 +305,6 @@ impl CardFront {
                     back.mark_as_flavor();
                 }
                 FlippedAction::Unflip => return Ok(FlippedUpdate::Unflip),
-                FlippedAction::Scroll(scroll, _) => return Ok(FlippedUpdate::Scroll(scroll)),
             }
         }
         Ok(FlippedUpdate::None)
@@ -322,7 +314,14 @@ impl CardFront {
         match update {
             CommonUpdate::Name(name) => self.name = name,
             CommonUpdate::Profession(profession) => self.profession = profession,
+            CommonUpdate::None => {}
         }
+    }
+}
+
+impl fmt::Display for CardFront {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}\n{}", self.name, self.profession)
     }
 }
 
@@ -345,6 +344,7 @@ impl fmt::Display for EditorOption {
 
 #[derive(Clone)]
 enum CommonAction<'edit> {
+    Done,
     EditName(&'edit Name),
     EditProfession(&'edit Profession),
 }
@@ -361,6 +361,7 @@ impl CommonAction<'_> {
                     .with_autocomplete(professions)
                     .prompt()?,
             ),
+            Self::Done => CommonUpdate::None,
         };
         Ok(update)
     }
@@ -371,6 +372,7 @@ impl fmt::Display for CommonAction<'_> {
         match self {
             Self::EditName(name) => write!(f, "{name}"),
             Self::EditProfession(profession) => write!(f, "{profession}"),
+            Self::Done => write!(f, "Done"),
         }
     }
 }
@@ -378,6 +380,7 @@ impl fmt::Display for CommonAction<'_> {
 enum CommonUpdate {
     Name(Name),
     Profession(Profession),
+    None,
 }
 
 #[derive(Clone)]
@@ -385,23 +388,17 @@ enum UnflippedAction<'edit> {
     Common(CommonAction<'edit>),
     SetInnocent,
     SetCriminal,
-    Scroll(Coordinate, ScrollDirection),
 }
 
 impl<'edit> UnflippedAction<'edit> {
-    fn options(front: &'edit CardFront, coord: Coordinate) -> Vec<Self> {
-        let mut options = vec![
-            UnflippedAction::Common(CommonAction::EditName(&front.name)),
-            UnflippedAction::Common(CommonAction::EditProfession(&front.profession)),
+    fn options(front: &'edit CardFront) -> Vec<Self> {
+        vec![
+            UnflippedAction::Common(CommonAction::Done),
             UnflippedAction::SetInnocent,
             UnflippedAction::SetCriminal,
-        ];
-        options.extend(
-            ScrollDirection::ALL
-                .into_iter()
-                .filter_map(|dir| Some(Self::Scroll(dir.shift(coord)?, dir))),
-        );
-        options
+            UnflippedAction::Common(CommonAction::EditName(&front.name)),
+            UnflippedAction::Common(CommonAction::EditProfession(&front.profession)),
+        ]
     }
 }
 
@@ -411,7 +408,6 @@ impl fmt::Display for UnflippedAction<'_> {
             Self::Common(c) => write!(f, "{c}"),
             Self::SetInnocent => write!(f, "Mark as innocent"),
             Self::SetCriminal => write!(f, "Mark as criminal"),
-            Self::Scroll(coord, dir) => write!(f, "{dir} {coord}"),
         }
     }
 }
@@ -423,28 +419,25 @@ enum FlippedAction<'edit> {
     EditHint(&'edit HintText),
     MarkAsFlavor,
     Unflip,
-    Scroll(Coordinate, ScrollDirection),
 }
 
 impl<'edit> FlippedAction<'edit> {
-    fn options(arg: &'edit CardFront, back: &'edit CardBack, coord: Coordinate) -> Vec<Self> {
+    fn options(arg: &'edit CardFront, back: &'edit CardBack) -> Vec<Self> {
         let mut options = vec![
+            FlippedAction::Common(CommonAction::Done),
             FlippedAction::Common(CommonAction::EditName(&arg.name)),
             FlippedAction::Common(CommonAction::EditProfession(&arg.profession)),
             FlippedAction::ToggleJudgment(back.judgment()),
-            FlippedAction::EditHint(back.hint()),
         ];
-
-        if !back.hint().is_flavor() {
-            options.push(FlippedAction::MarkAsFlavor);
+        let hint = back.hint();
+        let hint_index = if hint.is_unknown() { 1 } else { 4 };
+        if !hint.is_flavor() {
+            options.insert(hint_index, FlippedAction::MarkAsFlavor);
         }
+        options.insert(hint_index, FlippedAction::EditHint(hint));
+
         options.push(FlippedAction::Unflip);
 
-        options.extend(
-            ScrollDirection::ALL
-                .into_iter()
-                .filter_map(|dir| Some(FlippedAction::Scroll(dir.shift(coord)?, dir))),
-        );
         options
     }
 }
@@ -457,13 +450,12 @@ impl fmt::Display for FlippedAction<'_> {
                 write!(f, "{}", j.to_string().color(j.color()))
             }
             Self::EditHint(hint) => match hint {
-                HintText::Known(s) => write!(f, "Hint: {s}"),
+                HintText::Logical(s) => write!(f, "Hint: {s}"),
                 HintText::Flavor => write!(f, "Hint: <flavor>"),
                 HintText::Unknown => write!(f, "Add hint"),
             },
             Self::MarkAsFlavor => write!(f, "Mark hint as flavor text"),
             Self::Unflip => write!(f, "Unflip"),
-            Self::Scroll(coord, dir) => write!(f, "{dir} {coord}"),
         }
     }
 }
@@ -513,42 +505,9 @@ impl fmt::Display for CellOption<'_> {
     }
 }
 
-enum UnflippedUpdate {
-    None,
-    Back(CardBack),
-    Scroll(Coordinate),
-}
-
 enum FlippedUpdate {
     None,
     Unflip,
-    Scroll(Coordinate),
-}
-
-#[derive(Clone, Copy)]
-enum ScrollDirection {
-    Next,
-    Prev,
-}
-
-impl ScrollDirection {
-    const ALL: [Self; 2] = [Self::Next, Self::Prev];
-
-    fn shift(self, coord: Coordinate) -> Option<Coordinate> {
-        match self {
-            Self::Next => coord.next(),
-            Self::Prev => coord.prev(),
-        }
-    }
-}
-
-impl fmt::Display for ScrollDirection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Next => write!(f, ">"),
-            Self::Prev => write!(f, "<"),
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -578,36 +537,5 @@ impl Autocomplete for ProfessionAutocomplete<'_> {
         highlighted_suggestion: Option<String>,
     ) -> Result<Option<String>, inquire::CustomUserError> {
         Ok(highlighted_suggestion)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn render_grid_empty() {
-        let editor = GridEditor::new();
-        let rendered = editor.render_grid();
-        assert!(rendered.contains("=== Grid Editor ==="));
-        assert!(rendered.contains("[A1]"));
-        assert!(rendered.contains("____"));
-        assert!(rendered.contains("[D5]"));
-    }
-
-    #[test]
-    fn render_grid_populated() {
-        let mut editor = GridEditor::new();
-        let coord = Coordinate::from_index(0); // A1
-        editor[coord] = CardEdit::Draft(
-            CardFront {
-                name: "Alice".to_owned(),
-                profession: "Artist".to_owned(),
-            },
-            None,
-        );
-        let rendered = editor.render_grid();
-        assert!(rendered.contains("Alice"));
-        assert!(rendered.contains("(Artist)"));
     }
 }

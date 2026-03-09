@@ -56,12 +56,12 @@ impl Card {
             .expect(Class(judgment.into()))
             .context("`.card-back` should be consistent with `.card`")?;
 
-        let hint = HintText::Known(parse_hint(card)?);
+        let hint = HintText::Logical(parse_hint(card)?);
         Ok(CardBack { judgment, hint })
     }
 
-    pub(crate) fn known_hint(&self) -> Option<&str> {
-        self.back.as_ref()?.hint().as_known()
+    pub(crate) fn logical_hint(&self) -> Option<&str> {
+        self.back.as_ref()?.hint().as_logical()
     }
 
     pub(crate) fn name(&self) -> &Name {
@@ -130,7 +130,7 @@ impl CardBack {
     }
 
     pub(crate) fn set_hint(&mut self, hint: String) {
-        self.hint = HintText::Known(hint);
+        self.hint = HintText::Logical(hint);
     }
 
     pub(crate) fn new(judgment: Judgment, hint: HintText) -> Self {
@@ -156,13 +156,13 @@ pub(crate) enum HintText {
     #[default]
     Unknown,
     Flavor,
-    Known(String),
+    Logical(String),
 }
 
 impl HintText {
     #[must_use]
-    pub(crate) fn as_known(&self) -> Option<&str> {
-        if let Self::Known(v) = self {
+    pub(crate) fn as_logical(&self) -> Option<&str> {
+        if let Self::Logical(v) = self {
             Some(v)
         } else {
             None
@@ -187,7 +187,7 @@ impl From<Option<String>> for HintText {
     fn from(value: Option<String>) -> Self {
         match value {
             Some(string) if string == "Flavor" => Self::Flavor,
-            Some(string) => Self::Known(string),
+            Some(string) => Self::Logical(string),
             None => Self::Unknown,
         }
     }
@@ -198,7 +198,7 @@ impl Serialize for HintText {
         let option = match self {
             Self::Unknown => None,
             Self::Flavor => Some("Flavor"),
-            Self::Known(hint) => Some(hint.as_str()),
+            Self::Logical(hint) => Some(hint.as_str()),
         };
         option.serialize(serializer)
     }

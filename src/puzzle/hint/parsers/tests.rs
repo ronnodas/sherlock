@@ -772,6 +772,15 @@ fn eve_puzzle_pack_1_49() {
     );
 }
 
+#[test]
+fn debra_community_49f3f1_9eb600102931a676() {
+    sentence(
+        "No one in row 1 has more than one criminal neighbor",
+        SentenceKind::AtMostNTraitsInNeighborsInUnit(Row::One.into(), 1),
+        Judgment::Criminal,
+    );
+}
+
 fn sentence(input: &str, kind: SentenceKind, judgment: Judgment) {
     let input = input.split(' ').filter(|s| !s.is_empty()).collect_vec();
     parser(Sentence::any, &input, &Sentence { kind, judgment });

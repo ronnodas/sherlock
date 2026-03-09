@@ -494,7 +494,7 @@ impl Sentence {
             preceded(words(("No", "one")), unit),
             words(("has", "more", "than")),
             (
-                word(dec_uint),
+                word(number),
                 terminated(word(judgment_singular), word(neighbor_any)),
             ),
         )

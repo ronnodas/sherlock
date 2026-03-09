@@ -186,7 +186,7 @@ impl Grid {
             self.cards
                 .iter()
                 .enumerate()
-                .filter(|(_, card)| card.known_hint().is_some())
+                .filter(|(_, card)| card.logical_hint().is_some())
                 .exactly_one()
                 .ok()
                 .map(|(index, _)| Coordinate::from_index(index))
@@ -353,28 +353,6 @@ impl Coordinate {
         Row::ALL
             .into_iter1()
             .flat_map(|row| Column::ALL.into_iter1().map(move |col| Self { row, col }))
-    }
-
-    fn prev(self) -> Option<Self> {
-        if let Some(col) = self.col.prev() {
-            Some(Self { row: self.row, col })
-        } else {
-            Some(Self {
-                row: self.row.prev()?,
-                col: Column::D,
-            })
-        }
-    }
-
-    fn next(self) -> Option<Self> {
-        if let Some(col) = self.col.next() {
-            Some(Self { row: self.row, col })
-        } else {
-            Some(Self {
-                row: self.row.next()?,
-                col: Column::A,
-            })
-        }
     }
 }
 

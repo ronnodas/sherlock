@@ -234,7 +234,7 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
                                 break;
                             }
                             Err(e) => {
-                                println!("I didn't understand that hint :(\n\n{e}");
+                                println!("I didn't understand that hint :(\n{e}");
                             }
                         }
                     }
