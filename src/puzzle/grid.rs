@@ -11,6 +11,8 @@ use std::str::FromStr;
 use std::{cmp, fmt};
 
 use anyhow::{Result, anyhow, bail};
+use bitvec::order::Lsb0;
+use bitvec::view::BitView as _;
 use itertools::Itertools as _;
 use mitsein::NonEmpty;
 use mitsein::hash_set1::HashSet1;
@@ -227,6 +229,8 @@ pub(crate) struct Coordinate {
 }
 
 impl Coordinate {
+    const CONNECTED: &[u8; 1 << 17] = include_bytes!("connected.bin");
+
     pub(crate) fn from_index(index: usize) -> Self {
         Self {
             row: Row::from_index(index / 4),
@@ -246,27 +250,9 @@ impl Coordinate {
         Row::ALL.into_iter().map(move |row| Self { row, col })
     }
 
-    pub(crate) fn connected(set: &HashSet<Self>) -> bool {
-        if set.len() == 1 {
-            return true;
-        }
-        let Some(&start) = set.iter().next() else {
-            return true;
-        };
-        let mut seen = HashSet::new();
-        let mut frontier = vec![start];
-        while let Some(node) = frontier.pop() {
-            if !seen.insert(node) {
-                continue;
-            }
-            frontier.extend(
-                Direction::ALL
-                    .into_iter()
-                    .filter_map(|dir| node.step(dir))
-                    .filter(|node| set.contains(node)),
-            );
-        }
-        seen.len() == set.len()
+    pub(crate) fn connected(set: &Set) -> bool {
+        let index: usize = set.iter().map(|coord| 1 << coord.to_index()).sum();
+        Self::CONNECTED.view_bits::<Lsb0>()[index]
     }
 
     pub(crate) fn step(self, direction: Direction) -> Option<Self> {
@@ -569,10 +555,6 @@ pub(crate) enum Direction {
     Below,
     Left,
     Right,
-}
-
-impl Direction {
-    pub(crate) const ALL: [Self; 4] = [Self::Above, Self::Below, Self::Left, Self::Right];
 }
 
 #[cfg(test)]
