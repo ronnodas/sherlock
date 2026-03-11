@@ -1,8 +1,7 @@
 use std::ops::Index;
 
 use crate::puzzle::Judgment;
-use crate::puzzle::grid::coordinate::Coordinate;
-use crate::puzzle::hint::Set;
+use crate::puzzle::grid::coordinate::{Coordinate, Set};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Clone, Debug)]
@@ -14,9 +13,8 @@ impl Solution {
     }
 
     pub(crate) fn select(&self, set: &Set, judgment: Judgment) -> impl Iterator<Item = Coordinate> {
-        set.iter()
-            .filter(move |&&coord| self[coord] == judgment)
-            .copied()
+        set.into_iter()
+            .filter(move |&coord| self[coord] == judgment)
     }
 
     pub(crate) fn all(fixed_values: impl IntoIterator<Item = (usize, Judgment)>) -> Vec<Self> {

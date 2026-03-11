@@ -9,7 +9,6 @@ use std::ops::{Index, IndexMut};
 
 use anyhow::{Result, anyhow, bail};
 use itertools::Itertools as _;
-use mitsein::NonEmpty;
 use mitsein::iter1::IteratorExt as _;
 use mitsein::vec1::Vec1;
 use select::document::Document;
@@ -17,7 +16,7 @@ use select::predicate::{Any, Attr, Predicate as _};
 use serde::{Deserialize, Serialize};
 
 use crate::puzzle::grid::card::CardBack;
-use crate::puzzle::hint::Set;
+use crate::puzzle::grid::coordinate::Set1;
 use crate::puzzle::{Judgment, Name, Profession};
 
 use card::Card;
@@ -29,7 +28,7 @@ pub(crate) struct Grid {
     cards: [Card; 20],
     coordinates: HashMap<Name, coordinate::Coordinate>,
     // TODO make this non-empty once mitsein supports that
-    by_profession: HashMap<Profession, NonEmpty<Set>>,
+    by_profession: HashMap<Profession, Set1>,
     format: Format,
     start: Option<coordinate::Coordinate>,
 }
@@ -89,14 +88,8 @@ impl Grid {
                 )
             })
             .into_grouping_map()
-            .aggregate(|set: Option<NonEmpty<Set>>, _, item| {
-                let set = set.map_or_else(
-                    || NonEmpty::<Set>::from_one(item),
-                    |mut set| {
-                        _ = set.insert(item);
-                        set
-                    },
-                );
+            .aggregate(|set: Option<Set1>, _, coord| {
+                let set = set.map_or_else(|| Set1::from_one(coord), |set| set | coord);
                 Some(set)
             });
         let mut grid = Self {
@@ -137,7 +130,7 @@ impl Grid {
         self.cards[index].reveal(judgment)
     }
 
-    pub(crate) fn profession_as_set(&self, profession: &Profession) -> Result<&NonEmpty<Set>> {
+    pub(crate) fn profession_as_set(&self, profession: &Profession) -> Result<&Set1> {
         self.by_profession
             .get(profession)
             .ok_or_else(|| anyhow!("{profession} not in grid"))
@@ -162,11 +155,11 @@ impl Grid {
             .collect()
     }
 
-    pub(crate) fn other_professions(&self, profession: &str) -> Result<Vec1<Set>> {
+    pub(crate) fn other_professions(&self, profession: &str) -> Result<Vec1<Set1>> {
         self.by_profession
             .iter()
             .filter(move |&(other, _)| other != profession)
-            .map(|(_, set)| set.clone().into_hash_set())
+            .map(|(_, &set)| set)
             .try_collect1()
             .map_err(|_empty| anyhow!("only {profession}s on grid"))
     }
@@ -182,7 +175,7 @@ impl Grid {
             .ok_or_else(|| anyhow!("{suspect}'s card is not flipped"))
     }
 
-    pub(crate) fn by_profession(&self) -> &HashMap<Profession, NonEmpty<Set>> {
+    pub(crate) fn by_profession(&self) -> &HashMap<Profession, Set1> {
         &self.by_profession
     }
 

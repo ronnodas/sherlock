@@ -2,12 +2,11 @@ use std::iter::once;
 use std::ops::Not as _;
 
 use anyhow::bail;
-use mitsein::hash_set1::HashSet1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
 use crate::puzzle::Profession;
-use crate::puzzle::grid::coordinate::{Column, Coordinate, Direction, Row};
+use crate::puzzle::grid::coordinate::{Column, Coordinate, Direction, Row, Set1};
 use crate::puzzle::hint::recipes::{AddContext, Context, NameRecipe};
 use crate::puzzle::hint::{Cardinal, HintKind, Line, LineKind, Number, Set};
 
@@ -54,7 +53,7 @@ impl AddContext for SentenceKind {
             Self::IsOneOfNTraitsInUnit(unit, name, quantity) => {
                 let set = unit.add_context(context)?;
                 let coord = name.add_context(context)?;
-                if !set.contains(&coord) {
+                if !set.contains(coord) {
                     bail!("{name:?} does not belong to {unit:?}")
                 }
                 vec![HintKind::Count(set, quantity), HintKind::Judgment(coord)]
@@ -166,7 +165,7 @@ impl Unit {
             .map(|name| name.add_context(context))
             .transpose()?;
         let hints = if let Some(coord) = coord {
-            if !set.contains(&coord) {
+            if !set.contains(coord) {
                 bail!("{name:?} does not belong to {self:?}")
             }
             once(HintKind::Count(coord.neighbors().collect(), quantity))
@@ -177,7 +176,7 @@ impl Unit {
                 )
                 .collect()
         } else {
-            let Ok(set) = HashSet1::try_from(set) else {
+            let Ok(set) = Set1::try_from(set) else {
                 bail!("empty unit {self:?} cannnot have unique member")
             };
             let sets = set
@@ -200,7 +199,7 @@ impl Unit {
         let other = other
             .add_context(context)?
             .into_iter()
-            .filter(|other| self_.contains(other))
+            .filter(|&other| self_.contains(other))
             .collect();
         let intersection = HintKind::Count(other, intersection);
         let hints = quantity
@@ -230,7 +229,7 @@ impl Unit {
     ) -> anyhow::Result<Vec<HintKind>> {
         let set = self.add_context(context)?;
         Ok(quantity
-            .map(|quantity| HintKind::Count(set.clone(), Cardinal::Exact(quantity)))
+            .map(|quantity| HintKind::Count(set, Cardinal::Exact(quantity)))
             .into_iter()
             .chain(once(HintKind::Connected(set)))
             .collect())
@@ -270,11 +269,7 @@ impl AddContext for &Unit {
                 let center = name.add_context(context)?;
                 center.neighbors().collect()
             }
-            Unit::Profession(profession) => context
-                .grid
-                .profession_as_set(profession)?
-                .clone()
-                .into_hash_set(),
+            Unit::Profession(profession) => (*context.grid.profession_as_set(profession)?).into(),
             Unit::Edges => Coordinate::edges().collect(),
             Unit::Corners => Coordinate::corners().collect(),
             Unit::ProfessionShift(profession, direction, total) => {
@@ -335,17 +330,18 @@ impl UnitInSeries {
         let big = Unit::from(self).add_context(context)?;
         Ok(small
             .into_iter()
-            .map(|small| HintKind::Bigger {
-                big: big.clone(),
-                small,
-            })
+            .map(|small| HintKind::Bigger { big, small })
             .collect())
     }
 
+    // TODO return Vec1<Set1>
     pub(crate) fn others(&self, context: Context<'_>) -> anyhow::Result<Vec1<Set>> {
         match self {
             Self::Line(line) => Ok(line.others().into_iter1().map(Set::from).collect1()),
-            Self::Profession(profession) => context.grid.other_professions(profession),
+            Self::Profession(profession) => context
+                .grid
+                .other_professions(profession)
+                .map(|others| others.into_iter1().map(Set::from).collect1()),
             Self::Neighbor(name) => {
                 let coord = name.add_context(context)?;
                 Ok(Coordinate::all()

@@ -1,5 +1,7 @@
 use std::error::Error;
 use std::iter::successors;
+use std::num::NonZero;
+use std::ops::BitOr;
 use std::str::FromStr;
 use std::{cmp, fmt};
 
@@ -7,10 +9,8 @@ use anyhow::{Result, anyhow};
 use bitvec::order::Lsb0;
 use bitvec::view::BitView as _;
 use itertools::Itertools as _;
-use mitsein::iter1::{IntoIterator1 as _, Iterator1};
+use mitsein::iter1::{IntoIterator1, Iterator1};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
-
-use crate::puzzle::hint::Set;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, SerializeDisplay, DeserializeFromStr)]
 pub(crate) struct Coordinate {
@@ -19,8 +19,6 @@ pub(crate) struct Coordinate {
 }
 
 impl Coordinate {
-    pub(crate) const CONNECTED: &[u8; 1 << 17] = include_bytes!("connected.bin");
-
     pub(crate) fn from_index(index: usize) -> Self {
         Self {
             row: Row::from_index(index / 4),
@@ -38,11 +36,6 @@ impl Coordinate {
 
     pub(crate) fn column_all(col: Column) -> impl Iterator<Item = Self> {
         Row::ALL.into_iter().map(move |row| Self { row, col })
-    }
-
-    pub(crate) fn connected(set: &Set) -> bool {
-        let index: usize = set.iter().map(|coord| 1 << coord.to_index()).sum();
-        Self::CONNECTED.view_bits::<Lsb0>()[index]
     }
 
     pub(crate) fn step(self, direction: Direction) -> Option<Self> {
@@ -71,6 +64,7 @@ impl Coordinate {
         successors(start.step(direction), move |coord| coord.step(direction))
     }
 
+    // TODO return Iterator1
     pub(crate) fn neighbors(self) -> impl Iterator<Item = Self> {
         use Direction::{Above, Below, Left, Right};
         [self.step(Above), self.step(Below)]
@@ -155,6 +149,133 @@ impl Ord for Coordinate {
 impl PartialOrd for Coordinate {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+//TODO custom Debug
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Set(u32);
+
+impl Set {
+    const CONNECTED: &[u8; 1 << 17] = include_bytes!("connected.bin");
+
+    pub(crate) fn connected(self) -> bool {
+        let index: usize = self.0.try_into().expect("Self::CONNECTED fits into memory");
+        Self::CONNECTED.view_bits::<Lsb0>()[index]
+    }
+
+    pub(crate) fn contains(self, coord: Coordinate) -> bool {
+        self.0 & (1 << coord.to_index()) != 0
+    }
+
+    pub(crate) fn len(self) -> usize {
+        self.0.count_ones().try_into().expect("at most 20")
+    }
+}
+
+impl FromIterator<Coordinate> for Set {
+    fn from_iter<T: IntoIterator<Item = Coordinate>>(iter: T) -> Self {
+        let bits = iter
+            .into_iter()
+            .fold(0, |set, coord| set | (1 << coord.to_index()));
+        Self(bits)
+    }
+}
+
+impl IntoIterator for Set {
+    type Item = Coordinate;
+
+    type IntoIter = SetIntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SetIntoIter { bits: self.0 }
+    }
+}
+
+impl From<Set1> for Set {
+    fn from(set: Set1) -> Self {
+        Self(set.0)
+    }
+}
+
+pub(crate) struct SetIntoIter {
+    bits: u32,
+}
+
+impl Iterator for SetIntoIter {
+    type Item = Coordinate;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.bits == 0 {
+            return None;
+        }
+        let index = self.bits.trailing_zeros();
+        self.bits ^= 1 << index;
+        Some(Coordinate::from_index(
+            index.try_into().expect("at most 20"),
+        ))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.bits.count_ones().try_into().expect("at most 20");
+        (len, Some(len))
+    }
+}
+
+impl ExactSizeIterator for SetIntoIter {}
+
+//TODO custom Debug
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Set1(u32);
+
+impl Set1 {
+    pub(crate) fn from_one(coord: Coordinate) -> Self {
+        Self(1 << coord.to_index())
+    }
+
+    pub(crate) fn len(self) -> NonZero<usize> {
+        NonZero::new(self.0.count_ones().try_into().expect("at most 20")).expect("Self invariant")
+    }
+}
+
+impl BitOr<Coordinate> for Set1 {
+    type Output = Self;
+
+    fn bitor(self, rhs: Coordinate) -> Self::Output {
+        Self(self.0 | (1 << rhs.to_index()))
+    }
+}
+
+impl TryFrom<Set> for Set1 {
+    type Error = Set;
+
+    fn try_from(set: Set) -> Result<Self, Self::Error> {
+        if set.0 == 0 {
+            Err(set)
+        } else {
+            Ok(Self(set.0))
+        }
+    }
+}
+
+impl IntoIterator for Set1 {
+    type Item = Coordinate;
+
+    type IntoIter = SetIntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SetIntoIter { bits: self.0 }
+    }
+}
+
+impl IntoIterator1 for Set1 {
+    #[expect(
+        unsafe_code,
+        reason = "There is no other way to infallibly create an Iterator1<SetIntoIter>"
+    )]
+    fn into_iter1(self) -> Iterator1<Self::IntoIter> {
+        // SAFETY
+        unsafe { Iterator1::from_iter_unchecked(self) }
     }
 }
 

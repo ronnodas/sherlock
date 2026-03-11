@@ -1,7 +1,6 @@
 mod parsers;
 pub(crate) mod recipes;
 
-use std::collections::HashSet;
 use std::ops::Not;
 
 use anyhow::Result;
@@ -9,12 +8,11 @@ use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
-use crate::puzzle::grid::coordinate::{Column, Coordinate, Direction, Row};
+use crate::puzzle::grid::coordinate::{Column, Coordinate, Direction, Row, Set};
 use crate::puzzle::hint::recipes::{AddContext, Context};
 use crate::puzzle::solution::Solution;
 use crate::puzzle::{Judgment, Profession};
 
-pub(crate) type Set = HashSet<Coordinate>;
 pub(crate) type Number = u8;
 pub(crate) use parsers::Sentence;
 
@@ -77,9 +75,7 @@ impl HintKind {
                     .sum();
                 quantity.matches(total)
             }
-            Self::Connected(set) => {
-                Coordinate::connected(&solution.select(set, judgment).collect())
-            }
+            Self::Connected(set) => solution.select(set, judgment).collect::<Set>().connected(),
             Self::Equal([a, b]) => {
                 solution.select(a, judgment).count() == solution.select(b, judgment).count()
             }
