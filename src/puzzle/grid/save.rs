@@ -4,7 +4,8 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 use crate::puzzle::grid::card::{Card, CardBack};
-use crate::puzzle::grid::{Coordinate, Format, Grid};
+use crate::puzzle::grid::coordinate::Coordinate;
+use crate::puzzle::grid::{Format, Grid};
 use crate::puzzle::{Name, Profession};
 
 #[derive(Serialize, Deserialize)]

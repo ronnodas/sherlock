@@ -17,7 +17,8 @@ use ron::ser::{PrettyConfig, to_string_pretty};
 use serde::{Deserialize, Serialize};
 use solution::Solution;
 
-use crate::puzzle::grid::{Coordinate, Format};
+use crate::puzzle::grid::Format;
+use crate::puzzle::grid::coordinate::Coordinate;
 use crate::puzzle::hint::Sentence;
 use crate::puzzle::hint::recipes::Context;
 

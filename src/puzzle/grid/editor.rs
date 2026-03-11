@@ -15,7 +15,8 @@ use tabled::settings::formatting::AlignmentStrategy;
 use tabled::settings::{Color as TabledColor, Style, object::Cell};
 
 use crate::puzzle::grid::card::{Card, CardBack, HintText};
-use crate::puzzle::grid::{Column, Coordinate, Format, Grid, Row};
+use crate::puzzle::grid::coordinate::{Column, Coordinate, Row};
+use crate::puzzle::grid::{Format, Grid};
 use crate::puzzle::{Judgment, Name, Profession};
 
 pub(crate) struct GridEditor {

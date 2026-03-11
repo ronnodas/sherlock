@@ -9,7 +9,7 @@ use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
-use crate::puzzle::grid::{Column, Coordinate, Direction, Row};
+use crate::puzzle::grid::coordinate::{Column, Coordinate, Direction, Row};
 use crate::puzzle::hint::recipes::{AddContext, Context};
 use crate::puzzle::solution::Solution;
 use crate::puzzle::{Judgment, Profession};

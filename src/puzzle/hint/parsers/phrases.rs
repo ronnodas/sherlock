@@ -7,7 +7,7 @@ use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
 use crate::puzzle::Profession;
-use crate::puzzle::grid::{Column, Coordinate, Direction, Row};
+use crate::puzzle::grid::coordinate::{Column, Coordinate, Direction, Row};
 use crate::puzzle::hint::recipes::{AddContext, Context, NameRecipe};
 use crate::puzzle::hint::{Cardinal, HintKind, Line, LineKind, Number, Set};
 

@@ -1,7 +1,8 @@
 use anyhow::Result;
 
 use crate::puzzle::Name;
-use crate::puzzle::grid::{Coordinate, Grid};
+use crate::puzzle::grid::Grid;
+use crate::puzzle::grid::coordinate::Coordinate;
 
 pub(crate) trait AddContext {
     type Output;

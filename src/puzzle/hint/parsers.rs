@@ -13,7 +13,7 @@ use winnow::token::{any, rest};
 use winnow::{Parser, Result};
 
 use crate::puzzle::Judgment;
-use crate::puzzle::grid::{Column, Row};
+use crate::puzzle::grid::coordinate::{Column, Row};
 use crate::puzzle::hint::parsers::phrases::Quantifier;
 use crate::puzzle::hint::recipes::NameRecipe;
 use crate::puzzle::hint::{
@@ -550,7 +550,15 @@ fn maybe_judged_unit(input: &mut &[&str]) -> Result<(Option<Judgment>, Unit)> {
 }
 
 fn judged_unit(input: &mut &[&str]) -> Result<(Judgment, Unit)> {
-    (word(judgment_any), unit).parse_next(input)
+    alt((
+        (word(judgment_any), unit),
+        (
+            word(name_possessive),
+            terminated(word(judgment_any), word(neighbor_any)),
+        )
+            .map(|(name, judgment)| (judgment, Unit::Neighbor(name))),
+    ))
+    .parse_next(input)
 }
 
 fn quantified_judged_unit(input: &mut &[&str]) -> Result<(Quantifier, Judgment, Unit)> {

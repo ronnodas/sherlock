@@ -6,7 +6,7 @@ use winnow::error::ParserError;
 use winnow::stream::{Stream, StreamIsPartial};
 
 use crate::puzzle::Judgment;
-use crate::puzzle::grid::{Column, Row};
+use crate::puzzle::grid::coordinate::{Column, Row};
 use crate::puzzle::hint::recipes::NameRecipe as Name;
 use crate::puzzle::hint::{Cardinal, Direction, LineKind, Parity};
 
@@ -777,6 +777,15 @@ fn debra_community_49f3f1_9eb600102931a676() {
     sentence(
         "No one in row 1 has more than one criminal neighbor",
         SentenceKind::AtMostNTraitsInNeighborsInUnit(Row::One.into(), 1),
+        Judgment::Criminal,
+    );
+}
+
+#[test]
+fn linda_community_6eebae_909beebb44a88201() {
+    sentence(
+        "All Noah's criminal neighbors are connected",
+        SentenceKind::TraitsAreNeighborsInUnit(Unit::neighbor("Noah"), None),
         Judgment::Criminal,
     );
 }

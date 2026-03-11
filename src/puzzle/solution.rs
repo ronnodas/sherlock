@@ -1,7 +1,7 @@
 use std::ops::Index;
 
 use crate::puzzle::Judgment;
-use crate::puzzle::grid::Coordinate;
+use crate::puzzle::grid::coordinate::Coordinate;
 use crate::puzzle::hint::Set;
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
