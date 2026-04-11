@@ -8,7 +8,7 @@ use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
-use crate::puzzle::grid::coordinate::{Column, Coordinate, Direction, Row, Set};
+use crate::puzzle::grid::coordinate::{Column, Coordinate, Direction, ModifiedSet, Row, Set};
 use crate::puzzle::hint::recipes::{AddContext, Context};
 use crate::puzzle::solution::Solution;
 use crate::puzzle::{Judgment, Profession};
@@ -54,12 +54,22 @@ impl Hint {
 #[derive(Clone, Debug)]
 pub(crate) enum HintKind {
     Judgment(Coordinate),
-    Count(Set, Cardinal),
-    CountTotal([Set; 2], Cardinal),
-    Connected(Set),
-    Equal([Set; 2]),
-    Bigger { big: Set, small: Set },
-    UniqueWithCount(Vec1<Set>, Cardinal),
+    Count(ModifiedSet, Cardinal),
+    CountTotal([ModifiedSet; 2], Cardinal),
+    Connected(ModifiedSet),
+    CompareSets([ModifiedSet; 2], Comparison),
+    CompareTraits(ModifiedSet, Comparison),
+    CountWithCount {
+        sets: Vec<ModifiedSet>,
+        count: Cardinal,
+        each: Cardinal,
+    },
+    EachNeighbors(ModifiedSet, Cardinal),
+    CountWithNeighbors {
+        set: ModifiedSet,
+        each: Cardinal,
+        count: Cardinal,
+    },
     Not(Box<Self>),
 }
 
@@ -67,28 +77,62 @@ impl HintKind {
     fn evaluate(&self, judgment: Judgment, solution: &Solution) -> bool {
         match self {
             &Self::Judgment(coord) => solution[coord] == judgment,
-            Self::Count(set, quantity) => quantity.matches(solution.select(set, judgment).count()),
+            Self::Count(set, quantity) => {
+                quantity.matches(solution.select(&set.judged(judgment)).len())
+            }
             Self::CountTotal(sets, quantity) => {
                 let total = sets
                     .iter()
-                    .map(|set| solution.select(set, judgment).count())
+                    .map(|set| solution.select(&set.judged(judgment)).len())
                     .sum();
                 quantity.matches(total)
             }
-            Self::Connected(set) => solution.select(set, judgment).collect::<Set>().connected(),
-            Self::Equal([a, b]) => {
-                solution.select(a, judgment).count() == solution.select(b, judgment).count()
+            Self::Connected(set) => solution.select(&set.judged(judgment)).connected(),
+            Self::CompareSets(sets, comparison) => {
+                let [lhs, rhs] = sets
+                    .each_ref()
+                    .map(|set| solution.select(&set.judged(judgment)).len());
+                comparison.compare(lhs, rhs)
             }
-            Self::Bigger { big, small } => {
-                solution.select(big, judgment).count() > solution.select(small, judgment).count()
-            }
-            Self::UniqueWithCount(sets, quantity) => {
+            Self::CountWithCount { sets, count, each } => count.matches(
                 sets.iter()
-                    .filter(|set| quantity.matches(solution.select(set, judgment).count()))
-                    .count()
-                    == 1
-            }
+                    .filter(|set| each.matches(solution.select(&set.judged(judgment)).len()))
+                    .count(),
+            ),
             Self::Not(hint) => !hint.evaluate(judgment, solution),
+            Self::CompareTraits(set, comparison) => {
+                let [lhs, rhs] = [judgment, judgment.flip()]
+                    .map(|judgment| solution.select(&set.judged(judgment)).len());
+                comparison.compare(lhs, rhs)
+            }
+            Self::CountWithNeighbors { set, each, count } => {
+                let counted = solution
+                    .select(set)
+                    .into_iter()
+                    .filter(|coord| {
+                        let neighbors = solution
+                            .select(&coord.neighbors().collect::<ModifiedSet>().judged(judgment))
+                            .len();
+                        each.matches(neighbors)
+                    })
+                    .count();
+                count.matches(counted)
+            }
+
+            Self::EachNeighbors(set, cardinal) => solution.select(set).into_iter().all(|coord| {
+                let neighbors = solution
+                    .select(&coord.neighbors().collect::<ModifiedSet>().judged(judgment))
+                    .len();
+                cardinal.matches(neighbors)
+            }),
+        }
+    }
+
+    fn unique_with_count(sets: Vec1<Set>, quantity: Cardinal) -> Self {
+        Self::CountWithCount {
+            sets: sets.into_iter().map(ModifiedSet::Regular).collect(),
+            each: quantity,
+            count: Cardinal::Exact(1),
         }
     }
 }
@@ -101,6 +145,23 @@ impl Not for HintKind {
             *reverse
         } else {
             Self::Not(Box::new(self))
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Comparison {
+    Equal,
+    MoreThan(Option<Number>),
+}
+
+impl Comparison {
+    fn compare(self, lhs: usize, rhs: usize) -> bool {
+        match self {
+            Self::Equal => lhs == rhs,
+            Self::MoreThan(excess) => {
+                excess.map_or(lhs > rhs, |excess| lhs == rhs + usize::from(excess))
+            }
         }
     }
 }

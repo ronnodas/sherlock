@@ -1,7 +1,11 @@
 use std::ops::Index;
 
+use mitsein::iter1::IntoIterator1 as _;
+
 use crate::puzzle::Judgment;
-use crate::puzzle::grid::coordinate::{Coordinate, Set};
+use crate::puzzle::grid::coordinate::{Coordinate, ModifiedSet, Set};
+
+use super::grid::coordinate::Modifier;
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Clone, Debug)]
@@ -12,9 +16,24 @@ impl Solution {
         &self.0
     }
 
-    pub(crate) fn select(&self, set: &Set, judgment: Judgment) -> impl Iterator<Item = Coordinate> {
-        set.into_iter()
-            .filter(move |&coord| self[coord] == judgment)
+    pub(crate) fn select(&self, set: &ModifiedSet) -> Set {
+        match set {
+            &ModifiedSet::Regular(set) => set,
+            ModifiedSet::Modified(inner, modifier) => {
+                let inner = self.select(inner);
+                match *modifier {
+                    Modifier::Shift(direction) => inner.shift(direction),
+                    Modifier::Judgement(judgment) => inner
+                        .into_iter()
+                        .filter(move |&coord| self[coord] == judgment)
+                        .collect(),
+                }
+            }
+            ModifiedSet::Intersection(sets) => sets
+                .into_iter1()
+                .map(|set| self.select(set))
+                .reduce(|a, b| a & b),
+        }
     }
 
     pub(crate) fn all(fixed_values: impl IntoIterator<Item = (usize, Judgment)>) -> Vec<Self> {

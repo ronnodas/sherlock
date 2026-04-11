@@ -199,6 +199,13 @@ impl Judgment {
             Self::Criminal => Color::Red,
         }
     }
+
+    fn flip(self) -> Self {
+        match self {
+            Self::Innocent => Self::Criminal,
+            Self::Criminal => Self::Innocent,
+        }
+    }
 }
 
 impl Not for Judgment {

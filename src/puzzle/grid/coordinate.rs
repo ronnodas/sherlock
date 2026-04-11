@@ -1,7 +1,6 @@
 use std::error::Error;
 use std::iter::successors;
-use std::num::NonZero;
-use std::ops::BitOr;
+use std::ops::{BitAnd, BitOr};
 use std::str::FromStr;
 use std::{cmp, fmt};
 
@@ -10,7 +9,11 @@ use bitvec::order::Lsb0;
 use bitvec::view::BitView as _;
 use itertools::Itertools as _;
 use mitsein::iter1::{IntoIterator1, Iterator1};
+use mitsein::vec1::{Vec1, vec1};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
+
+use crate::puzzle::Judgment;
+use crate::puzzle::hint::Line;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, SerializeDisplay, DeserializeFromStr)]
 pub(crate) struct Coordinate {
@@ -171,6 +174,20 @@ impl Set {
     pub(crate) fn len(self) -> usize {
         self.0.count_ones().try_into().expect("at most 20")
     }
+
+    pub(crate) fn shift(self, direction: Direction) -> Self {
+        self.into_iter()
+            .filter_map(|coord| coord.step(direction))
+            .collect()
+    }
+}
+
+impl BitAnd<Self> for Set {
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Self(self.0 & rhs.0)
+    }
 }
 
 impl FromIterator<Coordinate> for Set {
@@ -232,10 +249,6 @@ impl Set1 {
     pub(crate) fn from_one(coord: Coordinate) -> Self {
         Self(1 << coord.to_index())
     }
-
-    pub(crate) fn len(self) -> NonZero<usize> {
-        NonZero::new(self.0.count_ones().try_into().expect("at most 20")).expect("Self invariant")
-    }
 }
 
 impl BitOr<Coordinate> for Set1 {
@@ -276,6 +289,92 @@ impl IntoIterator1 for Set1 {
     fn into_iter1(self) -> Iterator1<Self::IntoIter> {
         // SAFETY
         unsafe { Iterator1::from_iter_unchecked(self) }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum ModifiedSet {
+    Regular(Set),
+    Modified(Box<Self>, Modifier),
+    Intersection(Vec1<Self>),
+}
+
+impl ModifiedSet {
+    #[must_use]
+    pub(crate) fn as_regular(&self) -> Option<Set> {
+        if let &Self::Regular(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn judged(&self, judgment: Judgment) -> Self {
+        Self::Modified(Box::new(self.clone()), judgment.into())
+    }
+
+    pub(crate) fn intersect(self, rhs: Self) -> Self {
+        match (self, rhs) {
+            (Self::Regular(this), Self::Regular(rhs)) => this
+                .into_iter()
+                .filter(|&coord| rhs.contains(coord))
+                .collect(),
+            (
+                this @ (Self::Regular(..) | Self::Modified(..)),
+                rhs @ (Self::Modified(..) | Self::Regular(..)),
+            ) => Self::Intersection(vec1![this, rhs]),
+            (this @ (Self::Regular(..) | Self::Modified(..)), Self::Intersection(mut vec))
+            | (Self::Intersection(mut vec), this @ (Self::Regular(..) | Self::Modified(..))) => {
+                vec.push(this);
+                Self::Intersection(vec)
+            }
+            (Self::Intersection(mut this), Self::Intersection(rhs)) => {
+                this.extend(rhs);
+                Self::Intersection(this)
+            }
+        }
+    }
+}
+
+impl From<Set> for ModifiedSet {
+    fn from(v: Set) -> Self {
+        Self::Regular(v)
+    }
+}
+
+impl From<Set1> for ModifiedSet {
+    fn from(set: Set1) -> Self {
+        Self::Regular(set.into())
+    }
+}
+
+impl From<Line> for ModifiedSet {
+    fn from(line: Line) -> Self {
+        Self::Regular(line.into())
+    }
+}
+
+impl FromIterator<Coordinate> for ModifiedSet {
+    fn from_iter<T: IntoIterator<Item = Coordinate>>(iter: T) -> Self {
+        Self::Regular(iter.into_iter().collect())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Modifier {
+    Shift(Direction),
+    Judgement(Judgment),
+}
+
+impl From<Direction> for Modifier {
+    fn from(v: Direction) -> Self {
+        Self::Shift(v)
+    }
+}
+
+impl From<Judgment> for Modifier {
+    fn from(v: Judgment) -> Self {
+        Self::Judgement(v)
     }
 }
 

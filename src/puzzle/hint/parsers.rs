@@ -50,23 +50,27 @@ impl Sentence {
 
     fn any(input: &mut &[&str]) -> Result<Self> {
         alt((
-            Self::traits_are_neighbors_in_unit,
-            Self::has_most_traits,
-            Self::is_one_of_n_traits_in_unit,
-            Self::more_traits_in_unit_than_unit,
-            Self::units_share_n_traits,
-            Self::each_unit_in_series_has_n_traits,
-            Self::unit_shares_quantified_traits_with_unit,
-            Self::number_of_traits_in_unit,
-            Self::only_one_person_in_unit_has_cardinal_trait_neighbors,
-            Self::only_one_unit_in_series_has_exactly_n_traits,
-            Self::only_given_unit_has_exactly_n_traits,
-            Self::equal_number_of_traits_in_units,
-            Self::more_traits_in_unit,
-            Self::equal_traits_in_unit,
-            Self::has_trait,
-            Self::at_most_n_traits_in_neighbors_in_unit,
-            Self::total_number_of_traits_in_units,
+            terminated(Self::traits_are_neighbors_in_unit, eof),
+            terminated(Self::has_most_traits, eof),
+            terminated(Self::is_one_of_n_traits_in_unit, eof),
+            terminated(Self::more_traits_in_unit_than_unit, eof),
+            terminated(Self::units_share_n_traits, eof),
+            terminated(Self::each_unit_in_series_has_n_traits, eof),
+            terminated(Self::unit_shares_quantified_traits_with_unit, eof),
+            terminated(Self::number_of_traits_in_unit, eof),
+            terminated(
+                Self::only_one_person_in_unit_has_cardinal_trait_neighbors,
+                eof,
+            ),
+            terminated(Self::n_people_in_unit_have_cardinal_trait_neighbors, eof),
+            terminated(Self::only_one_unit_in_series_has_exactly_n_traits, eof),
+            terminated(Self::only_given_unit_has_exactly_n_traits, eof),
+            terminated(Self::equal_number_of_traits_in_units, eof),
+            terminated(Self::more_traits_in_unit, eof),
+            terminated(Self::equal_traits_in_unit, eof),
+            terminated(Self::has_trait, eof),
+            terminated(Self::at_most_n_traits_in_neighbors_in_unit, eof),
+            terminated(Self::total_number_of_traits_in_units, eof),
         ))
         .parse_next(input)
     }
@@ -153,23 +157,28 @@ impl Sentence {
                 judgment_small
                     .is_none_or(|small| small == judgment)
                     .then_some(Self {
-                        kind: SentenceKind::MoreTraitsInUnitThanUnit { big, small },
+                        kind: SentenceKind::MoreTraitsInUnitThanUnit {
+                            big,
+                            small,
+                            excess: None,
+                        },
                         judgment,
                     })
             }),
             (
                 word(name),
                 delimited(
-                    words((has_have, "more")),
-                    word(judgment_singular),
-                    words(("neighbors", "than")),
+                    word(has_have),
+                    separated_pair(opt(word(number)), word("more"), word(judgment_singular)),
+                    words((neighbor_any, "than")),
                 ),
                 word(name),
             )
-                .map(|(big, judgment, small)| Self {
+                .map(|(big, (excess, judgment), small)| Self {
                     kind: SentenceKind::MoreTraitsInUnitThanUnit {
                         big: Unit::Neighbor(big),
                         small: Unit::Neighbor(small),
+                        excess,
                     },
                     judgment,
                 }),
@@ -183,19 +192,21 @@ impl Sentence {
             separated_pair(word(name), word(has_have), cardinal_judged_neighbors)
                 .map(|(name, (quantity, judgment))| (quantity, judgment, Unit::Neighbor(name))),
             separated_pair(
-                quantified_profession,
+                quantified_unit,
                 words((has_have, alt(("an", "a")))),
                 (
                     word(judgment_singular),
                     delimited(word("directly"), direction, word(alt(("them", "us")))),
                 ),
             )
-            .map(|((quantifier, profession), (judgment, direction))| {
-                let (cardinal, total) = match quantifier {
-                    Quantifier::Simple(cardinal) => (cardinal, None),
-                    Quantifier::Subset(count, total) => (Cardinal::Exact(count), Some(total)),
+            .map(|((quantifier, unit), (judgment, direction))| {
+                let (cardinal, unit) = match quantifier {
+                    Quantifier::Simple(cardinal) => (cardinal, unit),
+                    Quantifier::Subset(count, total) => {
+                        (Cardinal::Exact(count), unit.quantify(total))
+                    }
                 };
-                let unit = Unit::ProfessionShift(profession, direction, total);
+                let unit = unit.shift(direction);
                 (cardinal, judgment, unit)
             }),
         ))
@@ -228,7 +239,7 @@ impl Sentence {
             }),
             separated_pair(
                 word(name),
-                words(("is", "the", "only", "one")),
+                words(("is", "the", "only", alt(("one", "person")))),
                 separated_pair(unit, word("with"), cardinal_judged_neighbors),
             )
             .map(|(name, (unit, (quantity, judgment)))| Self {
@@ -243,14 +254,47 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn only_one_unit_in_series_has_exactly_n_traits(input: &mut &[&str]) -> Result<Self> {
+    fn n_people_in_unit_have_cardinal_trait_neighbors(input: &mut &[&str]) -> Result<Self> {
         separated_pair(
-            preceded(words(("Only", "one")), word(line_kind)),
-            word("has"),
-            cardinal_judgment,
+            quantified_profession,
+            word(has_have),
+            cardinal_judged_neighbors,
         )
-        .map(|(kind, (count, judgment))| Self {
-            kind: SentenceKind::OnlyOneUnitInSeriesHasNTraits(kind.into(), count),
+        .map(|((count, profession), (neighbors, judgment))| {
+            let unit = Unit::Profession(profession);
+            let (quantity, unit) = match count {
+                Quantifier::Simple(cardinal) => (cardinal, unit),
+                Quantifier::Subset(count, total) => (Cardinal::Exact(count), unit.quantify(total)),
+            };
+            Self {
+                kind: SentenceKind::NPeopleInUnitHaveNTraitNeighbors {
+                    unit,
+                    quantity,
+                    neighbors,
+                },
+                judgment,
+            }
+        })
+        .parse_next(input)
+    }
+
+    fn only_one_unit_in_series_has_exactly_n_traits(input: &mut &[&str]) -> Result<Self> {
+        alt((
+            separated_pair(
+                preceded(words(("Only", "one")), word(line_kind)),
+                word("has"),
+                cardinal_judgment,
+            )
+            .map(|(kind, (count, judgment))| (kind.into(), count, judgment)),
+            delimited(
+                words(("Only", "one", "person", "has")),
+                cardinal_judgment,
+                word(neighbor_any),
+            )
+            .map(|(quantity, judgment)| (Series::Neighbor, quantity, judgment)),
+        ))
+        .map(|(series, count, judgment)| Self {
+            kind: SentenceKind::OnlyOneUnitInSeriesHasNTraits(series, count),
             judgment,
         })
         .parse_next(input)
@@ -272,6 +316,14 @@ impl Sentence {
                 cardinal_judged_neighbors,
             )
             .map(|(name, (quantity, judgment))| (UnitInSeries::Neighbor(name), quantity, judgment)),
+            separated_pair(
+                word(profession_singular),
+                words(("is", "the", "only", "profession", "with")),
+                cardinal_judgment,
+            )
+            .map(|(profession, (quantity, judgment))| {
+                (UnitInSeries::Profession(profession), quantity, judgment)
+            }),
         ))
         .map(|(unit, count, judgment)| Self {
             kind: SentenceKind::OnlyGivenUnitHasNTraits(unit, count),
@@ -320,6 +372,11 @@ impl Sentence {
                     judgment,
                 )
             }),
+            separated_pair(quantified_judged_unit, word(neighbor_any), word(name)).map(
+                |((quantifier, judgment, unit), name)| {
+                    (quantifier, unit, Unit::Neighbor(name), judgment)
+                },
+            ),
         ))
         .map(|(quantifier, quantified, other, judgment)| {
             let kind = match quantifier {
@@ -533,7 +590,22 @@ fn unit(input: &mut &[&str]) -> Result<Unit> {
             alt((words(("a", "corner")), words(("the", "corners")))),
         )
             .value(Unit::Corners),
-        preceded(opt(word("in")), alt((between, line.map(Unit::Line)))),
+        (
+            alt((
+                word(judgment_any).map(Some),
+                word("person").value(None),
+                word("persons").value(None),
+                empty.value(None),
+            )),
+            alt((between, preceded(opt(word("in")), line.map(Unit::Line)))),
+        )
+            .map(|(judgment, line)| {
+                if let Some(judgment) = judgment {
+                    line.with_judgment(judgment)
+                } else {
+                    line
+                }
+            }),
         (direction, word(name)).map(|(direction, name)| Unit::Direction(direction, name)),
         alt((
             preceded(neighboring_verb, word(name)),
@@ -546,7 +618,7 @@ fn unit(input: &mut &[&str]) -> Result<Unit> {
 }
 
 fn maybe_judged_unit(input: &mut &[&str]) -> Result<(Option<Judgment>, Unit)> {
-    (opt(word(judgment_any)), unit).parse_next(input)
+    preceded(opt(word(determiner)), (opt(word(judgment_any)), unit)).parse_next(input)
 }
 
 fn judged_unit(input: &mut &[&str]) -> Result<(Judgment, Unit)> {
@@ -565,7 +637,11 @@ fn quantified_judged_unit(input: &mut &[&str]) -> Result<(Quantifier, Judgment, 
     alt((
         quantified_possessive_judged_neighbors
             .map(|(name, quantity, judgment)| (quantity, judgment, Unit::Neighbor(name))),
-        (quantifier, word(judgment_any), unit),
+        (
+            quantifier,
+            preceded(opt(word(determiner)), word(judgment_any)),
+            unit,
+        ),
     ))
     .parse_next(input)
 }
@@ -715,6 +791,10 @@ fn quantified_profession(input: &mut &[&str]) -> Result<(Quantifier, Profession)
     .parse_next(input)
 }
 
+fn quantified_unit(input: &mut &[&str]) -> Result<(Quantifier, Unit)> {
+    separated_pair(quantifier, opt((word("of"), opt(word(determiner)))), unit).parse_next(input)
+}
+
 fn direction(input: &mut &[&str]) -> Result<Direction> {
     alt((
         word("above").value(Direction::Above),
@@ -744,13 +824,22 @@ fn profession_any(input: &mut &[&str]) -> Result<Profession> {
 }
 
 fn profession_singular(input: &mut &str) -> Result<Profession> {
-    rest.map(str::to_owned).parse_next(input)
+    rest.verify(starts_lowercase)
+        .map(str::to_owned)
+        .parse_next(input)
 }
 
 fn profession_plural(input: &mut &str) -> Result<Profession> {
-    rest.verify_map(|s: &str| s.strip_suffix('s'))
-        .map(str::to_owned)
-        .parse_next(input)
+    rest.verify_map(|s: &str| {
+        s.strip_suffix('s')
+            .filter(|profession| starts_lowercase(profession))
+    })
+    .map(str::to_owned)
+    .parse_next(input)
+}
+
+fn starts_lowercase(profession: &str) -> bool {
+    profession.chars().next().is_some_and(char::is_lowercase)
 }
 
 fn neighbor_any(input: &mut &str) -> Result<()> {
@@ -782,7 +871,7 @@ fn be_verb<'input>(input: &mut &'input str) -> Result<&'input str> {
 }
 
 fn between(input: &mut &[&str]) -> Result<Unit> {
-    preceded(word("between"), pair(name))
+    preceded(words(("in", "between")), pair(name))
         .map(Unit::Between)
         .parse_next(input)
 }

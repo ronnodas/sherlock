@@ -17,7 +17,9 @@ fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",
         SentenceKind::NumberOfTraitsInUnit(
-            Unit::ProfessionShift("painter".into(), Direction::Left, Some(2)),
+            Unit::profession("painter")
+                .quantify(2)
+                .shift(Direction::Left),
             Cardinal::Exact(1),
         ),
         Judgment::Innocent,
@@ -74,7 +76,9 @@ fn uma_2026_01_31() {
     sentence(
         "2 out of the 3 teachers have a criminal directly below them",
         SentenceKind::NumberOfTraitsInUnit(
-            Unit::ProfessionShift("teacher".into(), Direction::Below, Some(3)),
+            Unit::profession("teacher")
+                .quantify(3)
+                .shift(Direction::Below),
             Cardinal::Exact(2),
         ),
         Judgment::Criminal,
@@ -107,7 +111,7 @@ fn uma_2026_02_03() {
     sentence(
         "exactly 1 judge has an innocent directly above them",
         SentenceKind::NumberOfTraitsInUnit(
-            Unit::ProfessionShift("judge".into(), Direction::Above, None),
+            Unit::profession("judge").shift(Direction::Above),
             Cardinal::Exact(1),
         ),
         Judgment::Innocent,
@@ -252,7 +256,7 @@ fn logan_2026_02_06() {
     sentence(
         "exactly 1 farmer has a criminal directly above them",
         SentenceKind::NumberOfTraitsInUnit(
-            Unit::ProfessionShift("farmer".to_owned(), Direction::Above, None),
+            Unit::profession("farmer").shift(Direction::Above),
             Cardinal::Exact(1),
         ),
         Judgment::Criminal,
@@ -287,6 +291,7 @@ fn vera_2026_02_06() {
         SentenceKind::MoreTraitsInUnitThanUnit {
             big: Unit::profession("cook"),
             small: Unit::profession("mech"),
+            excess: None,
         },
         Judgment::Innocent,
     );
@@ -378,6 +383,7 @@ fn xavi_2026_02_09() {
         SentenceKind::MoreTraitsInUnitThanUnit {
             big: Row::Three.into(),
             small: Row::Five.into(),
+            excess: None,
         },
         Judgment::Innocent,
     );
@@ -431,7 +437,9 @@ fn will_2026_02_10() {
     sentence(
         "2 of us 3 singers have an innocent directly to the left of us",
         SentenceKind::NumberOfTraitsInUnit(
-            Unit::ProfessionShift("singer".into(), Direction::Left, Some(3)),
+            Unit::profession("singer")
+                .quantify(3)
+                .shift(Direction::Left),
             Cardinal::Exact(2),
         ),
         Judgment::Innocent,
@@ -481,12 +489,100 @@ fn olive_2026_02_13() {
 }
 
 #[test]
+fn paul_2026_03_23() {
+    sentence(
+        "Freya has one more innocent neighbor than Olof",
+        SentenceKind::MoreTraitsInUnitThanUnit {
+            big: Unit::neighbor("Freya"),
+            small: Unit::neighbor("Olof"),
+            excess: Some(1),
+        },
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn vince_2026_03_24() {
+    sentence(
+        "There are more innocent judges than us innocent singers",
+        SentenceKind::MoreTraitsInUnitThanUnit {
+            big: Unit::profession("judge"),
+            small: Unit::profession("singer"),
+            excess: None,
+        },
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn nicole_2026_03_24() {
+    sentence(
+        "an odd number of us innocents on the edges neighbor Igor",
+        SentenceKind::UnitsShareNTraits([Unit::Edges, Unit::neighbor("Igor")], Parity::Odd.into()),
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn flora_2026_03_24() {
+    sentence(
+        "Vince is the only person in a corner with one criminal neighbor",
+        SentenceKind::OnlyOnePersonInUnitHasNTraitNeighbors(
+            Unit::Corners,
+            Cardinal::Exact(1),
+            Some("Vince".into()),
+        ),
+        Judgment::Criminal,
+    );
+}
+
+#[test]
+fn flora_2026_04_05() {
+    sentence(
+        "2 of the 3 guards have 3 innocent neighbors",
+        SentenceKind::NPeopleInUnitHaveNTraitNeighbors {
+            unit: Unit::profession("guard").quantify(3),
+            quantity: Cardinal::Exact(2),
+            neighbors: Cardinal::Exact(3),
+        },
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn sofia_2026_04_11() {
+    sentence(
+        "one innocent in column A has an innocent directly to the right of them",
+        SentenceKind::NumberOfTraitsInUnit(
+            Unit::from(Column::A)
+                .with_judgment(Judgment::Innocent)
+                .shift(Direction::Right),
+            Cardinal::Exact(1),
+        ),
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn xavi_2026_04_11() {
+    sentence(
+        "2 persons in column D have an innocent directly above them",
+        SentenceKind::NumberOfTraitsInUnit(
+            Unit::from(Column::D).shift(Direction::Above),
+            Cardinal::Exact(2),
+        ),
+        Judgment::Innocent,
+    );
+}
+
+#[test]
 fn diane_0cf47() {
     sentence(
         "Xavi has more criminal neighbors than Ben",
         SentenceKind::MoreTraitsInUnitThanUnit {
             big: Unit::neighbor("Xavi"),
             small: Unit::neighbor("Ben"),
+            excess: None,
         },
         Judgment::Criminal,
     );
@@ -613,6 +709,7 @@ fn xia_puzzle_pack_1_2() {
         SentenceKind::MoreTraitsInUnitThanUnit {
             big: Unit::Neighbor(Name::Me),
             small: Unit::neighbor("Olivia"),
+            excess: None,
         },
         Judgment::Innocent,
     );
@@ -787,6 +884,27 @@ fn linda_community_6eebae_909beebb44a88201() {
         "All Noah's criminal neighbors are connected",
         SentenceKind::TraitsAreNeighborsInUnit(Unit::neighbor("Noah"), None),
         Judgment::Criminal,
+    );
+}
+
+#[test]
+fn helen_community_6eebae_d5d5560b65d3f7ba() {
+    sentence(
+        "builder is the only profession with exactly one innocent",
+        SentenceKind::OnlyGivenUnitHasNTraits(
+            UnitInSeries::profession("builder"),
+            Cardinal::Exact(1),
+        ),
+        Judgment::Innocent,
+    );
+}
+
+#[test]
+fn flora_community_6eebae_d5d5560b65d3f7ba() {
+    sentence(
+        "Only one person has exactly 6 innocent neighbors",
+        SentenceKind::OnlyOneUnitInSeriesHasNTraits(Series::Neighbor, Cardinal::Exact(6)),
+        Judgment::Innocent,
     );
 }
 
