@@ -7,7 +7,7 @@ use winnow::stream::{Stream, StreamIsPartial};
 
 use crate::puzzle::Judgment;
 use crate::puzzle::grid::coordinate::{Column, Row};
-use crate::puzzle::hint::recipes::NameRecipe as Name;
+use crate::puzzle::hint::recipes::{ColumnRecipe, NameRecipe as Name};
 use crate::puzzle::hint::{Cardinal, Direction, LineKind, Parity};
 
 use super::{Sentence, SentenceKind, Series, Unit, UnitInSeries};
@@ -572,6 +572,15 @@ fn xavi_2026_04_11() {
             Cardinal::Exact(2),
         ),
         Judgment::Innocent,
+    );
+}
+
+#[test]
+fn janet_2026_04_13() {
+    sentence(
+        "There are exactly 3 criminals in my column",
+        SentenceKind::NumberOfTraitsInUnit(ColumnRecipe::Me.into(), Cardinal::Exact(3)),
+        Judgment::Criminal,
     );
 }
 

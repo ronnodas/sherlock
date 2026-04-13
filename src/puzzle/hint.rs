@@ -173,13 +173,6 @@ pub(crate) enum Line {
 }
 
 impl Line {
-    fn kind(self) -> LineKind {
-        match self {
-            Self::Row(_) => LineKind::Row,
-            Self::Column(_) => LineKind::Column,
-        }
-    }
-
     fn others(self) -> Vec1<Self> {
         match self {
             Self::Row(row) => row.others().map(Self::Row).try_collect1().ok(),

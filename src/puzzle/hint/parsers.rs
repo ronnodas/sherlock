@@ -15,9 +15,9 @@ use winnow::{Parser, Result};
 use crate::puzzle::Judgment;
 use crate::puzzle::grid::coordinate::{Column, Row};
 use crate::puzzle::hint::parsers::phrases::Quantifier;
-use crate::puzzle::hint::recipes::NameRecipe;
+use crate::puzzle::hint::recipes::{ColumnRecipe, LineRecipe, NameRecipe, RowRecipe};
 use crate::puzzle::hint::{
-    Cardinal, Direction, Line, LineKind, Number, Parity, Profession, WithJudgment,
+    Cardinal, Direction, LineKind, Number, Parity, Profession, WithJudgment,
 };
 
 pub(crate) type Sentence = WithJudgment<SentenceKind>;
@@ -758,7 +758,7 @@ fn name_possessive(input: &mut &str) -> Result<NameRecipe> {
                 s.strip_suffix("'s")
                     .or_else(|| s.strip_suffix("'").filter(|name| name.ends_with('s')))
             })
-            .map(|name| NameRecipe::Other(name.to_owned())),
+            .map(|name| NameRecipe::Explicit(name.to_owned())),
     ))
     .parse_next(input)
 }
@@ -769,7 +769,7 @@ fn name(input: &mut &str) -> Result<NameRecipe> {
             if name == "I" || name == "Me" {
                 NameRecipe::Me
             } else {
-                NameRecipe::Other(name.to_owned())
+                NameRecipe::Explicit(name.to_owned())
             }
         }),
         "me".value(NameRecipe::Me),
@@ -876,30 +876,41 @@ fn between(input: &mut &[&str]) -> Result<Unit> {
         .parse_next(input)
 }
 
-fn line(input: &mut &[&str]) -> Result<Line> {
-    alt((row.map(Line::Row), column.map(Line::Column))).parse_next(input)
+fn line(input: &mut &[&str]) -> Result<LineRecipe> {
+    alt((row.map(LineRecipe::Row), column.map(LineRecipe::Column))).parse_next(input)
 }
 
 fn line_kind(input: &mut &str) -> Result<LineKind> {
     alt(("row".value(LineKind::Row), "column".value(LineKind::Column))).parse_next(input)
 }
 
-fn line_pair(input: &mut &[&str]) -> Result<[Line; 2]> {
+fn line_pair(input: &mut &[&str]) -> Result<[LineRecipe; 2]> {
     alt((
-        separated_pair(line_prefixed("rows", row_bare), word("and"), word(row_bare))
-            .map(|rows| <[Row; 2]>::from(rows).map(Line::Row)),
+        separated_pair(line_prefixed("rows", row_bare), word("and"), word(row_bare)).map(|rows| {
+            <[Row; 2]>::from(rows)
+                .map(RowRecipe::Explicit)
+                .map(LineRecipe::Row)
+        }),
         separated_pair(
             line_prefixed("columns", column_bare),
             word("and"),
             word(column_bare),
         )
-        .map(|rows| <[Column; 2]>::from(rows).map(Line::Column)),
+        .map(|cols| {
+            <[Column; 2]>::from(cols)
+                .map(ColumnRecipe::Explicit)
+                .map(LineRecipe::Column)
+        }),
     ))
     .parse_next(input)
 }
 
-fn row(input: &mut &[&str]) -> Result<Row> {
-    line_prefixed("row", row_bare).parse_next(input)
+fn row(input: &mut &[&str]) -> Result<RowRecipe> {
+    alt((
+        line_prefixed("row", row_bare).map(RowRecipe::Explicit),
+        words(("my", "row")).value(RowRecipe::Me),
+    ))
+    .parse_next(input)
 }
 
 fn line_prefixed<'input, 'inner, T, E>(
@@ -933,8 +944,12 @@ fn row_bare(input: &mut &str) -> Result<Row> {
     .parse_next(input)
 }
 
-fn column(input: &mut &[&str]) -> Result<Column> {
-    line_prefixed("column", column_bare).parse_next(input)
+fn column(input: &mut &[&str]) -> Result<ColumnRecipe> {
+    alt((
+        line_prefixed("column", column_bare).map(ColumnRecipe::Explicit),
+        words(("my", "column")).value(ColumnRecipe::Me),
+    ))
+    .parse_next(input)
 }
 
 fn column_bare(input: &mut &str) -> Result<Column> {

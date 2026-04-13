@@ -5,8 +5,10 @@ use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
 use crate::puzzle::grid::coordinate::{Column, Coordinate, Direction, ModifiedSet, Row, Set1};
-use crate::puzzle::hint::recipes::{AddContext, Context, NameRecipe};
-use crate::puzzle::hint::{Cardinal, Comparison, HintKind, Line, LineKind, Number, Set};
+use crate::puzzle::hint::recipes::{
+    AddContext, ColumnRecipe, Context, LineRecipe, NameRecipe, RowRecipe,
+};
+use crate::puzzle::hint::{Cardinal, Comparison, HintKind, LineKind, Number, Set};
 use crate::puzzle::{Judgment, Profession};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
@@ -151,7 +153,7 @@ impl AddContext for SentenceKind {
 #[derive(Clone, Debug)]
 pub(crate) enum Unit {
     Direction(Direction, NameRecipe),
-    Line(Line),
+    Line(LineRecipe),
     Profession(Profession),
     Neighbor(NameRecipe),
     Between([NameRecipe; 2]),
@@ -315,7 +317,7 @@ impl AddContext for &Unit {
     fn add_context(self, context: Context<'_>) -> anyhow::Result<Self::Output> {
         let mut hints = Vec::new();
         let set: ModifiedSet = match self {
-            &Unit::Line(line) => line.into(),
+            &Unit::Line(line) => line.add_context(context)?.into(),
             Unit::Direction(direction, name) => {
                 let start = name.add_context(context)?;
                 Coordinate::direction(start, *direction).collect()
@@ -358,28 +360,40 @@ impl AddContext for &Unit {
     }
 }
 
-impl From<Line> for Unit {
-    fn from(v: Line) -> Self {
+impl From<LineRecipe> for Unit {
+    fn from(v: LineRecipe) -> Self {
         Self::Line(v)
+    }
+}
+
+impl From<RowRecipe> for Unit {
+    fn from(row: RowRecipe) -> Self {
+        Self::Line(LineRecipe::Row(row))
     }
 }
 
 impl From<Row> for Unit {
     fn from(row: Row) -> Self {
-        Self::Line(Line::Row(row))
+        Self::Line(LineRecipe::Row(RowRecipe::Explicit(row)))
+    }
+}
+
+impl From<ColumnRecipe> for Unit {
+    fn from(column: ColumnRecipe) -> Self {
+        Self::Line(LineRecipe::Column(column))
     }
 }
 
 impl From<Column> for Unit {
-    fn from(column: Column) -> Self {
-        Self::Line(Line::Column(column))
+    fn from(value: Column) -> Self {
+        Self::Line(LineRecipe::Column(ColumnRecipe::Explicit(value)))
     }
 }
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug)]
 pub(crate) enum UnitInSeries {
-    Line(Line),
+    Line(LineRecipe),
     Profession(Profession),
     Neighbor(NameRecipe),
 }
@@ -397,7 +411,12 @@ impl UnitInSeries {
     // TODO return Vec1<Set1>
     pub(crate) fn others(&self, context: Context<'_>) -> anyhow::Result<Vec1<Set>> {
         match self {
-            Self::Line(line) => Ok(line.others().into_iter1().map(Set::from).collect1()),
+            Self::Line(line) => Ok(line
+                .add_context(context)?
+                .others()
+                .into_iter1()
+                .map(Set::from)
+                .collect1()),
             Self::Profession(profession) => context
                 .grid
                 .other_professions(profession)
@@ -441,21 +460,33 @@ impl UnitInSeries {
     }
 }
 
-impl From<Line> for UnitInSeries {
-    fn from(v: Line) -> Self {
+impl From<LineRecipe> for UnitInSeries {
+    fn from(v: LineRecipe) -> Self {
         Self::Line(v)
+    }
+}
+
+impl From<RowRecipe> for UnitInSeries {
+    fn from(row: RowRecipe) -> Self {
+        Self::Line(LineRecipe::Row(row))
     }
 }
 
 impl From<Row> for UnitInSeries {
     fn from(row: Row) -> Self {
-        Self::Line(Line::Row(row))
+        Self::Line(LineRecipe::Row(RowRecipe::Explicit(row)))
+    }
+}
+
+impl From<ColumnRecipe> for UnitInSeries {
+    fn from(column: ColumnRecipe) -> Self {
+        Self::Line(LineRecipe::Column(column))
     }
 }
 
 impl From<Column> for UnitInSeries {
-    fn from(column: Column) -> Self {
-        Self::Line(Line::Column(column))
+    fn from(value: Column) -> Self {
+        Self::Line(LineRecipe::Column(ColumnRecipe::Explicit(value)))
     }
 }
 
