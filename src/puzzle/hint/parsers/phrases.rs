@@ -16,38 +16,38 @@ use crate::puzzle::{Judgment, Profession};
 pub(crate) enum Sentence {
     // This I think can't actually be "Me"
     HasTrait(NameRecipe, Judgment),
-    TraitsAreNeighborsInUnit(Unit),
-    HasMostTraits(UnitInSeries, Judgment),
+    UnitIsConnected(Unit),
+    BiggestInSeries(UnitInSeries, Judgment),
     IsOneOfNInUnit(Unit, NameRecipe, Cardinal, Judgment),
     EqualNumberOfTraitsInUnits([Unit; 2], Judgment),
-    MoreTraitsInUnitThanUnit {
+    UnitBiggerThanUnit {
         big: Unit,
         small: Unit,
         excess: Option<Number>,
     },
-    EqualTraitsInUnit(Unit),
+    UnitEquallySplit(Unit),
     MoreTraitsInUnit(Unit, Judgment),
-    NumberOfTraitsInUnit(Unit, Cardinal),
-    OnlyOnePersonInUnitHasNTraitNeighbors(Unit, Cardinal, Option<NameRecipe>, Judgment),
-    NPeopleInUnitHaveNTraitNeighbors {
+    UnitSize(Unit, Cardinal),
+    UniqueInUnitHasNNeighbors(Unit, Cardinal, Option<NameRecipe>, Judgment),
+    NInUnitHaveNNeighbors {
         unit: Unit,
         quantity: Cardinal,
         neighbors: Cardinal,
         judgment: Judgment,
     },
-    EachUnitInSeriesHasNTraits(Series, Cardinal, Judgment),
-    OnlyOneUnitInSeriesHasNTraits(Series, Cardinal, Judgment),
+    EachUnitInSeriesHasSize(Series, Cardinal, Judgment),
+    UniqueUnitInSeriesHasSize(Series, Cardinal, Judgment),
     OnlyGivenUnitHasNTraits(UnitInSeries, Cardinal, Judgment),
-    UnitSharesNOutOfNTraitsWithUnit {
+    UnitAndIntersectionSize {
         total: Number,
         quantified: Unit,
         other: Unit,
         intersection: Number,
         judgment: Judgment,
     },
-    UnitsShareNTraits([Unit; 2], Cardinal, Judgment),
-    AtMostNTraitsInNeighborsInUnit(Unit, Number, Judgment),
-    TotalNumberOfTraitsInUnits([Unit; 2], Cardinal, Judgment),
+    IntersectionSize([Unit; 2], Cardinal, Judgment),
+    EachInUnitHasAtMostNNeighbors(Unit, Number, Judgment),
+    TotalUnitsSize([Unit; 2], Cardinal, Judgment),
 }
 
 impl AddContext for Sentence {
@@ -55,12 +55,12 @@ impl AddContext for Sentence {
 
     fn add_context(self, context: Context<'_>) -> anyhow::Result<Self::Output> {
         let hints: Vec<Hint> = match self {
-            Self::TraitsAreNeighborsInUnit(unit) => unit.members_are_connected(context)?,
-            Self::HasMostTraits(unit, judgment) => unit.has_most(judgment, context)?,
+            Self::UnitIsConnected(unit) => unit.members_are_connected(context)?,
+            Self::BiggestInSeries(unit, judgment) => unit.has_most(judgment, context)?,
             Self::IsOneOfNInUnit(unit, name, quantity, judgment) => {
                 unit.one_of_n_in_unit(&name, quantity, judgment, context)?
             }
-            Self::MoreTraitsInUnitThanUnit { big, small, excess } => {
+            Self::UnitBiggerThanUnit { big, small, excess } => {
                 let (big, mut hints) = big.add_context(context)?;
                 let (small, small_hints) = small.add_context(context)?;
                 hints.extend(small_hints);
@@ -70,25 +70,22 @@ impl AddContext for Sentence {
                 ));
                 hints
             }
-            Self::NumberOfTraitsInUnit(unit, quantity) => {
+            Self::UnitSize(unit, quantity) => {
                 let (set, mut hints) = unit.add_context(context)?;
                 hints.push(Hint::Count(set, quantity));
                 hints
             }
-            Self::TotalNumberOfTraitsInUnits(units, quantity, judgment) => {
-                let [a, b] = units.map(|unit| unit.add_context(context));
-                let (a, mut hints) = a?;
-                let (b, b_hints) = b?;
-                hints.extend(b_hints);
-                let sets = [a, b].map(|set| set.judged(judgment));
+            Self::TotalUnitsSize(units, quantity, judgment) => {
+                let (sets, mut hints) = units.add_context(context)?;
+                let sets = sets.map(|set| set.judged(judgment));
                 hints.push(Hint::CountTotal(sets, quantity));
                 hints
             }
-            Self::OnlyOnePersonInUnitHasNTraitNeighbors(unit, quantity, name, judgment) => {
+            Self::UniqueInUnitHasNNeighbors(unit, quantity, name, judgment) => {
                 unit.unique_member_has_n_neighbors(quantity, judgment, name.as_ref(), context)?
             }
 
-            Self::OnlyOneUnitInSeriesHasNTraits(series, quantity, judgment) => {
+            Self::UniqueUnitInSeriesHasSize(series, quantity, judgment) => {
                 let sets = series
                     .all(context)
                     .into_iter1()
@@ -96,7 +93,7 @@ impl AddContext for Sentence {
                     .collect1();
                 vec![Hint::unique_with_count(sets, quantity)]
             }
-            Self::EachUnitInSeriesHasNTraits(kind, quantity, judgment) => kind
+            Self::EachUnitInSeriesHasSize(kind, quantity, judgment) => kind
                 .all(context)
                 .into_iter()
                 .map(|set| Hint::Count(set.judged(judgment), quantity))
@@ -104,7 +101,7 @@ impl AddContext for Sentence {
             Self::OnlyGivenUnitHasNTraits(unit, quantity, judgment) => {
                 unit.only_one_with_n_traits(quantity, judgment, context)?
             }
-            Self::UnitSharesNOutOfNTraitsWithUnit {
+            Self::UnitAndIntersectionSize {
                 total: quantity,
                 quantified,
                 other,
@@ -117,19 +114,16 @@ impl AddContext for Sentence {
                 judgment,
                 context,
             )?,
-            Self::UnitsShareNTraits([a, b], quantity, judgment) => {
+            Self::IntersectionSize([a, b], quantity, judgment) => {
                 a.intersects_with(&b, quantity, None, judgment, context)?
             }
             Self::EqualNumberOfTraitsInUnits(units, judgment) => {
-                let [a, b] = units.map(|unit| unit.add_context(context));
-                let (a, mut hints) = a?;
-                let (b, b_hints) = b?;
-                hints.extend(b_hints);
-                let sets = [a, b].map(|set| set.judged(judgment));
+                let (sets, mut hints) = units.add_context(context)?;
+                let sets = sets.map(|set| set.judged(judgment));
                 hints.push(Hint::CompareSets(sets, Comparison::Equal));
                 hints
             }
-            Self::EqualTraitsInUnit(unit) => unit.equal_traits(context)?,
+            Self::UnitEquallySplit(unit) => unit.equal_traits(context)?,
             Self::MoreTraitsInUnit(unit, judgment) => {
                 let (set, mut hints) = unit.add_context(context)?;
                 hints.push(Hint::CompareSets(
@@ -141,10 +135,10 @@ impl AddContext for Sentence {
             Self::HasTrait(name, judgment) => {
                 vec![Hint::Judgment(name.add_context(context)?, judgment)]
             }
-            Self::AtMostNTraitsInNeighborsInUnit(unit, number, judgment) => {
+            Self::EachInUnitHasAtMostNNeighbors(unit, number, judgment) => {
                 unit.members_have_at_most_neighbors(number, judgment, context)?
             }
-            Self::NPeopleInUnitHaveNTraitNeighbors {
+            Self::NInUnitHaveNNeighbors {
                 unit,
                 quantity,
                 neighbors,
@@ -240,9 +234,7 @@ impl Unit {
         judgment: Judgment,
         context: Context<'_>,
     ) -> anyhow::Result<Vec<Hint>> {
-        let (self_, mut hints) = self.add_context(context)?;
-        let (other, other_hints) = other.add_context(context)?;
-        hints.extend(other_hints);
+        let ([self_, other], mut hints) = [self, other].add_context(context)?;
         let other = other.intersect(self_.clone()).judged(judgment);
         let self_ = self_.judged(judgment);
         hints.push(Hint::Count(other, intersection));
@@ -425,6 +417,27 @@ impl From<ColumnRecipe> for Unit {
 impl From<Column> for Unit {
     fn from(value: Column) -> Self {
         Self::Line(LineRecipe::Column(ColumnRecipe::Explicit(value)))
+    }
+}
+
+impl AddContext for &[Unit; 2] {
+    type Output = ([ModifiedSet; 2], Vec<Hint>);
+
+    fn add_context(self, context: Context<'_>) -> anyhow::Result<Self::Output> {
+        self.each_ref().add_context(context)
+    }
+}
+
+impl AddContext for [&Unit; 2] {
+    type Output = ([ModifiedSet; 2], Vec<Hint>);
+
+    fn add_context(self, context: Context<'_>) -> anyhow::Result<Self::Output> {
+        // TODO use `try_map`
+        let [a, b] = self.each_ref().map(|unit| unit.add_context(context));
+        let (a, mut hints) = a?;
+        let (b, more_hints) = b?;
+        hints.extend(more_hints);
+        Ok(([a, b], hints))
     }
 }
 

@@ -86,7 +86,7 @@ impl Sentence {
                 Some(quantity) => unit.quantify(quantity.exact()?),
                 None => unit,
             };
-            Some(Self::TraitsAreNeighborsInUnit(unit))
+            Some(Self::UnitIsConnected(unit))
         })
         .parse_next(input)
     }
@@ -99,7 +99,7 @@ impl Sentence {
                 word(line_kind),
             )
             .verify(|&((line, _), kind)| line.kind() == kind)
-            .map(|((line, judgment), _)| Self::HasMostTraits(line.into(), judgment)),
+            .map(|((line, judgment), _)| Self::BiggestInSeries(line.into(), judgment)),
             delimited(
                 words(("There", "are", "more")),
                 separated_pair(
@@ -110,14 +110,14 @@ impl Sentence {
                 words(("than", "any", "other", "profession")),
             )
             .map(|(judgment, profession)| {
-                Self::HasMostTraits(UnitInSeries::Profession(profession), judgment)
+                Self::BiggestInSeries(UnitInSeries::Profession(profession), judgment)
             }),
             separated_pair(
                 word(name),
                 words(("has", "the", "most")),
                 terminated(word(judgment_singular), word("neighbors")),
             )
-            .map(|(name, judgment)| Self::HasMostTraits(UnitInSeries::Neighbor(name), judgment)),
+            .map(|(name, judgment)| Self::BiggestInSeries(UnitInSeries::Neighbor(name), judgment)),
         ))
         .parse_next(input)
     }
@@ -141,7 +141,7 @@ impl Sentence {
             .map(|((judgment, big), (judgment_small, small))| {
                 let big = big.with_judgment(judgment);
                 let small = small.with_judgment(judgment_small.unwrap_or(judgment));
-                Self::MoreTraitsInUnitThanUnit {
+                Self::UnitBiggerThanUnit {
                     big,
                     small,
                     excess: None,
@@ -159,7 +159,7 @@ impl Sentence {
                 .map(|(big, (excess, judgment), small)| {
                     let [big, small] =
                         [big, small].map(|name| Unit::Neighbor(name).with_judgment(judgment));
-                    Self::MoreTraitsInUnitThanUnit { big, small, excess }
+                    Self::UnitBiggerThanUnit { big, small, excess }
                 }),
         ))
         .parse_next(input)
@@ -189,9 +189,7 @@ impl Sentence {
                 (cardinal, judgment, unit)
             }),
         ))
-        .map(|(count, judgment, unit)| {
-            Self::NumberOfTraitsInUnit(unit.with_judgment(judgment), count)
-        })
+        .map(|(count, judgment, unit)| Self::UnitSize(unit.with_judgment(judgment), count))
         .parse_next(input)
     }
 
@@ -212,7 +210,7 @@ impl Sentence {
                 cardinal_judged_neighbors,
             )
             .map(|(unit, (count, judgment))| {
-                Self::OnlyOnePersonInUnitHasNTraitNeighbors(unit, count, None, judgment)
+                Self::UniqueInUnitHasNNeighbors(unit, count, None, judgment)
             }),
             separated_pair(
                 word(name),
@@ -220,7 +218,7 @@ impl Sentence {
                 separated_pair(unit, word("with"), cardinal_judged_neighbors),
             )
             .map(|(name, (unit, (quantity, judgment)))| {
-                Self::OnlyOnePersonInUnitHasNTraitNeighbors(unit, quantity, Some(name), judgment)
+                Self::UniqueInUnitHasNNeighbors(unit, quantity, Some(name), judgment)
             }),
         ))
         .parse_next(input)
@@ -238,7 +236,7 @@ impl Sentence {
                 Quantifier::Simple(cardinal) => (cardinal, unit),
                 Quantifier::Subset(count, total) => (Cardinal::Exact(count), unit.quantify(total)),
             };
-            Self::NPeopleInUnitHaveNTraitNeighbors {
+            Self::NInUnitHaveNNeighbors {
                 unit,
                 quantity,
                 neighbors,
@@ -263,9 +261,7 @@ impl Sentence {
             )
             .map(|(quantity, judgment)| (Series::Neighbor, quantity, judgment)),
         ))
-        .map(|(series, count, judgment)| {
-            Self::OnlyOneUnitInSeriesHasNTraits(series, count, judgment)
-        })
+        .map(|(series, count, judgment)| Self::UniqueUnitInSeriesHasSize(series, count, judgment))
         .parse_next(input)
     }
 
@@ -347,9 +343,9 @@ impl Sentence {
         .map(
             |(quantifier, quantified, other, judgment)| match quantifier {
                 Quantifier::Simple(cardinal) => {
-                    Self::UnitsShareNTraits([quantified, other], cardinal, judgment)
+                    Self::IntersectionSize([quantified, other], cardinal, judgment)
                 }
-                Quantifier::Subset(intersection, total) => Self::UnitSharesNOutOfNTraitsWithUnit {
+                Quantifier::Subset(intersection, total) => Self::UnitAndIntersectionSize {
                     total,
                     quantified,
                     other,
@@ -391,7 +387,7 @@ impl Sentence {
                 |(names, (quantity, judgment))| (names.map(Unit::Neighbor), judgment, quantity),
             ),
         ))
-        .map(|(units, judgment, cardinal)| Self::UnitsShareNTraits(units, cardinal, judgment))
+        .map(|(units, judgment, cardinal)| Self::IntersectionSize(units, cardinal, judgment))
         .parse_next(input)
     }
 
@@ -437,7 +433,7 @@ impl Sentence {
             ),
         ))
         .map(|(series, (quantity, judgment))| {
-            Self::EachUnitInSeriesHasNTraits(series, quantity, judgment)
+            Self::EachUnitInSeriesHasSize(series, quantity, judgment)
         })
         .parse_next(input)
     }
@@ -480,7 +476,7 @@ impl Sentence {
             ),
         )
         .verify(|&((a, b), _)| a == !b)
-        .map(|(_, unit)| Self::EqualTraitsInUnit(unit))
+        .map(|(_, unit)| Self::UnitEquallySplit(unit))
         .parse_next(input)
     }
 
@@ -504,7 +500,7 @@ impl Sentence {
             ),
         )
         .map(|(unit, (number, judgment))| {
-            Self::AtMostNTraitsInNeighborsInUnit(unit, number, judgment)
+            Self::EachInUnitHasAtMostNNeighbors(unit, number, judgment)
         })
         .parse_next(input)
     }
@@ -516,7 +512,7 @@ impl Sentence {
         )
         .map(|(names, (quantity, judgment))| {
             let units = names.map(Unit::Neighbor);
-            Self::TotalNumberOfTraitsInUnits(units, quantity, judgment)
+            Self::TotalUnitsSize(units, quantity, judgment)
         })
         .parse_next(input)
     }
