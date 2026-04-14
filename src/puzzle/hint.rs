@@ -3,141 +3,107 @@ pub(crate) mod recipes;
 
 use std::ops::Not;
 
-use anyhow::Result;
 use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
 use crate::puzzle::grid::coordinate::{Column, Coordinate, Direction, ModifiedSet, Row, Set};
-use crate::puzzle::hint::recipes::{AddContext, Context};
 use crate::puzzle::solution::Solution;
 use crate::puzzle::{Judgment, Profession};
 
 pub(crate) type Number = u8;
 pub(crate) use parsers::Sentence;
 
-#[cfg_attr(test, derive(PartialEq, Eq))]
-#[derive(Debug, Clone)]
-pub(crate) struct WithJudgment<T> {
-    pub kind: T,
-    pub judgment: Judgment,
-}
-
-impl<T> WithJudgment<Vec<T>> {
-    pub(crate) fn spread(self) -> impl Iterator<Item = WithJudgment<T>> {
-        self.kind.into_iter().map(move |kind| WithJudgment {
-            kind,
-            judgment: self.judgment,
-        })
-    }
-}
-
-impl<T: AddContext> AddContext for WithJudgment<T> {
-    type Output = WithJudgment<T::Output>;
-
-    fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
-        Ok(WithJudgment {
-            kind: self.kind.add_context(context)?,
-            judgment: self.judgment,
-        })
-    }
-}
-
-pub(crate) type Hint = WithJudgment<HintKind>;
-
-impl Hint {
-    pub(crate) fn evaluate(&self, solution: &Solution) -> bool {
-        self.kind.evaluate(self.judgment, solution)
-    }
-}
-
 #[derive(Clone, Debug)]
-pub(crate) enum HintKind {
-    Judgment(Coordinate),
+pub(crate) enum Hint {
+    /// Given coordinate has given judgment
+    Judgment(Coordinate, Judgment),
+    /// Given set of coordinates has that many suspects
     Count(ModifiedSet, Cardinal),
+    /// Given set of coordinates in total have that many suspects
     CountTotal([ModifiedSet; 2], Cardinal),
+    /// Given set of coordinates is connected
     Connected(ModifiedSet),
+    /// The first set compares with the second set
     CompareSets([ModifiedSet; 2], Comparison),
-    CompareTraits(ModifiedSet, Comparison),
+    /// Among the given `sets`, `count` many have `each` suspects
     CountWithCount {
         sets: Vec<ModifiedSet>,
         count: Cardinal,
         each: Cardinal,
     },
-    EachNeighbors(ModifiedSet, Cardinal),
+    /// Each member of the given set has a given number of neighbors with the given judgment
+    EachNeighbors(ModifiedSet, Cardinal, Judgment),
+    /// `count` many members of the given set has `each` neighbors with given judgment
     CountWithNeighbors {
         set: ModifiedSet,
         each: Cardinal,
         count: Cardinal,
+        judgment: Judgment,
     },
+    /// Negation of the inner hint
     Not(Box<Self>),
 }
 
-impl HintKind {
-    fn evaluate(&self, judgment: Judgment, solution: &Solution) -> bool {
+impl Hint {
+    pub(crate) fn evaluate(&self, solution: &Solution) -> bool {
         match self {
-            &Self::Judgment(coord) => solution[coord] == judgment,
-            Self::Count(set, quantity) => {
-                quantity.matches(solution.select(&set.judged(judgment)).len())
-            }
+            &Self::Judgment(coord, judgment) => solution[coord] == judgment,
+            Self::Count(set, quantity) => quantity.matches(solution.select(set).len()),
             Self::CountTotal(sets, quantity) => {
-                let total = sets
-                    .iter()
-                    .map(|set| solution.select(&set.judged(judgment)).len())
-                    .sum();
+                let total = sets.iter().map(|set| solution.select(set).len()).sum();
                 quantity.matches(total)
             }
-            Self::Connected(set) => solution.select(&set.judged(judgment)).connected(),
+            Self::Connected(set) => solution.select(set).connected(),
             Self::CompareSets(sets, comparison) => {
-                let [lhs, rhs] = sets
-                    .each_ref()
-                    .map(|set| solution.select(&set.judged(judgment)).len());
+                let [lhs, rhs] = sets.each_ref().map(|set| solution.select(set).len());
                 comparison.compare(lhs, rhs)
             }
             Self::CountWithCount { sets, count, each } => count.matches(
                 sets.iter()
-                    .filter(|set| each.matches(solution.select(&set.judged(judgment)).len()))
+                    .filter(|set| each.matches(solution.select(set).len()))
                     .count(),
             ),
-            Self::Not(hint) => !hint.evaluate(judgment, solution),
-            Self::CompareTraits(set, comparison) => {
-                let [lhs, rhs] = [judgment, judgment.flip()]
-                    .map(|judgment| solution.select(&set.judged(judgment)).len());
-                comparison.compare(lhs, rhs)
-            }
-            Self::CountWithNeighbors { set, each, count } => {
+            Self::CountWithNeighbors {
+                set,
+                each,
+                count,
+                judgment,
+            } => {
                 let counted = solution
                     .select(set)
                     .into_iter()
                     .filter(|coord| {
                         let neighbors = solution
-                            .select(&coord.neighbors().collect::<ModifiedSet>().judged(judgment))
+                            .select(&coord.neighbors().collect::<ModifiedSet>().judged(*judgment))
                             .len();
                         each.matches(neighbors)
                     })
                     .count();
                 count.matches(counted)
             }
-
-            Self::EachNeighbors(set, cardinal) => solution.select(set).into_iter().all(|coord| {
-                let neighbors = solution
-                    .select(&coord.neighbors().collect::<ModifiedSet>().judged(judgment))
-                    .len();
-                cardinal.matches(neighbors)
-            }),
+            Self::EachNeighbors(set, cardinal, judgment) => {
+                solution.select(set).into_iter().all(|coord| {
+                    let neighbors = solution
+                        .select(&coord.neighbors().collect::<ModifiedSet>().judged(*judgment))
+                        .len();
+                    cardinal.matches(neighbors)
+                })
+            }
+            Self::Not(hint) => !hint.evaluate(solution),
         }
     }
 
-    fn unique_with_count(sets: Vec1<Set>, quantity: Cardinal) -> Self {
+    fn unique_with_count(sets: Vec1<ModifiedSet>, quantity: Cardinal) -> Self {
         Self::CountWithCount {
-            sets: sets.into_iter().map(ModifiedSet::Regular).collect(),
+            sets: sets.into_vec(),
             each: quantity,
             count: Cardinal::Exact(1),
         }
     }
 }
 
-impl Not for HintKind {
+impl Not for Hint {
     type Output = Self;
 
     fn not(self) -> Self {

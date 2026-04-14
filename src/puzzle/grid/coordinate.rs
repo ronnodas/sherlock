@@ -180,6 +180,14 @@ impl Set {
             .filter_map(|coord| coord.step(direction))
             .collect()
     }
+
+    pub(crate) fn judged(self, judgment: Judgment) -> ModifiedSet {
+        ModifiedSet::Modified(Box::new(self.into()), Modifier::Judgment(judgment))
+    }
+
+    pub(crate) fn empty() -> Self {
+        Self(0)
+    }
 }
 
 impl BitAnd<Self> for Set {
@@ -294,6 +302,7 @@ impl IntoIterator1 for Set1 {
 
 #[derive(Clone, Debug)]
 pub(crate) enum ModifiedSet {
+    Empty,
     Regular(Set),
     Modified(Box<Self>, Modifier),
     Intersection(Vec1<Self>),
@@ -309,16 +318,36 @@ impl ModifiedSet {
         }
     }
 
-    pub(crate) fn judged(&self, judgment: Judgment) -> Self {
-        Self::Modified(Box::new(self.clone()), judgment.into())
+    pub(crate) fn judged(self, judgment: Judgment) -> Self {
+        match self {
+            Self::Modified(this, Modifier::Judgment(other)) if other == judgment => {
+                Self::Modified(this, judgment.into())
+            }
+            Self::Modified(_, Modifier::Judgment(_)) | Self::Empty => Self::Empty,
+            Self::Regular(_) | Self::Modified(_, Modifier::Shift(_)) | Self::Intersection(_) => {
+                Self::Modified(Box::new(self), judgment.into())
+            }
+        }
     }
 
     pub(crate) fn intersect(self, rhs: Self) -> Self {
         match (self, rhs) {
+            (Self::Empty, _) | (_, Self::Empty) => Self::Empty,
+
             (Self::Regular(this), Self::Regular(rhs)) => this
                 .into_iter()
                 .filter(|&coord| rhs.contains(coord))
                 .collect(),
+            (this, Self::Modified(rhs, Modifier::Judgment(judgment)))
+            | (Self::Modified(rhs, Modifier::Judgment(judgment)), this) => {
+                this.intersect(*rhs).judged(judgment)
+            }
+
+            (Self::Modified(this, Modifier::Shift(a)), Self::Modified(rhs, Modifier::Shift(b)))
+                if a == b =>
+            {
+                this.intersect(*rhs).shift(a)
+            }
             (
                 this @ (Self::Regular(..) | Self::Modified(..)),
                 rhs @ (Self::Modified(..) | Self::Regular(..)),
@@ -332,6 +361,18 @@ impl ModifiedSet {
                 this.extend(rhs);
                 Self::Intersection(this)
             }
+        }
+    }
+
+    pub(crate) fn shift(self, direction: Direction) -> Self {
+        match self {
+            Self::Empty => Self::Empty,
+            Self::Regular(set) => Self::Regular(set.shift(direction)),
+            set @ Self::Modified(..) => Self::Modified(Box::new(set), direction.into()),
+            Self::Intersection(vec) => vec
+                .into_iter1()
+                .map(|set| set.shift(direction))
+                .reduce(Self::intersect),
         }
     }
 }
@@ -360,10 +401,10 @@ impl FromIterator<Coordinate> for ModifiedSet {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Modifier {
     Shift(Direction),
-    Judgement(Judgment),
+    Judgment(Judgment),
 }
 
 impl From<Direction> for Modifier {
@@ -374,7 +415,7 @@ impl From<Direction> for Modifier {
 
 impl From<Judgment> for Modifier {
     fn from(v: Judgment) -> Self {
-        Self::Judgement(v)
+        Self::Judgment(v)
     }
 }
 

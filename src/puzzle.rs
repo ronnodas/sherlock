@@ -72,7 +72,7 @@ impl Puzzle {
     pub(crate) fn add_hint(&mut self, hint: String, speaker: &Name) -> Result<()> {
         Sentence::parse(&hint)?
             .add_context(Context::new(&self.grid, speaker))?
-            .spread()
+            .into_iter()
             .for_each(|hint| self.add_parsed_hint(&hint));
         self.grid.add_hint(hint, speaker)
     }
@@ -124,12 +124,8 @@ impl ParsedPuzzle {
             .iter()
             .filter_map(|card| Some((card.name().clone(), card.logical_hint()?)))
             .map(|(speaker, hint)| {
-                let maybe_parsed = Sentence::parse(hint).and_then(|sentence| {
-                    Ok(sentence
-                        .add_context(Context::new(&grid, &speaker))?
-                        .spread()
-                        .collect_vec())
-                });
+                let maybe_parsed = Sentence::parse(hint)
+                    .and_then(|sentence| sentence.add_context(Context::new(&grid, &speaker)));
                 (speaker, hint, maybe_parsed)
             });
         let (hints, unknown_if_flavor) = match grid.format() {
@@ -197,13 +193,6 @@ impl Judgment {
         match self {
             Self::Innocent => Color::Green,
             Self::Criminal => Color::Red,
-        }
-    }
-
-    fn flip(self) -> Self {
-        match self {
-            Self::Innocent => Self::Criminal,
-            Self::Criminal => Self::Innocent,
         }
     }
 }

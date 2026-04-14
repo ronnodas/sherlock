@@ -18,12 +18,13 @@ impl Solution {
 
     pub(crate) fn select(&self, set: &ModifiedSet) -> Set {
         match set {
+            ModifiedSet::Empty => Set::empty(),
             &ModifiedSet::Regular(set) => set,
             ModifiedSet::Modified(inner, modifier) => {
                 let inner = self.select(inner);
                 match *modifier {
                     Modifier::Shift(direction) => inner.shift(direction),
-                    Modifier::Judgement(judgment) => inner
+                    Modifier::Judgment(judgment) => inner
                         .into_iter()
                         .filter(move |&coord| self[coord] == judgment)
                         .collect(),
