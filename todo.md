@@ -1,6 +1,5 @@
 # TODOs
 
-- [ ] Maybe it make sense to move `Judgment` back into `SentenceKind` and `HintKind`? Wait for clues where this is necessary?
 - [ ] Implement editing an existing grid from file (loading into `GridEditor`)
 - [ ] Add CLI argument for manual mode
 - [ ] Save partially created grid to file
