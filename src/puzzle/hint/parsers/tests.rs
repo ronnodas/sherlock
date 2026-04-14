@@ -629,6 +629,17 @@ fn bobby_2026_04_14() {
 }
 
 #[test]
+fn martin_2026_04_14() {
+    sentence(
+        "There are as many innocent guards as there are us innocent sleuths",
+        &Sentence::EqualNumberOfTraitsInUnits(
+            [Unit::profession("guard"), Unit::profession("sleuth")],
+            Judgment::Innocent,
+        ),
+    );
+}
+
+#[test]
 fn diane_0cf47() {
     sentence(
         "Xavi has more criminal neighbors than Ben",

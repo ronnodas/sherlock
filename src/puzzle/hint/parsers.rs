@@ -570,7 +570,7 @@ fn maybe_judged_unit(input: &mut &[&str]) -> Result<(Option<Judgment>, Unit)> {
 
 fn judged_unit(input: &mut &[&str]) -> Result<(Judgment, Unit)> {
     alt((
-        (word(judgment_any), unit),
+        preceded(opt(word("us")), (word(judgment_any), unit)),
         (
             word(name_possessive),
             terminated(word(judgment_any), word(neighbor_any)),
