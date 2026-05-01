@@ -69,12 +69,12 @@ impl Puzzle {
             .collect())
     }
 
-    pub(crate) fn add_hint(&mut self, hint: String, speaker: &Name) -> Result<()> {
+    pub(crate) fn add_hint(&mut self, hint: String, coord: Coordinate) -> Result<()> {
         Sentence::parse(&hint)?
-            .add_context(Context::new(&self.grid, speaker))?
+            .add_context(Context::new(&self.grid, self.grid[coord].name()))?
             .into_iter()
             .for_each(|hint| self.add_parsed_hint(&hint));
-        self.grid.add_hint(hint, speaker)
+        self.grid.add_hint(hint, coord)
     }
 
     fn add_parsed_hint(&mut self, hint: &Hint) {
@@ -98,8 +98,8 @@ impl Puzzle {
         to_string_pretty(&self.grid, config).map_err(Into::into)
     }
 
-    pub(crate) fn mark_as_flavor(&mut self, suspect: &Name) -> Result<()> {
-        self.grid.mark_as_flavor(suspect)
+    pub(crate) fn mark_as_flavor(&mut self, coord: Coordinate) -> Result<()> {
+        self.grid.mark_as_flavor(coord)
     }
 }
 
@@ -107,8 +107,8 @@ impl Puzzle {
 #[derive(Debug)]
 pub(crate) struct ParsedPuzzle {
     pub puzzle: Puzzle,
-    pub unknown_if_flavor: Vec<(Name, String)>,
-    pub pending_hints: Vec<Name>,
+    pub unknown_if_flavor: Vec<(Name, Coordinate, String)>,
+    pub pending_hints: Vec<Suspect>,
 }
 
 impl ParsedPuzzle {
@@ -122,29 +122,33 @@ impl ParsedPuzzle {
 
         let maybe_parsed = grid
             .iter()
-            .filter_map(|card| Some((card.name().clone(), card.logical_hint()?)))
-            .map(|(speaker, hint)| {
-                let maybe_parsed = Sentence::parse(hint)
-                    .and_then(|sentence| sentence.add_context(Context::new(&grid, &speaker)));
-                (speaker, hint, maybe_parsed)
+            .enumerate()
+            .filter_map(|(index, card)| {
+                let coord = Coordinate::from_index(index);
+                Some((coord, card.name().clone(), card.logical_hint()?))
+            })
+            .map(|(coord, speaker, hint)| {
+                let hint = Sentence::parse(hint)
+                    .and_then(|sentence| sentence.add_context(Context::new(&grid, &speaker)))
+                    .map_err(|e| (e, hint));
+                (coord, speaker, hint)
             });
         let (hints, unknown_if_flavor) = match grid.format() {
             Format::Original => {
                 let mut hints = Vec::new();
                 let mut unknown = Vec::new();
 
-                for (name, hint, maybe_parsed) in maybe_parsed {
+                for (coord, name, maybe_parsed) in maybe_parsed {
                     match maybe_parsed {
                         Ok(parsed) => hints.extend(parsed),
-                        Err(_) => unknown.push((name, hint.to_owned())),
+                        Err((_, hint)) => unknown.push((name, coord, hint.to_owned())),
                     }
                 }
-
                 (hints, unknown)
             }
             Format::Sep2025 => {
                 let hints: Vec<Hint> = maybe_parsed
-                    .map(|(_, _, hint)| hint)
+                    .map(|(_, _, hint)| hint.map_err(|(e, _)| e))
                     .flatten_ok()
                     .try_collect()?;
                 (hints, Vec::new())
@@ -218,17 +222,11 @@ impl fmt::Display for Judgment {
 }
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Update {
     name: Name,
     coord: Coordinate,
     judgment: Judgment,
-}
-
-impl Update {
-    pub(crate) fn into_name(self) -> Name {
-        self.name
-    }
 }
 
 impl fmt::Display for Update {
@@ -241,6 +239,36 @@ impl fmt::Display for Update {
             self.coord,
             self.judgment.to_string().color(color)
         )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Suspect {
+    name: Name,
+    coord: Coordinate,
+    judgment: Judgment,
+}
+
+impl Suspect {
+    pub(crate) fn coord(&self) -> Coordinate {
+        self.coord
+    }
+}
+
+impl fmt::Display for Suspect {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let color = self.judgment.color();
+        write!(f, "{} ({})", self.name.color(color), self.coord)
+    }
+}
+
+impl From<Update> for Suspect {
+    fn from(update: Update) -> Self {
+        Self {
+            name: update.name,
+            coord: update.coord,
+            judgment: update.judgment,
+        }
     }
 }
 
@@ -346,9 +374,8 @@ mod tests {
             assert_eq!(inferences, deductions);
             for &(speaker, _, hint) in changes {
                 if let Some(hint) = hint {
-                    puzzle
-                        .add_hint(hint.to_owned(), &speaker.to_owned())
-                        .unwrap();
+                    let coord = puzzle.grid.coord(speaker).unwrap();
+                    puzzle.add_hint(hint.to_owned(), coord).unwrap();
                 }
             }
         }

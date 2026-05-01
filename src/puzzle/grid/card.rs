@@ -4,8 +4,9 @@ use select::node::Node;
 use select::predicate::Predicate as _;
 use serde::{Deserialize, Serialize};
 
+use crate::puzzle::grid::coordinate::Coordinate;
 use crate::puzzle::grid::html::{Class, ClassName, Div, H3, NodeExt as _, Paragraph};
-use crate::puzzle::{Judgment, Name, Profession};
+use crate::puzzle::{Judgment, Name, Profession, Suspect};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Card {
@@ -94,10 +95,8 @@ impl Card {
         })
     }
 
-    pub(crate) fn hint_pending(&self) -> bool {
-        self.back
-            .as_ref()
-            .is_some_and(|back| back.hint.is_unknown())
+    pub(crate) fn hint_pending(&self) -> Option<Judgment> {
+        self.back.as_ref()?.hint_pending()
     }
 
     pub(crate) fn back(&self) -> Option<&CardBack> {
@@ -114,6 +113,14 @@ impl Card {
             profession,
             back,
         }
+    }
+
+    pub(crate) fn to_suspect(&self, coord: Coordinate) -> Option<Suspect> {
+        self.hint_pending().map(|judgment| Suspect {
+            name: self.name.clone(),
+            judgment,
+            coord,
+        })
     }
 }
 
@@ -147,6 +154,10 @@ impl CardBack {
 
     pub(crate) fn set_judgment(&mut self, judgment: Judgment) {
         self.judgment = judgment;
+    }
+
+    fn hint_pending(&self) -> Option<Judgment> {
+        self.hint.is_unknown().then_some(self.judgment)
     }
 }
 

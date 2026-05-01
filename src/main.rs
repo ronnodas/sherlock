@@ -14,8 +14,11 @@ use chrono_tz::America::New_York;
 use inquire::{Confirm, Editor, MultiSelect, Select, Text};
 use itertools::Itertools as _;
 
+use puzzle::grid::coordinate::Coordinate;
 use puzzle::grid::editor::GridEditor;
-use puzzle::{Name, ParsedPuzzle, Update};
+use puzzle::{Name, ParsedPuzzle, Puzzle, Update};
+
+use crate::puzzle::Suspect;
 
 const API_KEY_FILE: &str = "browserless_api_key";
 const SAVE_DIRECTORY: &str = "saved/";
@@ -184,35 +187,21 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
         unknown_if_flavor,
         mut pending_hints,
     } = puzzle;
-    for (suspect, hint) in unknown_if_flavor {
-        let flavor = Confirm::new(&format!(
-            "Is {suspect}'s hint, \"{hint}\", just flavor text?"
-        ))
-        .prompt()?;
-        if flavor {
-            puzzle.mark_as_flavor(&suspect)?;
-        } else {
-            puzzle.add_hint(hint, &suspect)?;
-        }
-    }
+    handle_unknown_hints(&mut puzzle, unknown_if_flavor)?;
 
     loop {
         let new = puzzle.infer()?;
-        if let Some((last, rest)) = new.split_last() {
-            if rest.is_empty() {
-                println!("Mark {last}");
-            } else {
-                println!("Mark {} and {last}", rest.iter().format(", "));
-            }
-        }
+        print_inferences(&new);
+
         if puzzle.solved() {
             println!("Puzzle solved!");
             break;
         }
-        pending_hints.extend(new.into_iter().map(Update::into_name));
-        pending_hints.sort_unstable();
+        pending_hints.extend(new.into_iter().map_into());
+        pending_hints.sort_unstable_by_key(Suspect::coord);
 
         loop {
+            //TODO  print!("{}", puzzle.emoji_summary());
             let selected = Select::new(
                 "Add a logical hint:",
                 pending_hints
@@ -227,10 +216,10 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
                     if let Some(hint) =
                         Text::new(&format!("Enter {suspect}'s hint:")).prompt_skippable()?
                     {
-                        match puzzle.add_hint(hint, suspect) {
+                        match puzzle.add_hint(hint, suspect.coord()) {
                             Ok(()) => {
-                                let name = suspect.clone();
-                                pending_hints.retain(|pending| pending != &name);
+                                let coord = suspect.coord();
+                                pending_hints.retain(|pending| pending.coord() != coord);
                                 break;
                             }
                             Err(e) => {
@@ -240,43 +229,76 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
                     }
                 }
                 HintOption::MarkAsFlavor => {
-                    let flavor = MultiSelect::new(
-                        "Select characters with flavor text",
-                        pending_hints.clone(),
-                    )
-                    .prompt_skippable()?
-                    .unwrap_or_default();
-                    pending_hints.retain(|pending| !flavor.contains(pending));
-                    for name in flavor {
-                        puzzle.mark_as_flavor(&name)?;
-                    }
+                    handle_mark_flavor(&mut puzzle, &mut pending_hints)?;
                 }
-                HintOption::Save => {
-                    let save = puzzle.save_grid()?;
-                    let path = puzzle.name().map_or_else(
-                        || SAVE_DIRECTORY.to_owned(),
-                        |name| {
-                            Path::new(SAVE_DIRECTORY)
-                                .join(name)
-                                .with_added_extension("ron")
-                                .display()
-                                .to_string()
-                        },
-                    );
-                    let path = Text::new("Save file:").with_initial_value(&path).prompt()?;
-                    let path = PathBuf::from(path);
-                    if let Some(file_stem) = path.file_stem().and_then(OsStr::to_str) {
-                        puzzle.set_name(file_stem.to_owned());
-                    }
-                    if let Some(parent) = path.parent() {
-                        fs::create_dir_all(parent)?;
-                    }
-                    let mut file = File::create(path)?;
-                    file.write_all(save.as_bytes())?;
-                }
+                HintOption::Save => save_puzzle(&mut puzzle)?,
             }
         }
     }
+    Ok(())
+}
+
+fn handle_unknown_hints(
+    puzzle: &mut Puzzle,
+    unknown: Vec<(Name, Coordinate, String)>,
+) -> Result<()> {
+    for (suspect, coord, hint) in unknown {
+        let flavor = Confirm::new(&format!(
+            "Is {suspect}'s ({coord}) hint, \"{hint}\", just flavor text?"
+        ))
+        .prompt()?;
+        if flavor {
+            puzzle.mark_as_flavor(coord)?;
+        } else {
+            puzzle.add_hint(hint, coord)?;
+        }
+    }
+    Ok(())
+}
+
+fn print_inferences(new: &[Update]) {
+    if let Some((last, rest)) = new.split_last() {
+        if rest.is_empty() {
+            println!("Mark {last}");
+        } else {
+            println!("Mark {} and {last}", rest.iter().format(", "));
+        }
+    }
+}
+
+fn handle_mark_flavor(puzzle: &mut Puzzle, pending: &mut Vec<Suspect>) -> Result<()> {
+    let flavor = MultiSelect::new("Select characters with flavor text", pending.clone())
+        .prompt_skippable()?
+        .unwrap_or_default();
+    pending.retain(|p| !flavor.iter().any(|f| f.coord() == p.coord()));
+    for f in flavor {
+        puzzle.mark_as_flavor(f.coord())?;
+    }
+    Ok(())
+}
+
+fn save_puzzle(puzzle: &mut Puzzle) -> Result<()> {
+    let save = puzzle.save_grid()?;
+    let path = puzzle.name().map_or_else(
+        || SAVE_DIRECTORY.to_owned(),
+        |name| {
+            Path::new(SAVE_DIRECTORY)
+                .join(name)
+                .with_added_extension("ron")
+                .display()
+                .to_string()
+        },
+    );
+    let path = Text::new("Save file:").with_initial_value(&path).prompt()?;
+    let path = PathBuf::from(path);
+    if let Some(file_stem) = path.file_stem().and_then(OsStr::to_str) {
+        puzzle.set_name(file_stem.to_owned());
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = File::create(path)?;
+    file.write_all(save.as_bytes())?;
     Ok(())
 }
 
@@ -361,8 +383,8 @@ fn manual_mode() -> Result<Option<ParsedPuzzle>> {
         .transpose()
 }
 
-enum HintOption<'name> {
-    Suspect(&'name Name),
+enum HintOption<'suspect> {
+    Suspect(&'suspect Suspect),
     MarkAsFlavor,
     Save,
 }

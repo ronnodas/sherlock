@@ -16,8 +16,8 @@ use select::predicate::{Any, Attr, Predicate as _};
 use serde::{Deserialize, Serialize};
 
 use crate::puzzle::grid::card::CardBack;
-use crate::puzzle::grid::coordinate::Set1;
-use crate::puzzle::{Judgment, Name, Profession};
+use crate::puzzle::grid::coordinate::{Coordinate, Set1};
+use crate::puzzle::{Judgment, Name, Profession, Suspect};
 
 use card::Card;
 use html::{Class, ClassName, Div, NodeExt as _};
@@ -26,11 +26,11 @@ use html::{Class, ClassName, Div, NodeExt as _};
 #[serde(from = "save::CardList")]
 pub(crate) struct Grid {
     cards: [Card; 20],
-    coordinates: HashMap<Name, coordinate::Coordinate>,
+    coordinates: HashMap<Name, Coordinate>,
     // TODO make this non-empty once mitsein supports that
     by_profession: HashMap<Profession, Set1>,
     format: Format,
-    start: Option<coordinate::Coordinate>,
+    start: Option<Coordinate>,
 }
 
 impl Grid {
@@ -67,26 +67,16 @@ impl Grid {
         Ok(Self::new(cards, format, None))
     }
 
-    fn new(cards: [Card; 20], format: Format, start: Option<coordinate::Coordinate>) -> Self {
+    fn new(cards: [Card; 20], format: Format, start: Option<Coordinate>) -> Self {
         let coordinates = cards
             .iter()
             .enumerate()
-            .map(|(index, card)| {
-                (
-                    card.name().to_owned(),
-                    coordinate::Coordinate::from_index(index),
-                )
-            })
+            .map(|(index, card)| (card.name().to_owned(), Coordinate::from_index(index)))
             .collect();
         let by_profession = cards
             .iter()
             .enumerate()
-            .map(|(index, card)| {
-                (
-                    card.profession().to_owned(),
-                    coordinate::Coordinate::from_index(index),
-                )
-            })
+            .map(|(index, card)| (card.profession().to_owned(), Coordinate::from_index(index)))
             .into_grouping_map()
             .aggregate(|set: Option<Set1>, _, coord| {
                 let set = set.map_or_else(|| Set1::from_one(coord), |set| set | coord);
@@ -111,7 +101,7 @@ impl Grid {
         self.cards
     }
 
-    pub(crate) fn coord(&self, name: &Name) -> Result<coordinate::Coordinate> {
+    pub(crate) fn coord(&self, name: &str) -> Result<Coordinate> {
         self.coordinates
             .get(name)
             .copied()
@@ -136,22 +126,22 @@ impl Grid {
             .ok_or_else(|| anyhow!("{profession} not in grid"))
     }
 
-    pub(crate) fn add_hint(&mut self, hint: String, suspect: &Name) -> Result<()> {
-        self.card_back(suspect)?.set_hint(hint);
+    pub(crate) fn add_hint(&mut self, hint: String, coord: Coordinate) -> Result<()> {
+        self.card_back(coord)?.set_hint(hint);
         Ok(())
     }
 
-    pub(crate) fn mark_as_flavor(&mut self, suspect: &Name) -> Result<()> {
-        self.card_back(suspect)?.mark_as_flavor();
+    pub(crate) fn mark_as_flavor(&mut self, coord: Coordinate) -> Result<()> {
+        self.card_back(coord)?.mark_as_flavor();
         self.set_start();
         Ok(())
     }
 
-    pub(crate) fn pending_hints(&self) -> Vec<String> {
+    pub(crate) fn pending_hints(&self) -> Vec<Suspect> {
         self.cards
             .iter()
-            .filter(|card| card.hint_pending())
-            .map(|card| card.name().clone())
+            .enumerate()
+            .filter_map(|(index, card)| card.to_suspect(Coordinate::from_index(index)))
             .collect()
     }
 
@@ -168,11 +158,12 @@ impl Grid {
         self.format
     }
 
-    fn card_back(&mut self, suspect: &Name) -> Result<&mut CardBack> {
-        let index = self.coord(suspect)?;
-        self.cards[index.to_index()]
-            .back_mut()
-            .ok_or_else(|| anyhow!("{suspect}'s card is not flipped"))
+    fn card_back(&mut self, coord: Coordinate) -> Result<&mut CardBack> {
+        if self[coord].back().is_none() {
+            bail!("{}'s card is not flipped", self[coord].name())
+        }
+        // https://github.com/rust-lang/rust/issues/54663
+        Ok(self[coord].back_mut().expect("checked above"))
     }
 
     pub(crate) fn by_profession(&self) -> &HashMap<Profession, Set1> {
@@ -187,7 +178,7 @@ impl Grid {
                 .filter(|(_, card)| card.logical_hint().is_some())
                 .exactly_one()
                 .ok()
-                .map(|(index, _)| coordinate::Coordinate::from_index(index))
+                .map(|(index, _)| Coordinate::from_index(index))
         });
     }
 }
@@ -204,16 +195,16 @@ impl Serialize for Grid {
     }
 }
 
-impl Index<coordinate::Coordinate> for Grid {
+impl Index<Coordinate> for Grid {
     type Output = Card;
 
-    fn index(&self, index: coordinate::Coordinate) -> &Card {
+    fn index(&self, index: Coordinate) -> &Card {
         &self.cards[index.to_index()]
     }
 }
 
-impl IndexMut<coordinate::Coordinate> for Grid {
-    fn index_mut(&mut self, index: coordinate::Coordinate) -> &mut Card {
+impl IndexMut<Coordinate> for Grid {
+    fn index_mut(&mut self, index: Coordinate) -> &mut Card {
         &mut self.cards[index.to_index()]
     }
 }
