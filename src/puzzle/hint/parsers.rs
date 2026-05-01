@@ -525,39 +525,39 @@ fn unit_pair(input: &mut &[&str]) -> Result<[Unit; 2]> {
 }
 
 fn unit(input: &mut &[&str]) -> Result<Unit> {
-    alt((
-        words(("in", "total")).value(Unit::All),
-        words(("on", "the", "edges")).value(Unit::Edges),
-        (
-            word("in"),
-            alt((words(("a", "corner")), words(("the", "corners")))),
-        )
-            .value(Unit::Corners),
-        (
-            alt((
-                word(judgment_any).map(Some),
-                word("person").value(None),
-                word("persons").value(None),
-                empty.value(None),
-            )),
-            alt((between, preceded(opt(word("in")), line.map(Unit::Line)))),
-        )
-            .map(|(judgment, line)| {
-                if let Some(judgment) = judgment {
-                    line.with_judgment(judgment)
-                } else {
-                    line
-                }
-            }),
-        (direction, word(name)).map(|(direction, name)| Unit::Direction(direction, name)),
+    (
         alt((
-            preceded(neighboring_verb, word(name)),
-            terminated(word(name_possessive), word(neighbor_any)),
-        ))
-        .map(Unit::Neighbor),
-        profession_any.map(Unit::Profession),
-    ))
-    .parse_next(input)
+            word(judgment_any).map(Some),
+            word("person").value(None),
+            word("persons").value(None),
+            empty.value(None),
+        )),
+        alt((
+            words(("in", "total")).value(Unit::All),
+            words(("on", "the", "edges")).value(Unit::Edges),
+            (
+                word("in"),
+                alt((words(("a", "corner")), words(("the", "corners")))),
+            )
+                .value(Unit::Corners),
+            (alt((between, preceded(opt(word("in")), line.map(Unit::Line))))),
+            (direction, word(name)).map(|(direction, name)| Unit::Direction(direction, name)),
+            alt((
+                preceded(neighboring_verb, word(name)),
+                terminated(word(name_possessive), word(neighbor_any)),
+            ))
+            .map(Unit::Neighbor),
+            profession_any.map(Unit::Profession),
+        )),
+    )
+        .map(|(judgment, unit)| {
+            if let Some(judgment) = judgment {
+                unit.with_judgment(judgment)
+            } else {
+                unit
+            }
+        })
+        .parse_next(input)
 }
 
 fn maybe_judged_unit(input: &mut &[&str]) -> Result<(Option<Judgment>, Unit)> {

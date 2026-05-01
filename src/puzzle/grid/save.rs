@@ -18,7 +18,7 @@ pub(crate) struct CardList<'card> {
 
 impl From<CardList<'_>> for Grid {
     fn from(mut card_list: CardList) -> Self {
-        card_list.cards.sort_by(|a, b| a.coord.cmp(&b.coord));
+        card_list.cards.sort_by_key(|a| a.coord);
         let cards = card_list.cards.map(Card::from);
         Self::new(cards, card_list.format, card_list.start)
     }

@@ -640,6 +640,20 @@ fn martin_2026_04_14() {
 }
 
 #[test]
+fn umar_2026_04_25() {
+    sentence(
+        "one innocent in the corners has a criminal directly to the right of them",
+        &Sentence::UnitSize(
+            Unit::Corners
+                .with_judgment(Judgment::Innocent)
+                .shift(Direction::Right)
+                .with_judgment(Judgment::Criminal),
+            Cardinal::Exact(1),
+        ),
+    );
+}
+
+#[test]
 fn diane_0cf47() {
     sentence(
         "Xavi has more criminal neighbors than Ben",
