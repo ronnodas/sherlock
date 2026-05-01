@@ -201,7 +201,7 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
         pending_hints.sort_unstable_by_key(Suspect::coord);
 
         loop {
-            //TODO  print!("{}", puzzle.emoji_summary());
+            println!("{}", puzzle.emoji_summary());
             let selected = Select::new(
                 "Add a logical hint:",
                 pending_hints
@@ -213,8 +213,8 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
             .prompt()?;
             match selected {
                 HintOption::Suspect(suspect) => {
-                    if let Some(hint) =
-                        Text::new(&format!("Enter {suspect}'s hint:")).prompt_skippable()?
+                    if let Some(hint) = Text::new(&format!("Enter {}'s hint:", suspect.name()))
+                        .prompt_skippable()?
                     {
                         match puzzle.add_hint(hint, suspect.coord()) {
                             Ok(()) => {

@@ -257,6 +257,10 @@ impl Suspect {
     pub(crate) fn coord(&self) -> Coordinate {
         self.coord
     }
+
+    pub(crate) fn name(&self) -> &Name {
+        &self.name
+    }
 }
 
 impl fmt::Display for Suspect {
