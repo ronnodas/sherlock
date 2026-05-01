@@ -122,6 +122,14 @@ impl Card {
             coord,
         })
     }
+
+    pub(crate) fn emoji(&self) -> char {
+        match self.judgment() {
+            Some(Judgment::Innocent) => '🟩',
+            Some(Judgment::Criminal) => '🟥',
+            None => '⬛',
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

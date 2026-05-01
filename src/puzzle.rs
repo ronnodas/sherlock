@@ -101,6 +101,10 @@ impl Puzzle {
     pub(crate) fn mark_as_flavor(&mut self, coord: Coordinate) -> Result<()> {
         self.grid.mark_as_flavor(coord)
     }
+
+    pub(crate) fn emoji_summary(&self) -> String {
+        self.grid.emoji_summary()
+    }
 }
 
 // TODO Could separate this into a LoadedPuzzle but probably needs to be unified before use anyway

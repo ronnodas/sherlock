@@ -158,6 +158,14 @@ impl Grid {
         self.format
     }
 
+    pub(crate) fn emoji_summary(&self) -> String {
+        let (rows, _) = self.cards.as_chunks::<4>();
+        rows.iter()
+            .map(|row| row.each_ref().map(Card::emoji))
+            .format_with("\n", |row, f| f(&row.iter().format_with("", |c, g| g(c))))
+            .to_string()
+    }
+
     fn card_back(&mut self, coord: Coordinate) -> Result<&mut CardBack> {
         if self[coord].back().is_none() {
             bail!("{}'s card is not flipped", self[coord].name())
