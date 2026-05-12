@@ -654,6 +654,18 @@ fn umar_2026_04_25() {
 }
 
 #[test]
+fn xena_2026_05_12() {
+    sentence(
+        "There is at least one innocent in each profession",
+        &Sentence::EachUnitInSeriesHasSize(
+            Series::Profession,
+            Cardinal::AtLeast(1),
+            Judgment::Innocent,
+        ),
+    );
+}
+
+#[test]
 fn diane_0cf47() {
     sentence(
         "Xavi has more criminal neighbors than Ben",

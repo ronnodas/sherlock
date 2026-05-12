@@ -130,7 +130,12 @@ impl GridEditor {
 
 impl From<Grid> for GridEditor {
     fn from(grid: Grid) -> Self {
-        let professions = grid.by_profession().keys().cloned().collect();
+        let professions = grid
+            .by_profession()
+            .as_btree_map()
+            .keys()
+            .cloned()
+            .collect();
         Self {
             cards: grid.into_cards().map(CardEdit::from),
             professions,

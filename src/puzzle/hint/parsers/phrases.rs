@@ -564,21 +564,20 @@ impl From<UnitInSeries> for Unit {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Series {
     Line(LineKind),
-    // Profession,
+    Profession,
     Neighbor,
 }
 
 impl Series {
-    pub(crate) fn all(self, _context: Context) -> Vec1<Set> {
+    pub(crate) fn all(self, context: Context) -> Vec1<Set> {
         match self {
             Self::Line(line_kind) => line_kind.all().into_iter1().map(Set::from).collect1(),
-            // Self::Profession => context
-            //     .grid
-            //     .by_profession()
-            //     .values()
-            //     .map(|set| set.clone().into_hash_set())
-            //     .try_collect1()
-            //     .expect("total len 20"),
+            Self::Profession => context
+                .grid
+                .by_profession()
+                .values1()
+                .map(|&set| set.into())
+                .collect1(),
             Self::Neighbor => Coordinate::all()
                 .map(|center| center.neighbors().collect())
                 .collect1(),

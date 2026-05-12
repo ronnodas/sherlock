@@ -9,6 +9,7 @@ use std::ops::{Index, IndexMut};
 
 use anyhow::{Result, anyhow, bail};
 use itertools::Itertools as _;
+use mitsein::btree_map1::BTreeMap1;
 use mitsein::iter1::IteratorExt as _;
 use mitsein::vec1::Vec1;
 use select::document::Document;
@@ -27,8 +28,8 @@ use html::{Class, ClassName, Div, NodeExt as _};
 pub(crate) struct Grid {
     cards: [Card; 20],
     coordinates: HashMap<Name, Coordinate>,
-    // TODO make this non-empty once mitsein supports that
-    by_profession: HashMap<Profession, Set1>,
+    // TODO maybe change this to `IndexMap` or `HashMap` once `mitsein` supports that
+    by_profession: BTreeMap1<Profession, Set1>,
     format: Format,
     start: Option<Coordinate>,
 }
@@ -81,7 +82,10 @@ impl Grid {
             .aggregate(|set: Option<Set1>, _, coord| {
                 let set = set.map_or_else(|| Set1::from_one(coord), |set| set | coord);
                 Some(set)
-            });
+            })
+            .into_iter()
+            .try_collect1()
+            .expect("total len 20");
         let mut grid = Self {
             cards,
             coordinates,
@@ -147,6 +151,7 @@ impl Grid {
 
     pub(crate) fn other_professions(&self, profession: &str) -> Result<Vec1<Set1>> {
         self.by_profession
+            .as_btree_map()
             .iter()
             .filter(move |&(other, _)| other != profession)
             .map(|(_, &set)| set)
@@ -174,7 +179,7 @@ impl Grid {
         Ok(self[coord].back_mut().expect("checked above"))
     }
 
-    pub(crate) fn by_profession(&self) -> &HashMap<Profession, Set1> {
+    pub(crate) fn by_profession(&self) -> &BTreeMap1<Profession, Set1> {
         &self.by_profession
     }
 

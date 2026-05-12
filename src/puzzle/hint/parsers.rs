@@ -422,17 +422,21 @@ impl Sentence {
     fn each_unit_in_series_has_n_traits(input: &mut &[&str]) -> Result<Self> {
         alt((
             separated_pair(
-                preceded(word("Each"), word(line_kind)).map(Series::from),
+                preceded(word("Each"), word(series)),
                 word("has"),
                 cardinal_judgment,
-            ),
+            )
+            .map(|(series, (quantity, judgment))| (series, quantity, judgment)),
             separated_pair(
-                word("Everyone").value(Series::Neighbor),
-                word("has"),
-                cardinal_judged_neighbors,
-            ),
+                preceded(words(("There", be_verb)), cardinal_judgment),
+                words(("in", "each")),
+                word(series),
+            )
+            .map(|((quantity, judgment), series)| (series, quantity, judgment)),
+            preceded(words(("Everyone", "has")), cardinal_judged_neighbors)
+                .map(|(quantity, judgment)| (Series::Neighbor, quantity, judgment)),
         ))
-        .map(|(series, (quantity, judgment))| {
+        .map(|(series, quantity, judgment)| {
             Self::EachUnitInSeriesHasSize(series, quantity, judgment)
         })
         .parse_next(input)
@@ -817,6 +821,14 @@ fn between(input: &mut &[&str]) -> Result<Unit> {
     preceded(words(("in", "between")), pair(name))
         .map(Unit::Between)
         .parse_next(input)
+}
+
+fn series(input: &mut &str) -> Result<Series> {
+    alt((
+        line_kind.map(Series::from),
+        "profession".value(Series::Profession),
+    ))
+    .parse_next(input)
 }
 
 fn line(input: &mut &[&str]) -> Result<LineRecipe> {
