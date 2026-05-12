@@ -193,15 +193,15 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
         let new = puzzle.infer()?;
         print_inferences(&new);
 
+        println!("{}", puzzle.emoji_summary());
         if puzzle.solved() {
             println!("Puzzle solved!");
             break;
         }
         pending_hints.extend(new.into_iter().map_into());
         pending_hints.sort_unstable_by_key(Suspect::coord);
-
+        
         loop {
-            println!("{}", puzzle.emoji_summary());
             let selected = Select::new(
                 "Add a logical hint:",
                 pending_hints
