@@ -47,27 +47,31 @@ impl Sentence {
 
     fn any(input: &mut &[&str]) -> Result<Self> {
         alt((
-            terminated(Self::traits_are_neighbors_in_unit, eof),
-            terminated(Self::has_most_traits, eof),
-            terminated(Self::is_one_of_n_traits_in_unit, eof),
-            terminated(Self::more_traits_in_unit_than_unit, eof),
-            terminated(Self::units_share_n_traits, eof),
-            terminated(Self::each_unit_in_series_has_n_traits, eof),
-            terminated(Self::unit_shares_quantified_traits_with_unit, eof),
-            terminated(Self::number_of_traits_in_unit, eof),
-            terminated(
-                Self::only_one_person_in_unit_has_cardinal_trait_neighbors,
-                eof,
-            ),
-            terminated(Self::n_people_in_unit_have_cardinal_trait_neighbors, eof),
-            terminated(Self::only_one_unit_in_series_has_exactly_n_traits, eof),
-            terminated(Self::only_given_unit_has_exactly_n_traits, eof),
-            terminated(Self::equal_number_of_traits_in_units, eof),
-            terminated(Self::more_traits_in_unit, eof),
-            terminated(Self::equal_traits_in_unit, eof),
-            terminated(Self::has_trait, eof),
-            terminated(Self::at_most_n_traits_in_neighbors_in_unit, eof),
-            terminated(Self::total_number_of_traits_in_units, eof),
+            alt((
+                terminated(Self::traits_are_neighbors_in_unit, eof),
+                terminated(Self::has_most_traits, eof),
+                terminated(Self::is_one_of_n_traits_in_unit, eof),
+                terminated(Self::more_traits_in_unit_than_unit, eof),
+                terminated(Self::units_share_n_traits, eof),
+                terminated(Self::each_unit_in_series_has_n_traits, eof),
+                terminated(Self::unit_shares_quantified_traits_with_unit, eof),
+                terminated(Self::number_of_traits_in_unit, eof),
+                terminated(
+                    Self::only_one_person_in_unit_has_cardinal_trait_neighbors,
+                    eof,
+                ),
+            )),
+            alt((
+                terminated(Self::n_people_in_unit_have_cardinal_trait_neighbors, eof),
+                terminated(Self::only_one_unit_in_series_has_exactly_n_traits, eof),
+                terminated(Self::only_given_unit_has_exactly_n_traits, eof),
+                terminated(Self::equal_number_of_traits_in_units, eof),
+                terminated(Self::more_traits_in_unit, eof),
+                terminated(Self::equal_traits_in_unit, eof),
+                terminated(Self::has_trait, eof),
+                terminated(Self::at_most_n_traits_in_neighbors_in_unit, eof),
+                terminated(Self::total_number_of_traits_in_units, eof),
+            )),
         ))
         .parse_next(input)
     }

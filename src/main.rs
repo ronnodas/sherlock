@@ -200,7 +200,7 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
         }
         pending_hints.extend(new.into_iter().map_into());
         pending_hints.sort_unstable_by_key(Suspect::coord);
-        
+
         loop {
             let selected = Select::new(
                 "Add a logical hint:",

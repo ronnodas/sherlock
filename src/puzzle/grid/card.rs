@@ -252,9 +252,12 @@ fn parse_name(card: Node<'_>) -> Result<String> {
         .trim()
         .chars()
         .with_position()
-        .map(|(position, c)| match position {
-            itertools::Position::First | itertools::Position::Only => c.to_ascii_uppercase(),
-            itertools::Position::Middle | itertools::Position::Last => c,
+        .map(|(position, c)| {
+            if position.is_first {
+                c.to_ascii_uppercase()
+            } else {
+                c
+            }
         })
         .collect())
 }
