@@ -527,9 +527,11 @@ impl Sentence {
 }
 
 fn unit_pair(input: &mut &[&str]) -> Result<[Unit; 2]> {
-    preceded(word("in"), line_pair)
-        .map(|lines| lines.map(Unit::Line))
-        .parse_next(input)
+    alt((
+        preceded(word("in"), line_pair).map(|lines| lines.map(Unit::Line)),
+        separated_pair(unit, word("and"), unit).map(<[Unit; 2]>::from),
+    ))
+    .parse_next(input)
 }
 
 fn unit(input: &mut &[&str]) -> Result<Unit> {

@@ -666,6 +666,20 @@ fn xena_2026_05_12() {
 }
 
 #[test]
+fn nancy_2026_06_23() {
+    sentence(
+        "There's an equal number of criminals above Zara and above Vince",
+        &Sentence::EqualNumberOfTraitsInUnits(
+            [
+                Unit::direction(Direction::Above, "Zara"),
+                Unit::direction(Direction::Above, "Vince"),
+            ],
+            Judgment::Criminal,
+        ),
+    );
+}
+
+#[test]
 fn diane_0cf47() {
     sentence(
         "Xavi has more criminal neighbors than Ben",
