@@ -156,6 +156,7 @@ pub(crate) enum Unit {
     Line(LineRecipe),
     Profession(Profession),
     Neighbor(NameRecipe),
+    NotNeighbor(NameRecipe),
     Between([NameRecipe; 2]),
     Edges,
     Corners,
@@ -276,6 +277,11 @@ impl Unit {
     }
 
     #[cfg(test)]
+    pub(crate) fn not_neighbor(name: impl Into<NameRecipe>) -> Self {
+        Self::NotNeighbor(name.into())
+    }
+
+    #[cfg(test)]
     pub(crate) fn direction(direction: Direction, name: impl Into<NameRecipe>) -> Self {
         Self::Direction(direction, name.into())
     }
@@ -357,10 +363,13 @@ impl AddContext for &Unit {
                 let start = name.add_context(context)?;
                 Coordinate::direction(start, *direction).collect()
             }
-            Unit::Neighbor(name) => {
-                let center = name.add_context(context)?;
-                center.neighbors().collect()
-            }
+            Unit::Neighbor(name) => name.add_context(context)?.neighbors().collect(),
+            Unit::NotNeighbor(name) => name
+                .add_context(context)?
+                .neighbors()
+                .collect::<Set>()
+                .complement()
+                .into(),
             Unit::Profession(profession) => (*context.grid.profession_as_set(profession)?).into(),
             Unit::Edges => Coordinate::edges().collect(),
             Unit::Corners => Coordinate::corners().collect(),

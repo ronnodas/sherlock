@@ -300,18 +300,24 @@ impl Sentence {
 
     fn unit_shares_quantified_traits_with_unit(input: &mut &[&str]) -> Result<Self> {
         alt((
-            (
-                preceded(opt(there_is), quantified_judged_unit),
-                alt((
-                    preceded(neighboring_verb, word(name)).map(Unit::Neighbor),
-                    preceded(opt(word(be_verb)), unit),
-                )),
+            terminated(
+                (
+                    preceded(opt(there_is), quantified_judged_unit),
+                    alt((
+                        preceded(neighboring_verb, word(name)).map(Unit::Neighbor),
+                        preceded(opt(word(be_verb)), unit),
+                    )),
+                ),
+                eof,
             )
-                .map(|((quantifier, judgment, unit), other)| (quantifier, unit, other, judgment)),
-            separated_pair(
-                separated_pair(word(name_possessive), word("only"), word(judgment_singular)),
-                words(("neighbor", "is")),
-                unit,
+            .map(|((quantifier, judgment, unit), other)| (quantifier, unit, other, judgment)),
+            terminated(
+                separated_pair(
+                    separated_pair(word(name_possessive), word("only"), word(judgment_singular)),
+                    words(("neighbor", "is")),
+                    unit,
+                ),
+                eof,
             )
             .map(|((quantified, judgment), other)| {
                 (
@@ -321,14 +327,17 @@ impl Sentence {
                     judgment,
                 )
             }),
-            separated_pair(
-                word(name),
-                word("shares"),
+            terminated(
                 separated_pair(
-                    (quantifier, word(judgment_any)),
-                    (word(neighbor_any), word("with")),
                     word(name),
+                    word("shares"),
+                    separated_pair(
+                        (quantifier, word(judgment_any)),
+                        (word(neighbor_any), word("with")),
+                        word(name),
+                    ),
                 ),
+                eof,
             )
             .map(|(quantified, ((quantifier, judgment), other))| {
                 (
@@ -338,9 +347,16 @@ impl Sentence {
                     judgment,
                 )
             }),
-            separated_pair(quantified_judged_unit, word(neighbor_any), word(name)).map(
+            terminated(
+                separated_pair(quantified_judged_unit, word(neighbor_any), word(name)),
+                eof,
+            )
+            .map(|((quantifier, judgment, unit), name)| {
+                (quantifier, unit, Unit::Neighbor(name), judgment)
+            }),
+            terminated(separated_pair(quantified_judged_unit, not_neighbor_any, word(name)),eof).map(
                 |((quantifier, judgment, unit), name)| {
-                    (quantifier, unit, Unit::Neighbor(name), judgment)
+                    (quantifier, unit, Unit::NotNeighbor(name), judgment)
                 },
             ),
         ))
@@ -797,6 +813,12 @@ fn starts_lowercase(profession: &str) -> bool {
 
 fn neighbor_any(input: &mut &str) -> Result<()> {
     alt(("neighbors", "neighbor")).void().parse_next(input)
+}
+
+fn not_neighbor_any(input: &mut &[&str]) -> Result<()> {
+    words((alt(("doesn't", "don't")), "neighbor"))
+        .void()
+        .parse_next(input)
 }
 
 fn there_is<'input, 'inner: 'input>(

@@ -680,6 +680,31 @@ fn nancy_2026_06_23() {
 }
 
 #[test]
+fn mary_2026_06_24() {
+    sentence(
+        "only 1 of the 3 criminals in row 1 doesn't neighbor Emily",
+        &Sentence::UnitAndIntersectionSize {
+            total: 3,
+            quantified: Row::One.into(),
+            other: Unit::not_neighbor("Emily"),
+            intersection: 1,
+            judgment: Judgment::Criminal,
+        },
+    );
+
+    sentence(
+        "only 1 of the 3 criminals in row 1 neighbors Emily",
+        &Sentence::UnitAndIntersectionSize {
+            total: 3,
+            quantified: Row::One.into(),
+            other: Unit::neighbor("Emily"),
+            intersection: 1,
+            judgment: Judgment::Criminal,
+        },
+    );
+}
+
+#[test]
 fn diane_0cf47() {
     sentence(
         "Xavi has more criminal neighbors than Ben",

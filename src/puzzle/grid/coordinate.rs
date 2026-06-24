@@ -188,6 +188,10 @@ impl Set {
     pub(crate) fn empty() -> Self {
         Self(0)
     }
+
+    pub(crate) fn complement(self) -> Self {
+        Self(((1 << 20) - 1) ^ self.0)
+    }
 }
 
 impl BitAnd<Self> for Set {
