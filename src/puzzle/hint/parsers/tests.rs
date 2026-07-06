@@ -705,6 +705,19 @@ fn mary_2026_06_24() {
 }
 
 #[test]
+fn xia_2026_07_06() {
+    sentence(
+        "Vicky is the only innocent clerk",
+        &Sentence::IsOneOfNInUnit(
+            Unit::profession("clerk"),
+            "Vicky".into(),
+            Cardinal::Exact(1),
+            Judgment::Innocent,
+        ),
+    );
+}
+
+#[test]
 fn diane_0cf47() {
     sentence(
         "Xavi has more criminal neighbors than Ben",

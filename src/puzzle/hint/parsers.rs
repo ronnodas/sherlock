@@ -127,12 +127,21 @@ impl Sentence {
     }
 
     fn is_one_of_n_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
-        separated_pair(
-            word(name),
-            words((alt(("is", "am")), "one", "of")),
-            cardinal_judged_unit,
-        )
-        .map(|(name, (count, judgment, unit))| Self::IsOneOfNInUnit(unit, name, count, judgment))
+        alt((
+            separated_pair(
+                word(name),
+                words((alt(("is", "am")), "one", "of")),
+                cardinal_judged_unit,
+            )
+            .map(|(name, (count, judgment, unit))| {
+                Self::IsOneOfNInUnit(unit, name, count, judgment)
+            }),
+            separated_pair(word(name), words(("is", "the", "only")), judged_unit).map(
+                |(name, (judgment, unit))| {
+                    Self::IsOneOfNInUnit(unit, name, Cardinal::Exact(1), judgment)
+                },
+            ),
+        ))
         .parse_next(input)
     }
 
@@ -354,11 +363,13 @@ impl Sentence {
             .map(|((quantifier, judgment, unit), name)| {
                 (quantifier, unit, Unit::Neighbor(name), judgment)
             }),
-            terminated(separated_pair(quantified_judged_unit, not_neighbor_any, word(name)),eof).map(
-                |((quantifier, judgment, unit), name)| {
-                    (quantifier, unit, Unit::NotNeighbor(name), judgment)
-                },
-            ),
+            terminated(
+                separated_pair(quantified_judged_unit, not_neighbor_any, word(name)),
+                eof,
+            )
+            .map(|((quantifier, judgment, unit), name)| {
+                (quantifier, unit, Unit::NotNeighbor(name), judgment)
+            }),
         ))
         .map(
             |(quantifier, quantified, other, judgment)| match quantifier {
