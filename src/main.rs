@@ -87,12 +87,12 @@ fn main_menu() -> Result<ParsedPuzzle> {
 
 fn archive(input: String) -> Result<ParsedPuzzle> {
     let (url, id) = if let Some(url) = input.strip_prefix("https://") {
-        if let Some(id) = is_archive_url(url) {
+        if let Some(id) = extract_id(url) {
             (Cow::Borrowed(&input), Cow::Borrowed(id))
         } else {
-            bail!("archive urls should start with https://cluesbysam.com/{{s/}}archive")
+            bail!("did not recognize url")
         }
-    } else if let Some(id) = is_archive_url(&input) {
+    } else if let Some(id) = extract_id(&input) {
         (Cow::Owned(format!("https://{input}")), Cow::Borrowed(id))
     } else if let Some(id) = input.strip_prefix("s/") {
         (Cow::Owned(archive_url(id, true)), Cow::Borrowed(id))
@@ -117,10 +117,18 @@ fn archive_url(input: &str, with_s: bool) -> String {
     }
 }
 
-fn is_archive_url(string: &str) -> Option<&str> {
-    string
-        .strip_prefix("cluesbysam.com/s/archive/")
-        .or_else(|| string.strip_prefix("cluesbysam.com/archive/"))
+fn extract_id(url: &str) -> Option<&str> {
+    // TODO use trim_suffix('/')
+    let url = url.trim().trim_end_matches('/');
+    let prefixes = [
+        "cluesbysam.com/s/archive/",
+        "cluesbysam.com/archive/",
+        "cluesbysam.com/s/play/?puzzleId=",
+    ];
+    prefixes
+        .into_iter()
+        .find_map(|prefix| url.strip_prefix(prefix))
+        .filter(|id| !id.is_empty())
 }
 
 fn fetch_today() -> Result<ParsedPuzzle> {
@@ -400,5 +408,27 @@ impl fmt::Display for HintOption<'_> {
             Self::MarkAsFlavor => write!(f, "mark hints as flavor"),
             Self::Save => write!(f, "save progress to file"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_id;
+
+    #[test]
+    fn recognizes_archive_urls() {
+        assert_eq!(extract_id("cluesbysam.com/archive/abc123/"), Some("abc123"));
+        assert_eq!(
+            extract_id("cluesbysam.com/s/archive/abc123/"),
+            Some("abc123")
+        );
+    }
+
+    #[test]
+    fn recognizes_play_page_urls() {
+        assert_eq!(
+            extract_id("cluesbysam.com/s/play/?puzzleId=abc123"),
+            Some("abc123")
+        );
     }
 }
