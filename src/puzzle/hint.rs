@@ -1,8 +1,6 @@
 mod parsers;
 pub(crate) mod recipes;
 
-use std::ops::Not;
-
 use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
@@ -20,6 +18,8 @@ pub(crate) enum Hint {
     Judgment(Coordinate, Judgment),
     /// Given set of coordinates has that many suspects
     Count(ModifiedSet, Cardinal),
+    /// Given set of coordinates does not have that many suspects
+    NotCount(ModifiedSet, Cardinal),
     /// Given set of coordinates in total have that many suspects
     CountTotal([ModifiedSet; 2], Cardinal),
     /// Given set of coordinates is connected
@@ -41,8 +41,6 @@ pub(crate) enum Hint {
         count: Cardinal,
         judgment: Judgment,
     },
-    /// Negation of the inner hint
-    Not(Box<Self>),
 }
 
 impl Hint {
@@ -50,6 +48,7 @@ impl Hint {
         match self {
             &Self::Judgment(coord, judgment) => solution[coord] == judgment,
             Self::Count(set, quantity) => quantity.matches(solution.select(set).len()),
+            Self::NotCount(set, quantity) => !quantity.matches(solution.select(set).len()),
             Self::CountTotal(sets, quantity) => {
                 let total = sets.iter().map(|set| solution.select(set).len()).sum();
                 quantity.matches(total)
@@ -90,7 +89,6 @@ impl Hint {
                     cardinal.matches(neighbors)
                 })
             }
-            Self::Not(hint) => !hint.evaluate(solution),
         }
     }
 
@@ -99,18 +97,6 @@ impl Hint {
             sets: sets.into_vec(),
             each: quantity,
             count: Cardinal::Exact(1),
-        }
-    }
-}
-
-impl Not for Hint {
-    type Output = Self;
-
-    fn not(self) -> Self {
-        if let Self::Not(reverse) = self {
-            *reverse
-        } else {
-            Self::Not(Box::new(self))
         }
     }
 }

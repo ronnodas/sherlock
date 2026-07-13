@@ -1,5 +1,3 @@
-use std::ops::Not as _;
-
 use anyhow::bail;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
@@ -192,11 +190,10 @@ impl Unit {
                     set.into_iter()
                         .filter(|&other| other != coord)
                         .map(|other| {
-                            Hint::Count(
+                            Hint::NotCount(
                                 other.neighbors().collect::<Set>().judged(judgment),
                                 quantity,
                             )
-                            .not()
                         }),
                 );
             } else {
@@ -523,7 +520,7 @@ impl UnitInSeries {
         hints.extend(
             others
                 .into_iter()
-                .map(|other| Hint::Count(other.judged(judgment), quantity).not()),
+                .map(|other| Hint::NotCount(other.judged(judgment), quantity)),
         );
         Ok(hints)
     }
