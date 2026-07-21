@@ -718,6 +718,19 @@ fn xia_2026_07_06() {
 }
 
 #[test]
+fn terry_2026_07_21() {
+    sentence(
+        "I'm one of 2 innocents to the right of Quita",
+        &Sentence::IsOneOfNInUnit(
+            Unit::Direction(Direction::Right, "Quita".into()),
+            Name::Me,
+            Cardinal::Exact(2),
+            Judgment::Innocent,
+        ),
+    );
+}
+
+#[test]
 fn diane_0cf47() {
     sentence(
         "Xavi has more criminal neighbors than Ben",

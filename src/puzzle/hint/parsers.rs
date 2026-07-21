@@ -129,8 +129,11 @@ impl Sentence {
     fn is_one_of_n_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
         alt((
             separated_pair(
-                word(name),
-                words((alt(("is", "am")), "one", "of")),
+                alt((
+                    terminated(word(name), word(alt(("is", "am")))),
+                    word("I'm").value(NameRecipe::Me),
+                )),
+                words(("one", "of")),
                 cardinal_judged_unit,
             )
             .map(|(name, (count, judgment, unit))| {
