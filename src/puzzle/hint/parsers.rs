@@ -463,7 +463,7 @@ impl Sentence {
             .map(|(series, (quantity, judgment))| (series, quantity, judgment)),
             separated_pair(
                 preceded(words(("There", be_verb)), cardinal_judgment),
-                words(("in", "each")),
+                words((alt(("in", "among")), "each")),
                 word(series),
             )
             .map(|((quantity, judgment), series)| (series, quantity, judgment)),

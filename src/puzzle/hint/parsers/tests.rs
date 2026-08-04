@@ -731,6 +731,18 @@ fn terry_2026_07_21() {
 }
 
 #[test]
+fn kumar_2026_08_04() {
+    sentence(
+        "There is at least one criminal among each profession",
+        &Sentence::EachUnitInSeriesHasSize(
+            Series::Profession,
+            Cardinal::AtLeast(1),
+            Judgment::Criminal,
+        ),
+    );
+}
+
+#[test]
 fn diane_0cf47() {
     sentence(
         "Xavi has more criminal neighbors than Ben",
