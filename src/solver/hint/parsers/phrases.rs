@@ -3,7 +3,7 @@ use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
 use crate::models::{Column, Coordinate, Direction, Judgment, Profession, Row};
-use crate::solver::grid::coordinate::{ModifiedSet, Set, Set1};
+use crate::solver::grid::coordinates::{ModifiedSet, Set, Set1};
 use crate::solver::hint::recipes::{
     AddContext, ColumnRecipe, Context, LineRecipe, NameRecipe, RowRecipe,
 };

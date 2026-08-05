@@ -12,15 +12,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::{Card, CardBack, Coordinate, Judgment, Name, Profession};
 use crate::solver::Suspect;
-use crate::solver::grid::card::parse_card;
-use crate::solver::grid::coordinate::Set1;
-use crate::solver::grid::html::{Class, ClassName, Div, NodeExt as _};
+use crate::solver::grid::coordinates::Set1;
+use crate::solver::grid::parsers::{Class, ClassName, Div, NodeExt as _, parse_card};
 
-// TODO rename card -> parsers, abosrb with html, coordinate -> coordinates
-pub(crate) mod card;
-pub(crate) mod coordinate;
+pub(crate) mod coordinates;
 pub(crate) mod editor;
-mod html;
+mod parsers;
 mod save;
 
 #[derive(Clone, Debug, Deserialize)]
