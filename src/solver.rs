@@ -1,29 +1,20 @@
+use std::fmt;
+
+use anyhow::{Result, bail};
+use colored::Colorize as _;
+use itertools::Itertools as _;
+use ron::extensions::Extensions;
+use ron::ser::{PrettyConfig, to_string_pretty};
+
+use crate::models::{Card, Coordinate, Judgment, Name};
+use crate::solver::grid::{Format, Grid};
+use crate::solver::hint::recipes::{AddContext as _, Context};
+use crate::solver::hint::{Hint, Sentence};
+use crate::solver::solution::Solution;
+
 pub(crate) mod grid;
 mod hint;
 mod solution;
-
-use std::fmt;
-use std::ops::Not;
-
-use anyhow::{Result, bail};
-use colored::{Color, Colorize as _};
-use itertools::Itertools as _;
-
-use grid::Grid;
-use hint::Hint;
-use hint::recipes::AddContext as _;
-use ron::extensions::Extensions;
-use ron::ser::{PrettyConfig, to_string_pretty};
-use serde::{Deserialize, Serialize};
-use solution::Solution;
-
-use crate::solver::grid::Format;
-use crate::solver::grid::coordinate::Coordinate;
-use crate::solver::hint::Sentence;
-use crate::solver::hint::recipes::Context;
-
-pub(crate) type Name = String;
-pub(crate) type Profession = String;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Solver {
@@ -189,41 +180,6 @@ impl SolverWithUpdates {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub(crate) enum Judgment {
-    Innocent,
-    Criminal,
-}
-
-impl Judgment {
-    pub(crate) fn color(self) -> Color {
-        match self {
-            Self::Innocent => Color::Green,
-            Self::Criminal => Color::Red,
-        }
-    }
-}
-
-impl Not for Judgment {
-    type Output = Self;
-
-    fn not(self) -> Self {
-        match self {
-            Self::Innocent => Self::Criminal,
-            Self::Criminal => Self::Innocent,
-        }
-    }
-}
-
-impl fmt::Display for Judgment {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Innocent => write!(f, "Innocent"),
-            Self::Criminal => write!(f, "Criminal"),
-        }
-    }
-}
-
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone)]
 pub(crate) struct Update {
@@ -253,6 +209,14 @@ pub(crate) struct Suspect {
 }
 
 impl Suspect {
+    pub(crate) fn from_card(card: &Card, coord: Coordinate) -> Option<Self> {
+        card.hint_pending().map(|judgment| Self {
+            name: card.name().clone(),
+            judgment,
+            coord,
+        })
+    }
+
     pub(crate) fn coord(&self) -> Coordinate {
         self.coord
     }

@@ -3,10 +3,8 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
-use crate::solver::grid::card::{Card, CardBack};
-use crate::solver::grid::coordinate::Coordinate;
+use crate::models::{Card, CardBack, Coordinate, Name, Profession};
 use crate::solver::grid::{Format, Grid};
-use crate::solver::{Name, Profession};
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct CardList<'card> {

@@ -2,10 +2,8 @@ use std::ops::Index;
 
 use mitsein::iter1::IntoIterator1 as _;
 
-use crate::solver::Judgment;
-use crate::solver::grid::coordinate::{Coordinate, ModifiedSet, Set};
-
-use super::grid::coordinate::Modifier;
+use crate::models::{Coordinate, Judgment};
+use crate::solver::grid::coordinate::{ModifiedSet, Modifier, Set};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Clone, Debug)]

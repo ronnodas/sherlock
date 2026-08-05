@@ -2,12 +2,12 @@ use anyhow::bail;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
-use crate::solver::grid::coordinate::{Column, Coordinate, Direction, ModifiedSet, Row, Set1};
+use crate::models::{Column, Coordinate, Direction, Judgment, Profession, Row};
+use crate::solver::grid::coordinate::{ModifiedSet, Set, Set1};
 use crate::solver::hint::recipes::{
     AddContext, ColumnRecipe, Context, LineRecipe, NameRecipe, RowRecipe,
 };
-use crate::solver::hint::{Cardinal, Comparison, Hint, LineKind, Number, Set};
-use crate::solver::{Judgment, Profession};
+use crate::solver::hint::{Cardinal, Comparison, Hint, LineKind, Number};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug)]
@@ -372,7 +372,7 @@ impl AddContext for &Unit {
             Unit::Corners => Coordinate::corners().collect(),
             Unit::Between(names) => {
                 let [a, b] = names.each_ref().map(|name| name.add_context(context));
-                Coordinate::between([a?, b?])?.into()
+                Set::between([a?, b?])?.into()
             }
             Unit::All => Coordinate::all().into_iter().collect(),
             Unit::Quantified(inner, quantity) => {

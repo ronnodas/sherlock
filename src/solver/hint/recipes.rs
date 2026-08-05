@@ -1,8 +1,7 @@
 use anyhow::Result;
 
-use crate::solver::Name;
+use crate::models::{Column, Coordinate, Name, Row};
 use crate::solver::grid::Grid;
-use crate::solver::grid::coordinate::{Column, Coordinate, Row};
 use crate::solver::hint::{Line, LineKind};
 
 pub(crate) type NameRecipe = MeOrExplicit<Name>;

@@ -1,5 +1,3 @@
-mod phrases;
-
 use std::iter::once;
 
 use anyhow::anyhow;
@@ -12,11 +10,12 @@ use winnow::error::{ParserError, StrContext};
 use winnow::token::{any, rest};
 use winnow::{Parser, Result};
 
-use crate::solver::Judgment;
-use crate::solver::grid::coordinate::{Column, Row};
+use crate::models::{Column, Direction, Judgment, Profession, Row};
 use crate::solver::hint::parsers::phrases::Quantifier;
 use crate::solver::hint::recipes::{ColumnRecipe, LineRecipe, NameRecipe, RowRecipe};
-use crate::solver::hint::{Cardinal, Direction, LineKind, Number, Parity, Profession};
+use crate::solver::hint::{Cardinal, LineKind, Number, Parity};
+
+mod phrases;
 
 pub(crate) use phrases::{Sentence, Series, Unit, UnitInSeries};
 

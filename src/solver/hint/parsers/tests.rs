@@ -5,10 +5,9 @@ use winnow::Parser;
 use winnow::error::ParserError;
 use winnow::stream::{Stream, StreamIsPartial};
 
-use crate::solver::Judgment;
-use crate::solver::grid::coordinate::{Column, Row};
+use crate::models::{Column, Direction, Judgment, Row};
 use crate::solver::hint::recipes::{ColumnRecipe, NameRecipe as Name};
-use crate::solver::hint::{Cardinal, Direction, LineKind, Parity};
+use crate::solver::hint::{Cardinal, LineKind, Parity};
 
 use super::{Sentence, Series, Unit, UnitInSeries};
 

@@ -1,5 +1,3 @@
-mod solver;
-
 use std::borrow::Cow;
 use std::ffi::OsStr;
 use std::fs::File;
@@ -14,9 +12,12 @@ use itertools::Itertools as _;
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use crate::solver::grid::coordinate::Coordinate;
+use crate::models::{Coordinate, Name};
 use crate::solver::grid::editor::GridEditor;
-use crate::solver::{Name, Solver, SolverWithUpdates, Suspect, Update};
+use crate::solver::{Solver, SolverWithUpdates, Suspect, Update};
+
+mod models;
+mod solver;
 
 const API_KEY_FILE: &str = "browserless_api_key";
 const SAVE_DIRECTORY: &str = "saved/";

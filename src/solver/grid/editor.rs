@@ -1,9 +1,8 @@
 use std::array::from_fn;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
-use std::ops::{Index, IndexMut};
-
 use std::fmt;
+use std::ops::{Index, IndexMut};
 
 use anyhow::{Result, anyhow};
 use colored::Colorize as _;
@@ -14,10 +13,10 @@ use tabled::settings::Alignment;
 use tabled::settings::formatting::AlignmentStrategy;
 use tabled::settings::{Color as TabledColor, Style, object::Cell};
 
-use crate::solver::grid::card::{Card, CardBack, HintText};
-use crate::solver::grid::coordinate::{Column, Coordinate, Row};
+use crate::models::{
+    Card, CardBack, Column, Coordinate, Judgment, MaybeHint, Name, Profession, Row,
+};
 use crate::solver::grid::{Format, Grid};
-use crate::solver::{Judgment, Name, Profession};
 
 pub(crate) struct GridEditor {
     cards: [CardEdit; 20],
@@ -274,10 +273,10 @@ impl CardFront {
                 None
             }
             UnflippedAction::SetInnocent => {
-                Some(CardBack::new(Judgment::Innocent, HintText::Unknown))
+                Some(CardBack::new(Judgment::Innocent, MaybeHint::Unknown))
             }
             UnflippedAction::SetCriminal => {
-                Some(CardBack::new(Judgment::Criminal, HintText::Unknown))
+                Some(CardBack::new(Judgment::Criminal, MaybeHint::Unknown))
             }
         };
         Ok(update)
@@ -422,7 +421,7 @@ impl fmt::Display for UnflippedAction<'_> {
 enum FlippedAction<'edit> {
     Common(CommonAction<'edit>),
     ToggleJudgment(Judgment),
-    EditHint(&'edit HintText),
+    EditHint(&'edit MaybeHint),
     MarkAsFlavor,
     Unflip,
 }
@@ -456,9 +455,9 @@ impl fmt::Display for FlippedAction<'_> {
                 write!(f, "{}", j.to_string().color(j.color()))
             }
             Self::EditHint(hint) => match hint {
-                HintText::Logical(s) => write!(f, "Hint: {s}"),
-                HintText::Flavor => write!(f, "Hint: <flavor>"),
-                HintText::Unknown => write!(f, "Add hint"),
+                MaybeHint::Logical(s) => write!(f, "Hint: {s}"),
+                MaybeHint::Flavor => write!(f, "Hint: <flavor>"),
+                MaybeHint::Unknown => write!(f, "Add hint"),
             },
             Self::MarkAsFlavor => write!(f, "Mark hint as flavor text"),
             Self::Unflip => write!(f, "Unflip"),

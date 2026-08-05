@@ -1,13 +1,13 @@
-mod parsers;
-pub(crate) mod recipes;
-
 use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
-use crate::solver::grid::coordinate::{Column, Coordinate, Direction, ModifiedSet, Row, Set};
+use crate::models::{Column, Coordinate, Judgment, Row};
+use crate::solver::grid::coordinate::{ModifiedSet, Set};
 use crate::solver::solution::Solution;
-use crate::solver::{Judgment, Profession};
+
+mod parsers;
+pub(crate) mod recipes;
 
 pub(crate) type Number = u8;
 pub(crate) use parsers::Sentence;

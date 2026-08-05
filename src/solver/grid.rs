@@ -1,9 +1,3 @@
-pub(crate) mod card;
-pub(crate) mod coordinate;
-pub(crate) mod editor;
-mod html;
-mod save;
-
 use std::collections::HashMap;
 use std::ops::{Index, IndexMut};
 
@@ -16,12 +10,18 @@ use select::document::Document;
 use select::predicate::{Any, Attr, Predicate as _};
 use serde::{Deserialize, Serialize};
 
-use crate::solver::grid::card::CardBack;
-use crate::solver::grid::coordinate::{Coordinate, Set1};
-use crate::solver::{Judgment, Name, Profession, Suspect};
+use crate::models::{Card, CardBack, Coordinate, Judgment, Name, Profession};
+use crate::solver::Suspect;
+use crate::solver::grid::card::parse_card;
+use crate::solver::grid::coordinate::Set1;
+use crate::solver::grid::html::{Class, ClassName, Div, NodeExt as _};
 
-use card::Card;
-use html::{Class, ClassName, Div, NodeExt as _};
+// TODO rename card -> parsers, abosrb with html, coordinate -> coordinates
+pub(crate) mod card;
+pub(crate) mod coordinate;
+pub(crate) mod editor;
+mod html;
+mod save;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(from = "save::CardList")]
@@ -46,7 +46,7 @@ impl Grid {
         let cards: [(Card, bool); 20] = cards
             .expect_children::<20>(Any)?
             .iter()
-            .map(|card| Card::parse(card))
+            .map(|card| parse_card(card))
             .collect::<Result<Vec<(Card, bool)>>>()?
             .try_into()
             .unwrap_or_else(|_| unreachable!());
@@ -145,7 +145,7 @@ impl Grid {
         self.cards
             .iter()
             .enumerate()
-            .filter_map(|(index, card)| card.to_suspect(Coordinate::from_index(index)))
+            .filter_map(|(index, card)| Suspect::from_card(card, Coordinate::from_index(index)))
             .collect()
     }
 
