@@ -9,16 +9,14 @@ use std::{fmt, fs};
 
 use anyhow::{Result, bail};
 use bpaf::{Bpaf, Parser as _};
-use chrono::Utc;
-use chrono_tz::America::New_York;
 use inquire::{Confirm, Editor, MultiSelect, Select, Text};
 use itertools::Itertools as _;
+use jiff::Timestamp;
+use jiff::tz::TimeZone;
 
-use puzzle::grid::coordinate::Coordinate;
-use puzzle::grid::editor::GridEditor;
-use puzzle::{Name, ParsedPuzzle, Puzzle, Update};
-
-use crate::puzzle::Suspect;
+use crate::puzzle::grid::coordinate::Coordinate;
+use crate::puzzle::grid::editor::GridEditor;
+use crate::puzzle::{Name, ParsedPuzzle, Puzzle, Suspect, Update};
 
 const API_KEY_FILE: &str = "browserless_api_key";
 const SAVE_DIRECTORY: &str = "saved/";
@@ -136,10 +134,9 @@ fn fetch_today() -> Result<ParsedPuzzle> {
 }
 
 fn date_string() -> String {
-    Utc::now()
-        .with_timezone(&New_York)
-        .date_naive()
-        .format("%F")
+    Timestamp::now()
+        .to_zoned(TimeZone::get("America/New_York").expect("valid identifier"))
+        .date()
         .to_string()
 }
 
