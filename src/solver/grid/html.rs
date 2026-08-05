@@ -5,7 +5,7 @@ use itertools::Itertools as _;
 use select::node::Node;
 use select::predicate::{self, Name, Predicate};
 
-use crate::puzzle::Judgment;
+use crate::solver::Judgment;
 
 pub(crate) trait NodeExt<'html>: Sized + fmt::Debug {
     fn is(&self, predicate: impl Predicate) -> bool;

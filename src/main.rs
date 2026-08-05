@@ -1,4 +1,4 @@
-mod puzzle;
+mod solver;
 
 use std::borrow::Cow;
 use std::ffi::OsStr;
@@ -14,9 +14,9 @@ use itertools::Itertools as _;
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use crate::puzzle::grid::coordinate::Coordinate;
-use crate::puzzle::grid::editor::GridEditor;
-use crate::puzzle::{Name, ParsedPuzzle, Puzzle, Suspect, Update};
+use crate::solver::grid::coordinate::Coordinate;
+use crate::solver::grid::editor::GridEditor;
+use crate::solver::{Name, Solver, SolverWithUpdates, Suspect, Update};
 
 const API_KEY_FILE: &str = "browserless_api_key";
 const SAVE_DIRECTORY: &str = "saved/";
@@ -36,7 +36,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn main_menu() -> Result<ParsedPuzzle> {
+fn main_menu() -> Result<SolverWithUpdates> {
     loop {
         let mode = Select::new(
             "Which puzzle do you want to solve?",
@@ -70,11 +70,11 @@ fn main_menu() -> Result<ParsedPuzzle> {
             }
             InputMode::Paste => {
                 let html = Editor::new("Enter HTML in your editor:").prompt()?;
-                ParsedPuzzle::parse(&html, None)
+                SolverWithUpdates::parse(&html, None)
             }
             InputMode::Manual => {
-                if let Some(puzzle) = manual_mode()? {
-                    Ok(puzzle)
+                if let Some(solver) = manual_mode()? {
+                    Ok(solver)
                 } else {
                     continue;
                 }
@@ -83,7 +83,7 @@ fn main_menu() -> Result<ParsedPuzzle> {
     }
 }
 
-fn archive(input: String) -> Result<ParsedPuzzle> {
+fn archive(input: String) -> Result<SolverWithUpdates> {
     let (url, id) = if let Some(url) = input.strip_prefix("https://") {
         if let Some(id) = extract_id(url) {
             (Cow::Borrowed(&input), Cow::Borrowed(id))
@@ -100,7 +100,7 @@ fn archive(input: String) -> Result<ParsedPuzzle> {
             let url_without_s = archive_url(&input, false);
             fetch_from_url(&url_without_s, None)
         })?;
-        parsed.puzzle.set_name(input);
+        parsed.solver.set_name(input);
         return Ok(parsed);
     };
 
@@ -129,7 +129,7 @@ fn extract_id(url: &str) -> Option<&str> {
         .filter(|id| !id.is_empty())
 }
 
-fn fetch_today() -> Result<ParsedPuzzle> {
+fn fetch_today() -> Result<SolverWithUpdates> {
     fetch_from_url("https://cluesbysam.com/", Some(date_string()))
 }
 
@@ -140,7 +140,7 @@ fn date_string() -> String {
         .to_string()
 }
 
-fn fetch_from_url(target_url: &str, name: Option<Name>) -> Result<ParsedPuzzle> {
+fn fetch_from_url(target_url: &str, name: Option<Name>) -> Result<SolverWithUpdates> {
     let api_key = read_api_key()?;
     let json = format!(r#"{{"url": "{target_url}"}}"#);
     let html = ureq::post(format!(
@@ -150,7 +150,7 @@ fn fetch_from_url(target_url: &str, name: Option<Name>) -> Result<ParsedPuzzle> 
     .send(&json)?
     .body_mut()
     .read_to_string()?;
-    ParsedPuzzle::parse(&html, name)
+    SolverWithUpdates::parse(&html, name)
 }
 
 fn read_api_key() -> Result<String> {
@@ -172,7 +172,7 @@ fn read_api_key() -> Result<String> {
     Ok(api_key)
 }
 
-fn read_from_file(path: impl AsRef<Path>, file_type: FileType) -> Result<ParsedPuzzle> {
+fn read_from_file(path: impl AsRef<Path>, file_type: FileType) -> Result<SolverWithUpdates> {
     let path = path.as_ref();
     let contents = fs::read_to_string(path)?;
     let name = path
@@ -180,26 +180,26 @@ fn read_from_file(path: impl AsRef<Path>, file_type: FileType) -> Result<ParsedP
         .and_then(|name| name.to_str())
         .map(str::to_owned);
     let parsed = match file_type {
-        FileType::Ron => ParsedPuzzle::load(&contents, name)?,
-        FileType::Html => ParsedPuzzle::parse(&contents, name)?,
+        FileType::Ron => SolverWithUpdates::load(&contents, name)?,
+        FileType::Html => SolverWithUpdates::parse(&contents, name)?,
     };
     Ok(parsed)
 }
 
-fn play(puzzle: ParsedPuzzle) -> Result<()> {
-    let ParsedPuzzle {
-        mut puzzle,
+fn play(solver: SolverWithUpdates) -> Result<()> {
+    let SolverWithUpdates {
+        mut solver,
         unknown_if_flavor,
         mut pending_hints,
-    } = puzzle;
-    handle_unknown_hints(&mut puzzle, unknown_if_flavor)?;
+    } = solver;
+    handle_unknown_hints(&mut solver, unknown_if_flavor)?;
 
     loop {
-        let new = puzzle.infer()?;
+        let new = solver.infer()?;
         print_inferences(&new);
 
-        println!("{}", puzzle.emoji_summary());
-        if puzzle.solved() {
+        println!("{}", solver.emoji_summary());
+        if solver.solved() {
             println!("Puzzle solved!");
             break;
         }
@@ -221,7 +221,7 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
                     if let Some(hint) = Text::new(&format!("Enter {}'s hint:", suspect.name()))
                         .prompt_skippable()?
                     {
-                        match puzzle.add_hint(hint, suspect.coord()) {
+                        match solver.add_hint(hint, suspect.coord()) {
                             Ok(()) => {
                                 let coord = suspect.coord();
                                 pending_hints.retain(|pending| pending.coord() != coord);
@@ -234,9 +234,9 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
                     }
                 }
                 HintOption::MarkAsFlavor => {
-                    handle_mark_flavor(&mut puzzle, &mut pending_hints)?;
+                    handle_mark_flavor(&mut solver, &mut pending_hints)?;
                 }
-                HintOption::Save => save_puzzle(&mut puzzle)?,
+                HintOption::Save => save_solver(&mut solver)?,
             }
         }
     }
@@ -244,7 +244,7 @@ fn play(puzzle: ParsedPuzzle) -> Result<()> {
 }
 
 fn handle_unknown_hints(
-    puzzle: &mut Puzzle,
+    solver: &mut Solver,
     unknown: Vec<(Name, Coordinate, String)>,
 ) -> Result<()> {
     for (suspect, coord, hint) in unknown {
@@ -253,9 +253,9 @@ fn handle_unknown_hints(
         ))
         .prompt()?;
         if flavor {
-            puzzle.mark_as_flavor(coord)?;
+            solver.mark_as_flavor(coord)?;
         } else {
-            puzzle.add_hint(hint, coord)?;
+            solver.add_hint(hint, coord)?;
         }
     }
     Ok(())
@@ -271,20 +271,20 @@ fn print_inferences(new: &[Update]) {
     }
 }
 
-fn handle_mark_flavor(puzzle: &mut Puzzle, pending: &mut Vec<Suspect>) -> Result<()> {
+fn handle_mark_flavor(solver: &mut Solver, pending: &mut Vec<Suspect>) -> Result<()> {
     let flavor = MultiSelect::new("Select characters with flavor text", pending.clone())
         .prompt_skippable()?
         .unwrap_or_default();
     pending.retain(|p| !flavor.iter().any(|f| f.coord() == p.coord()));
     for f in flavor {
-        puzzle.mark_as_flavor(f.coord())?;
+        solver.mark_as_flavor(f.coord())?;
     }
     Ok(())
 }
 
-fn save_puzzle(puzzle: &mut Puzzle) -> Result<()> {
-    let save = puzzle.save_grid()?;
-    let path = puzzle.name().map_or_else(
+fn save_solver(solver: &mut Solver) -> Result<()> {
+    let save = solver.save_grid()?;
+    let path = solver.name().map_or_else(
         || SAVE_DIRECTORY.to_owned(),
         |name| {
             Path::new(SAVE_DIRECTORY)
@@ -297,7 +297,7 @@ fn save_puzzle(puzzle: &mut Puzzle) -> Result<()> {
     let path = Text::new("Save file:").with_initial_value(&path).prompt()?;
     let path = PathBuf::from(path);
     if let Some(file_stem) = path.file_stem().and_then(OsStr::to_str) {
-        puzzle.set_name(file_stem.to_owned());
+        solver.set_name(file_stem.to_owned());
     }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -381,10 +381,10 @@ impl fmt::Display for InputMode {
     }
 }
 
-fn manual_mode() -> Result<Option<ParsedPuzzle>> {
+fn manual_mode() -> Result<Option<SolverWithUpdates>> {
     GridEditor::new()
         .interact()?
-        .map(|grid| ParsedPuzzle::new(grid, None))
+        .map(|grid| SolverWithUpdates::new(grid, None))
         .transpose()
 }
 

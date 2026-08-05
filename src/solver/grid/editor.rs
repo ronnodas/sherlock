@@ -14,10 +14,10 @@ use tabled::settings::Alignment;
 use tabled::settings::formatting::AlignmentStrategy;
 use tabled::settings::{Color as TabledColor, Style, object::Cell};
 
-use crate::puzzle::grid::card::{Card, CardBack, HintText};
-use crate::puzzle::grid::coordinate::{Column, Coordinate, Row};
-use crate::puzzle::grid::{Format, Grid};
-use crate::puzzle::{Judgment, Name, Profession};
+use crate::solver::grid::card::{Card, CardBack, HintText};
+use crate::solver::grid::coordinate::{Column, Coordinate, Row};
+use crate::solver::grid::{Format, Grid};
+use crate::solver::{Judgment, Name, Profession};
 
 pub(crate) struct GridEditor {
     cards: [CardEdit; 20],

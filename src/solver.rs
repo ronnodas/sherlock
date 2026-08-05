@@ -17,23 +17,23 @@ use ron::ser::{PrettyConfig, to_string_pretty};
 use serde::{Deserialize, Serialize};
 use solution::Solution;
 
-use crate::puzzle::grid::Format;
-use crate::puzzle::grid::coordinate::Coordinate;
-use crate::puzzle::hint::Sentence;
-use crate::puzzle::hint::recipes::Context;
+use crate::solver::grid::Format;
+use crate::solver::grid::coordinate::Coordinate;
+use crate::solver::hint::Sentence;
+use crate::solver::hint::recipes::Context;
 
 pub(crate) type Name = String;
 pub(crate) type Profession = String;
 
 #[derive(Clone, Debug)]
-pub(crate) struct Puzzle {
+pub(crate) struct Solver {
     name: Option<String>,
     grid: Grid,
 
     solutions: Vec<Solution>,
 }
 
-impl Puzzle {
+impl Solver {
     pub(crate) fn solved(&self) -> bool {
         self.grid.solved()
     }
@@ -107,15 +107,14 @@ impl Puzzle {
     }
 }
 
-// TODO Could separate this into a LoadedPuzzle but probably needs to be unified before use anyway
 #[derive(Debug)]
-pub(crate) struct ParsedPuzzle {
-    pub puzzle: Puzzle,
+pub(crate) struct SolverWithUpdates {
+    pub solver: Solver,
     pub unknown_if_flavor: Vec<(Name, Coordinate, String)>,
     pub pending_hints: Vec<Suspect>,
 }
 
-impl ParsedPuzzle {
+impl SolverWithUpdates {
     pub(crate) fn parse(html: &str, name: Option<String>) -> Result<Self> {
         let grid = Grid::parse(html)?;
         Self::new(grid, name)
@@ -166,7 +165,7 @@ impl ParsedPuzzle {
             .filter_map(|(index, &judgment)| Some((index, judgment?)));
         let solutions = Solution::all(fixed_values);
 
-        let mut puzzle = Puzzle {
+        let mut solver = Solver {
             name,
             grid,
 
@@ -174,11 +173,11 @@ impl ParsedPuzzle {
         };
 
         for hint in hints {
-            puzzle.add_parsed_hint(&hint);
+            solver.add_parsed_hint(&hint);
         }
 
         Ok(Self {
-            puzzle,
+            solver,
             unknown_if_flavor,
             pending_hints,
         })
@@ -287,9 +286,9 @@ mod tests {
     use anyhow::Context as _;
     use itertools::Itertools as _;
 
-    use crate::puzzle::solution::Solution;
+    use crate::solver::solution::Solution;
 
-    use super::{Judgment, ParsedPuzzle};
+    use super::{Judgment, SolverWithUpdates};
 
     #[test]
     fn sample_2026_02_08() {
@@ -299,7 +298,7 @@ mod tests {
             Err(e) if e.kind() == io::ErrorKind::NotFound => return,
             Err(e) => panic!("Failed to read sample: {e}"),
         };
-        let parsed = ParsedPuzzle::parse(&contents, None).unwrap();
+        let parsed = SolverWithUpdates::parse(&contents, None).unwrap();
         assert!(parsed.pending_hints.is_empty());
         let solution = Solution::from([I, C, C, C, C, C, I, C, I, C, C, C, C, I, C, C, C, I, C, I]);
 
@@ -367,13 +366,13 @@ mod tests {
             ],
         ];
 
-        let mut puzzle = parsed.puzzle;
+        let mut solver = parsed.solver;
         for &changes in steps {
             let deductions = changes
                 .iter()
                 .map(|&(name, judgment, _)| (name.to_owned(), judgment))
                 .collect_vec();
-            let inferences = puzzle
+            let inferences = solver
                 .infer()
                 .unwrap()
                 .into_iter()
@@ -382,13 +381,13 @@ mod tests {
             assert_eq!(inferences, deductions);
             for &(speaker, _, hint) in changes {
                 if let Some(hint) = hint {
-                    let coord = puzzle.grid.coord(speaker).unwrap();
-                    puzzle.add_hint(hint.to_owned(), coord).unwrap();
+                    let coord = solver.grid.coord(speaker).unwrap();
+                    solver.add_hint(hint.to_owned(), coord).unwrap();
                 }
             }
         }
 
-        assert_eq!(puzzle.solutions, [solution]);
+        assert_eq!(solver.solutions, [solution]);
     }
 
     #[test]
@@ -415,7 +414,7 @@ mod tests {
             let path = entry.path();
             let contents = fs::read_to_string(&path).unwrap();
             drop(
-                ParsedPuzzle::parse(&contents, None)
+                SolverWithUpdates::parse(&contents, None)
                     .with_context(|| format!("parsing {}", path.to_string_lossy()))
                     .unwrap(),
             );

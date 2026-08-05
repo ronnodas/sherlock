@@ -12,8 +12,8 @@ use mitsein::iter1::{IntoIterator1, Iterator1};
 use mitsein::vec1::{Vec1, vec1};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 
-use crate::puzzle::Judgment;
-use crate::puzzle::hint::Line;
+use crate::solver::Judgment;
+use crate::solver::hint::Line;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, SerializeDisplay, DeserializeFromStr)]
 pub(crate) struct Coordinate {

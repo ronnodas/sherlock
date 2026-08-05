@@ -12,11 +12,11 @@ use winnow::error::{ParserError, StrContext};
 use winnow::token::{any, rest};
 use winnow::{Parser, Result};
 
-use crate::puzzle::Judgment;
-use crate::puzzle::grid::coordinate::{Column, Row};
-use crate::puzzle::hint::parsers::phrases::Quantifier;
-use crate::puzzle::hint::recipes::{ColumnRecipe, LineRecipe, NameRecipe, RowRecipe};
-use crate::puzzle::hint::{Cardinal, Direction, LineKind, Number, Parity, Profession};
+use crate::solver::Judgment;
+use crate::solver::grid::coordinate::{Column, Row};
+use crate::solver::hint::parsers::phrases::Quantifier;
+use crate::solver::hint::recipes::{ColumnRecipe, LineRecipe, NameRecipe, RowRecipe};
+use crate::solver::hint::{Cardinal, Direction, LineKind, Number, Parity, Profession};
 
 pub(crate) use phrases::{Sentence, Series, Unit, UnitInSeries};
 

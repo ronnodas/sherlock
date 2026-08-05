@@ -4,9 +4,9 @@ use select::node::Node;
 use select::predicate::Predicate as _;
 use serde::{Deserialize, Serialize};
 
-use crate::puzzle::grid::coordinate::Coordinate;
-use crate::puzzle::grid::html::{Class, ClassName, Div, H3, NodeExt as _, Paragraph};
-use crate::puzzle::{Judgment, Name, Profession, Suspect};
+use crate::solver::grid::coordinate::Coordinate;
+use crate::solver::grid::html::{Class, ClassName, Div, H3, NodeExt as _, Paragraph};
+use crate::solver::{Judgment, Name, Profession, Suspect};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Card {

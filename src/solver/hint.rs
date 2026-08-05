@@ -5,9 +5,9 @@ use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
-use crate::puzzle::grid::coordinate::{Column, Coordinate, Direction, ModifiedSet, Row, Set};
-use crate::puzzle::solution::Solution;
-use crate::puzzle::{Judgment, Profession};
+use crate::solver::grid::coordinate::{Column, Coordinate, Direction, ModifiedSet, Row, Set};
+use crate::solver::solution::Solution;
+use crate::solver::{Judgment, Profession};
 
 pub(crate) type Number = u8;
 pub(crate) use parsers::Sentence;

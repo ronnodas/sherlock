@@ -16,9 +16,9 @@ use select::document::Document;
 use select::predicate::{Any, Attr, Predicate as _};
 use serde::{Deserialize, Serialize};
 
-use crate::puzzle::grid::card::CardBack;
-use crate::puzzle::grid::coordinate::{Coordinate, Set1};
-use crate::puzzle::{Judgment, Name, Profession, Suspect};
+use crate::solver::grid::card::CardBack;
+use crate::solver::grid::coordinate::{Coordinate, Set1};
+use crate::solver::{Judgment, Name, Profession, Suspect};
 
 use card::Card;
 use html::{Class, ClassName, Div, NodeExt as _};

@@ -1,9 +1,9 @@
 use anyhow::Result;
 
-use crate::puzzle::Name;
-use crate::puzzle::grid::Grid;
-use crate::puzzle::grid::coordinate::{Column, Coordinate, Row};
-use crate::puzzle::hint::{Line, LineKind};
+use crate::solver::Name;
+use crate::solver::grid::Grid;
+use crate::solver::grid::coordinate::{Column, Coordinate, Row};
+use crate::solver::hint::{Line, LineKind};
 
 pub(crate) type NameRecipe = MeOrExplicit<Name>;
 pub(crate) type RowRecipe = MeOrExplicit<Row>;
