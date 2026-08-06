@@ -31,14 +31,14 @@ impl GridEditor {
         }
     }
 
-    pub(crate) fn is_complete(&self) -> bool {
+    fn is_complete(&self) -> bool {
         self.cards
             .iter()
             .all(|card| matches!(card, CardEdit::Draft(..)))
             && self.cards.iter().any(|card| card.logical_hint().is_some())
     }
 
-    pub(crate) fn build(self) -> Result<Grid> {
+    fn build(self) -> Result<Grid> {
         let cards: [Card; 20] = self
             .cards
             .into_iter()
@@ -136,7 +136,7 @@ impl From<Grid> for GridEditor {
             .cloned()
             .collect();
         Self {
-            cards: grid.into_cards().map(CardEdit::from),
+            cards: grid.cards.map(CardEdit::from),
             professions,
         }
     }
@@ -185,14 +185,14 @@ pub(crate) enum CardEdit {
 }
 
 impl CardEdit {
-    pub(crate) fn logical_hint(&self) -> Option<&str> {
+    fn logical_hint(&self) -> Option<&str> {
         match self {
             Self::Draft(_, Some(back)) => back.hint().as_logical(),
             Self::Empty | Self::Draft(_, None) => None,
         }
     }
 
-    pub(crate) fn finalize(self) -> Option<Card> {
+    fn finalize(self) -> Option<Card> {
         match self {
             Self::Empty => None,
             Self::Draft(front, back) => Some(Card::new(front.name, front.profession, back)),

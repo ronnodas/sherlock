@@ -86,16 +86,19 @@ fn main_menu() -> Result<SolverWithUpdates> {
     }
 }
 
-fn archive(input: String1) -> Result<SolverWithUpdates> {
-    let (url, id) = if let Some(url) = input.strip_prefix("https://") {
+fn archive(id_or_url: String1) -> Result<SolverWithUpdates> {
+    let (url, id) = if let Some(url) = id_or_url.strip_prefix("https://") {
         if let Some(id) = extract_id(url) {
-            (Cow::Borrowed(input.as_str()), Cow::Borrowed(id))
+            (Cow::Borrowed(id_or_url.as_str()), Cow::Borrowed(id))
         } else {
             bail!("did not recognize url")
         }
-    } else if let Some(id) = extract_id(&input) {
-        (Cow::Owned(format!("https://{input}")), Cow::Borrowed(id))
-    } else if let Some(id) = input.strip_prefix("s/")
+    } else if let Some(id) = extract_id(&id_or_url) {
+        (
+            Cow::Owned(format!("https://{id_or_url}")),
+            Cow::Borrowed(id),
+        )
+    } else if let Some(id) = id_or_url.strip_prefix("s/")
         && let Ok(id) = Str1::try_from_str(id)
     {
         (
@@ -103,12 +106,12 @@ fn archive(input: String1) -> Result<SolverWithUpdates> {
             Cow::Borrowed(id),
         )
     } else {
-        let url_with_s = archive_url(&input, true);
+        let url_with_s = archive_url(&id_or_url, true);
         let mut parsed = fetch_from_url(&url_with_s, None).or_else(|_e| {
-            let url_without_s = archive_url(&input, false);
+            let url_without_s = archive_url(&id_or_url, false);
             fetch_from_url(&url_without_s, None)
         })?;
-        parsed.solver.set_name(input);
+        parsed.set_title(id_or_url);
         return Ok(parsed);
     };
 

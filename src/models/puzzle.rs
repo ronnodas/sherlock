@@ -21,6 +21,7 @@ pub(crate) struct FullCard {
     judgment: Judgment,
     hint: HintText,
 }
+
 impl FullCard {
     pub(crate) fn new(
         name: String,

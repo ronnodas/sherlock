@@ -123,13 +123,10 @@ impl Grid {
         self.cards.iter()
     }
 
-    pub(crate) fn into_cards(self) -> [Card; 20] {
-        self.cards
-    }
-
     pub(crate) fn solved(&self) -> bool {
         self.cards.iter().all(Card::flipped)
     }
+
     pub(crate) fn into_solved(self) -> Option<Grid<FlippedCard>> {
         // TODO This could be better using try_map()
         let cards = self
@@ -169,7 +166,7 @@ impl Grid {
         self.cards
             .iter()
             .enumerate()
-            .filter_map(|(index, card)| Suspect::from_card(card, Coordinate::from_index(index)))
+            .filter_map(|(index, card)| card.hint_pending(Coordinate::from_index(index)))
             .collect()
     }
 
@@ -193,7 +190,7 @@ impl Grid {
         Ok(self[coord].back_mut().expect("checked above"))
     }
 
-    pub(crate) fn set_start(&mut self) {
+    fn set_start(&mut self) {
         self.start = self.start.or_else(|| {
             self.cards
                 .iter()

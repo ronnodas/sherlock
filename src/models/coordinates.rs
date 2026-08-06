@@ -25,14 +25,6 @@ impl Coordinate {
         4 * self.row.to_index() + self.col.to_index()
     }
 
-    pub(crate) fn row_all(row: Row) -> impl Iterator<Item = Self> {
-        Column::ALL.into_iter().map(move |col| Self { row, col })
-    }
-
-    pub(crate) fn column_all(col: Column) -> impl Iterator<Item = Self> {
-        Row::ALL.into_iter().map(move |row| Self { row, col })
-    }
-
     pub(crate) fn step(self, direction: Direction) -> Option<Self> {
         let coord = match direction {
             Direction::Above => Self {
@@ -155,7 +147,8 @@ pub(crate) enum Row {
 
 impl Row {
     pub(crate) const ALL: [Self; 5] = [Self::One, Self::Two, Self::Three, Self::Four, Self::Five];
-    pub(crate) fn from_index(index: usize) -> Self {
+
+    fn from_index(index: usize) -> Self {
         match index {
             0 => Self::One,
             1 => Self::Two,
@@ -176,7 +169,7 @@ impl Row {
         }
     }
 
-    pub(crate) fn prev(self) -> Option<Self> {
+    fn prev(self) -> Option<Self> {
         match self {
             Self::One => None,
             Self::Two => Some(Self::One),
@@ -186,7 +179,7 @@ impl Row {
         }
     }
 
-    pub(crate) fn next(self) -> Option<Self> {
+    fn next(self) -> Option<Self> {
         match self {
             Self::One => Some(Self::Two),
             Self::Two => Some(Self::Three),
@@ -196,11 +189,15 @@ impl Row {
         }
     }
 
+    pub(crate) fn all(self) -> [Coordinate; 4] {
+        Column::ALL.map(move |col| Coordinate { row: self, col })
+    }
+
     pub(crate) fn others(&self) -> impl Iterator<Item = Self> {
         Self::ALL.into_iter().filter(move |other| other != self)
     }
 
-    pub(crate) fn parse(row: char) -> Option<Self> {
+    fn parse(row: char) -> Option<Self> {
         let row = match row {
             '1' => Self::One,
             '2' => Self::Two,
@@ -262,7 +259,7 @@ impl Column {
         }
     }
 
-    pub(crate) fn prev(self) -> Option<Self> {
+    fn prev(self) -> Option<Self> {
         match self {
             Self::A => None,
             Self::B => Some(Self::A),
@@ -271,7 +268,7 @@ impl Column {
         }
     }
 
-    pub(crate) fn next(self) -> Option<Self> {
+    fn next(self) -> Option<Self> {
         match self {
             Self::A => Some(Self::B),
             Self::B => Some(Self::C),
@@ -280,11 +277,15 @@ impl Column {
         }
     }
 
+    pub(crate) fn all(self) -> [Coordinate; 5] {
+        Row::ALL.map(move |row| Coordinate { row, col: self })
+    }
+
     pub(crate) fn others(&self) -> impl Iterator<Item = Self> {
         Self::ALL.into_iter().filter(move |other| other != self)
     }
 
-    pub(crate) fn parse(col: char) -> Option<Self> {
+    fn parse(col: char) -> Option<Self> {
         let col = match col {
             'A' => Self::A,
             'B' => Self::B,

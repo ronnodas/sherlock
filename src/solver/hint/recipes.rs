@@ -36,7 +36,7 @@ impl<'ctx> Context<'ctx> {
         }
     }
 
-    pub(crate) fn coord(&self, name: &str) -> Result<Coordinate> {
+    fn coord(&self, name: &str) -> Result<Coordinate> {
         self.coordinates
             .get(name)
             .copied()

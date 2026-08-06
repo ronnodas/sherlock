@@ -61,7 +61,7 @@ struct Generator {
 }
 
 impl Generator {
-    pub(crate) fn new(fixed_values: impl IntoIterator<Item = (usize, Judgment)>) -> Self {
+    fn new(fixed_values: impl IntoIterator<Item = (usize, Judgment)>) -> Self {
         let mut template = [Judgment::Innocent; 20];
         let mut fixed_mask = [false; 20];
 
@@ -79,7 +79,7 @@ impl Generator {
         }
     }
 
-    pub(crate) fn max_counter(&self) -> u32 {
+    fn max_counter(&self) -> u32 {
         1_u32 << self.free_indices.len()
     }
 }

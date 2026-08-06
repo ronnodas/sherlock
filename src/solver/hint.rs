@@ -9,7 +9,7 @@ use crate::solver::solution::Solution;
 mod parsers;
 pub(crate) mod recipes;
 
-pub(crate) type Number = u8;
+type Number = u8;
 pub(crate) use parsers::Sentence;
 
 #[derive(Clone, Debug)]
@@ -149,8 +149,8 @@ impl From<Column> for Line {
 impl From<Line> for Set {
     fn from(line: Line) -> Self {
         match line {
-            Line::Row(row) => Coordinate::row_all(row).collect(),
-            Line::Column(column) => Coordinate::column_all(column).collect(),
+            Line::Row(row) => row.all().into_iter().collect(),
+            Line::Column(column) => column.all().into_iter().collect(),
         }
     }
 }
@@ -179,7 +179,7 @@ pub(crate) enum Cardinal {
 }
 
 impl Cardinal {
-    pub(crate) fn matches(self, len: usize) -> bool {
+    fn matches(self, len: usize) -> bool {
         match self {
             Self::Exact(value) => len == usize::from(value),
             Self::AtLeast(value) => len >= usize::from(value),

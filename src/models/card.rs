@@ -4,8 +4,10 @@ use std::ops::Not;
 use colored::Color;
 use serde::{Deserialize, Serialize};
 
-use crate::models::{FlippedCard, HintText};
+use crate::models::{Coordinate, FlippedCard, HintText};
+use crate::solver::Suspect;
 
+// TODO force non-empty
 pub(crate) type Name = String;
 pub(crate) type Profession = String;
 
@@ -51,8 +53,11 @@ impl Card {
         })
     }
 
-    pub(crate) fn hint_pending(&self) -> Option<Judgment> {
-        self.back.as_ref()?.hint_pending()
+    pub(crate) fn hint_pending(&self, coord: Coordinate) -> Option<Suspect> {
+        self.back
+            .as_ref()?
+            .hint_pending()
+            .map(|judgment| Suspect::new(coord, self.name().clone(), judgment))
     }
 
     pub(crate) fn back(&self) -> Option<&CardBack> {
@@ -151,7 +156,7 @@ impl CardBack {
         self.judgment = judgment;
     }
 
-    pub(crate) fn hint_pending(&self) -> Option<Judgment> {
+    fn hint_pending(&self) -> Option<Judgment> {
         self.hint.is_unknown().then_some(self.judgment)
     }
 }

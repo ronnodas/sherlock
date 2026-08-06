@@ -165,7 +165,7 @@ pub(crate) enum Unit {
 }
 
 impl Unit {
-    pub(crate) fn unique_member_has_n_neighbors(
+    fn unique_member_has_n_neighbors(
         &self,
         quantity: Cardinal,
         judgment: Judgment,
@@ -224,7 +224,7 @@ impl Unit {
         Ok(hints)
     }
 
-    pub(crate) fn intersects_with(
+    fn intersects_with(
         &self,
         other: &Self,
         intersection: Cardinal,
@@ -242,7 +242,7 @@ impl Unit {
         Ok(hints)
     }
 
-    pub(crate) fn members_have_at_most_neighbors(
+    fn members_have_at_most_neighbors(
         &self,
         number: u8,
         judgment: Judgment,
@@ -253,7 +253,7 @@ impl Unit {
         Ok(hints)
     }
 
-    pub(crate) fn members_are_connected(self, context: Context<'_>) -> anyhow::Result<Vec<Hint>> {
+    fn members_are_connected(self, context: Context<'_>) -> anyhow::Result<Vec<Hint>> {
         let (set, mut hints) = self.add_context(context)?;
         hints.push(Hint::Connected(set));
         Ok(hints)
@@ -456,7 +456,7 @@ pub(crate) enum UnitInSeries {
 }
 
 impl UnitInSeries {
-    pub(crate) fn has_most(
+    fn has_most(
         self,
         judgment: Judgment,
         context: Context<'_>,
@@ -474,7 +474,7 @@ impl UnitInSeries {
     }
 
     // TODO return Vec1<Set1>
-    pub(crate) fn others(&self, context: Context<'_>) -> anyhow::Result<Vec1<Set>> {
+    fn others(&self, context: Context<'_>) -> anyhow::Result<Vec1<Set>> {
         match self {
             Self::Line(line) => Ok(line
                 .add_context(context)?
@@ -574,7 +574,7 @@ pub(crate) enum Series {
 }
 
 impl Series {
-    pub(crate) fn all(self, context: Context<'_>) -> Vec1<Set> {
+    fn all(self, context: Context<'_>) -> Vec1<Set> {
         match self {
             Self::Line(line_kind) => line_kind.all().into_iter1().map(Set::from).collect1(),
             Self::Profession => context

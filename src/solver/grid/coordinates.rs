@@ -293,7 +293,7 @@ impl From<Judgment> for Modifier {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use itertools::Itertools as _;
 
     use super::*;

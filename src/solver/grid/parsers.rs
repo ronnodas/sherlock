@@ -152,7 +152,7 @@ impl Predicate for Div {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Paragraph;
+struct Paragraph;
 
 impl Predicate for Paragraph {
     fn matches(&self, node: &Node) -> bool {
@@ -161,7 +161,7 @@ impl Predicate for Paragraph {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct H3;
+struct H3;
 
 impl Predicate for H3 {
     fn matches(&self, node: &Node) -> bool {

@@ -13,7 +13,7 @@ use ron::extensions::Extensions;
 use ron::ser::{PrettyConfig, to_string_pretty};
 
 use crate::SAVE_DIRECTORY;
-use crate::models::{Card, Coordinate, FullCard, Judgment, Name, Puzzle};
+use crate::models::{Coordinate, FullCard, Judgment, Name, Puzzle};
 use crate::solver::grid::{Format, Grid, SolvedGrid};
 use crate::solver::hint::recipes::{AddContext as _, Context};
 use crate::solver::hint::{Hint, Sentence};
@@ -26,27 +26,71 @@ mod solution;
 const ARCHIVE_DIR: &str = "archive";
 
 #[derive(Clone, Debug)]
-pub(crate) struct Solver {
-    name: Option<String1>,
+struct Solver {
+    title: Option<String1>,
     grid: Grid,
 
     solutions: Vec<Solution>,
 }
 
 impl Solver {
-    // TODO parse, don't validate
-    pub(crate) fn solved(&self) -> bool {
-        self.grid.solved()
+    fn solve(mut self, mut pending_hints: Vec<Suspect>) -> Result<()> {
+        loop {
+            let new = self.infer()?;
+            print_inferences(&new);
+
+            println!("{}", self.grid.emoji_summary());
+            // TODO parse, don't validate
+            if self.grid.solved() {
+                let solved = self.into_solved().expect("solved");
+                println!("Puzzle solved!");
+                return solved.save_puzzle();
+            }
+            pending_hints.extend(new.into_iter().map_into());
+            pending_hints.sort_unstable_by_key(Suspect::coord);
+
+            loop {
+                let selected = Select::new(
+                    "Add a logical hint:",
+                    pending_hints
+                        .iter()
+                        .map(HintOption::Suspect)
+                        .chain(HintOption::FIXED)
+                        .collect(),
+                )
+                .prompt()?;
+                match selected {
+                    HintOption::Suspect(suspect) => {
+                        if let Some(hint) = Text::new(&format!("Enter {}'s hint:", suspect.name()))
+                            .prompt_skippable()?
+                        {
+                            match self.add_hint(hint, suspect.coord()) {
+                                Ok(()) => {
+                                    let coord = suspect.coord();
+                                    pending_hints.retain(|pending| pending.coord() != coord);
+                                    break;
+                                }
+                                Err(e) => {
+                                    println!("I didn't understand that hint :(\n{e}");
+                                }
+                            }
+                        }
+                    }
+                    HintOption::MarkAsFlavor => self.handle_mark_flavor(&mut pending_hints)?,
+                    HintOption::Save => self.save()?,
+                }
+            }
+        }
     }
 
     fn into_solved(self) -> Option<Solved> {
         Some(Solved {
             grid: self.grid.into_solved()?,
-            name: self.name,
+            title: self.title,
         })
     }
 
-    pub(crate) fn infer(&mut self) -> Result<Vec<JudgedCardId>> {
+    fn infer(&mut self) -> Result<Vec<Update>> {
         let Some((first, rest)) = self.solutions.split_first() else {
             bail!("no solutions!")
         };
@@ -67,7 +111,7 @@ impl Solver {
             .enumerate()
             .filter_map(|(index, judgment)| {
                 let judgment = judgment?;
-                Some(JudgedCardId::new(
+                Some(Update::new(
                     Coordinate::from_index(index),
                     self.grid.set_new(index, judgment)?.name().to_owned(),
                     judgment,
@@ -92,7 +136,7 @@ impl Solver {
         Ok(())
     }
 
-    pub(crate) fn add_hint(&mut self, hint: String, coord: Coordinate) -> Result<()> {
+    fn add_hint(&mut self, hint: String, coord: Coordinate) -> Result<()> {
         Sentence::parse(&hint)?
             .add_context(Context::new(&self.grid, coord))?
             .into_iter()
@@ -104,15 +148,11 @@ impl Solver {
         self.solutions.retain(|solution| hint.evaluate(solution));
     }
 
-    pub(crate) fn name(&self) -> Option<&Str1> {
-        self.name.as_deref()
+    pub(crate) fn set_title(&mut self, title: String1) {
+        self.title = Some(title);
     }
 
-    pub(crate) fn set_name(&mut self, name: String1) {
-        self.name = Some(name);
-    }
-
-    pub(crate) fn save_grid(&self) -> Result<String> {
+    fn save_grid(&self) -> Result<String> {
         let config = ron_config();
         to_string_pretty(&self.grid, config).map_err(Into::into)
     }
@@ -128,21 +168,17 @@ impl Solver {
         Ok(())
     }
 
-    pub(crate) fn mark_as_flavor(&mut self, coord: Coordinate) -> Result<()> {
+    fn mark_as_flavor(&mut self, coord: Coordinate) -> Result<()> {
         self.grid.mark_as_flavor(coord)
-    }
-
-    pub(crate) fn emoji_summary(&self) -> String {
-        self.grid.emoji_summary()
     }
 
     fn save(&mut self) -> Result<()> {
         let save = self.save_grid()?;
-        let path = self.name().map_or_else(
+        let path = self.title.as_ref().map_or_else(
             || SAVE_DIRECTORY.to_owned(),
-            |name| {
+            |title| {
                 Path::new(SAVE_DIRECTORY)
-                    .join(name.as_str())
+                    .join(title.as_str())
                     .with_added_extension("ron")
                     .display()
                     .to_string()
@@ -154,7 +190,7 @@ impl Solver {
             .file_stem()
             .and_then(|name| Str1::try_from_str(name.to_str()?).ok())
         {
-            self.set_name(file_stem.to_owned());
+            self.set_title(file_stem.to_owned());
         }
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -167,12 +203,12 @@ impl Solver {
 
 struct Solved {
     grid: SolvedGrid,
-    name: Option<String1>,
+    title: Option<String1>,
 }
 
 impl Solved {
     fn save_puzzle(self) -> Result<()> {
-        let name = self.name.as_ref().map_or("", |name| name.as_str());
+        let name = self.title.as_ref().map_or("", |name| name.as_str());
 
         fs::create_dir_all(ARCHIVE_DIR)?;
 
@@ -211,19 +247,19 @@ impl Solved {
                 .into_iter()
                 .map(|coord| {
                     let card = &self.grid[coord];
-                    JudgedCardId::new(coord, card.name().to_owned(), card.judgment())
+                    Suspect::new(coord, card.name().to_owned(), card.judgment())
                 })
                 .collect_vec();
             Select::new("Which card is revealed at the start?", options)
                 .prompt()?
-                .coord()
+                .coord
         };
         let mut unknown = Vec::with_capacity(20);
         for coord in Coordinate::all() {
             let card = &self.grid[coord];
             if card.back().hint().is_unknown() {
                 let judgment = card.judgment();
-                unknown.push(JudgedCardId::new(coord, card.name().clone(), judgment));
+                unknown.push(Suspect::new(coord, card.name().clone(), judgment));
             }
         }
         let mut text = String::new();
@@ -235,26 +271,26 @@ impl Solved {
                 }
                 break;
             }
-            if let Some(IndexedId { index, card }) = Select::new(
+            if let Some(IndexedSuspect { index, suspect }) = Select::new(
                 "Select suspect with logical hint:",
                 unknown
                     .iter()
                     .enumerate()
-                    .map(|(index, card)| IndexedId { index, card })
+                    .map(|(index, suspect)| IndexedSuspect { index, suspect })
                     .collect(),
             )
             .prompt_skippable()?
             {
-                text = Text::new(&format!("Enter {}'s (logical) hint:", card.name))
+                text = Text::new(&format!("Enter {}'s (logical) hint:", suspect.name))
                     .with_initial_value(&text)
                     .prompt()?;
 
                 if let Ok(sentence) = Sentence::parse(&text)
                     && sentence
-                        .add_context(Context::new(&self.grid, card.coord))
+                        .add_context(Context::new(&self.grid, suspect.coord))
                         .is_ok()
                 {
-                    self.grid[card.coord]
+                    self.grid[suspect.coord]
                         .back_mut()
                         .set_hint(mem::take(&mut text));
                     drop(unknown.remove(index));
@@ -289,9 +325,9 @@ fn ron_config() -> PrettyConfig {
 
 #[derive(Debug)]
 pub(crate) struct SolverWithUpdates {
-    pub solver: Solver,
-    pub unknown_if_flavor: Vec<(Name, Coordinate, String)>,
-    pub pending_hints: Vec<Suspect>,
+    solver: Solver,
+    unknown_if_flavor: Vec<(Name, Coordinate, String)>,
+    pending_hints: Vec<Suspect>,
 }
 
 impl SolverWithUpdates {
@@ -300,7 +336,7 @@ impl SolverWithUpdates {
         Self::new(grid, name)
     }
 
-    pub(crate) fn new(grid: Grid, name: Option<String1>) -> Result<Self> {
+    pub(crate) fn new(grid: Grid, title: Option<String1>) -> Result<Self> {
         let pending_hints = grid.pending_hints();
 
         let maybe_parsed = grid
@@ -346,7 +382,7 @@ impl SolverWithUpdates {
         let solutions = Solution::all(fixed_values);
 
         let mut solver = Solver {
-            name,
+            title,
             grid,
 
             solutions,
@@ -363,68 +399,22 @@ impl SolverWithUpdates {
         })
     }
 
-    pub(crate) fn load(contents: &str, name: Option<String1>) -> Result<Self> {
+    pub(crate) fn load(contents: &str, title: Option<String1>) -> Result<Self> {
         let grid = ron::from_str(contents)?;
-        Self::new(grid, name)
+        Self::new(grid, title)
     }
 
-    pub(crate) fn solve(self) -> Result<()> {
-        let Self {
-            mut solver,
-            unknown_if_flavor,
-            mut pending_hints,
-        } = self;
-        solver.handle_unknown_hints(unknown_if_flavor)?;
+    pub(crate) fn solve(mut self) -> Result<()> {
+        self.solver.handle_unknown_hints(self.unknown_if_flavor)?;
+        self.solver.solve(self.pending_hints)
+    }
 
-        loop {
-            let new = solver.infer()?;
-            print_inferences(&new);
-
-            println!("{}", solver.emoji_summary());
-            if solver.solved() {
-                let solved = solver.into_solved().expect("solved");
-                println!("Puzzle solved!");
-                return solved.save_puzzle();
-            }
-            pending_hints.extend(new.into_iter().map_into());
-            pending_hints.sort_unstable_by_key(Suspect::coord);
-
-            loop {
-                let selected = Select::new(
-                    "Add a logical hint:",
-                    pending_hints
-                        .iter()
-                        .map(HintOption::Suspect)
-                        .chain(HintOption::FIXED)
-                        .collect(),
-                )
-                .prompt()?;
-                match selected {
-                    HintOption::Suspect(suspect) => {
-                        if let Some(hint) = Text::new(&format!("Enter {}'s hint:", suspect.name()))
-                            .prompt_skippable()?
-                        {
-                            match solver.add_hint(hint, suspect.coord()) {
-                                Ok(()) => {
-                                    let coord = suspect.coord();
-                                    pending_hints.retain(|pending| pending.coord() != coord);
-                                    break;
-                                }
-                                Err(e) => {
-                                    println!("I didn't understand that hint :(\n{e}");
-                                }
-                            }
-                        }
-                    }
-                    HintOption::MarkAsFlavor => solver.handle_mark_flavor(&mut pending_hints)?,
-                    HintOption::Save => solver.save()?,
-                }
-            }
-        }
+    pub(crate) fn set_title(&mut self, title: String1) {
+        self.solver.set_title(title);
     }
 }
 
-fn print_inferences(new: &[JudgedCardId]) {
+fn print_inferences(new: &[Update]) {
     if let Some((last, rest)) = new.split_last() {
         if rest.is_empty() {
             println!("Mark {last}");
@@ -456,27 +446,23 @@ impl fmt::Display for HintOption<'_> {
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone)]
-pub(crate) struct JudgedCardId {
+struct Update {
     name: Name,
     coord: Coordinate,
     judgment: Judgment,
 }
 
-impl JudgedCardId {
-    pub(crate) fn new(coord: Coordinate, name: Name, judgment: Judgment) -> Self {
+impl Update {
+    fn new(coord: Coordinate, name: Name, judgment: Judgment) -> Self {
         Self {
             name,
             coord,
             judgment,
         }
     }
-
-    pub(crate) fn coord(&self) -> Coordinate {
-        self.coord
-    }
 }
 
-impl fmt::Display for JudgedCardId {
+impl fmt::Display for Update {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let color = self.judgment.color();
         write!(
@@ -489,38 +475,38 @@ impl fmt::Display for JudgedCardId {
     }
 }
 
-struct IndexedId<'card> {
+struct IndexedSuspect<'card> {
     index: usize,
-    card: &'card JudgedCardId,
+    suspect: &'card Suspect,
 }
 
-impl fmt::Display for IndexedId<'_> {
+impl fmt::Display for IndexedSuspect<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.card)
+        write!(f, "{}", self.suspect)
     }
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct Suspect {
-    name: Name,
     coord: Coordinate,
+    name: Name,
     judgment: Judgment,
 }
 
 impl Suspect {
-    pub(crate) fn from_card(card: &Card, coord: Coordinate) -> Option<Self> {
-        card.hint_pending().map(|judgment| Self {
-            name: card.name().clone(),
-            judgment,
+    pub(crate) fn new(coord: Coordinate, name: Name, judgment: Judgment) -> Self {
+        Self {
             coord,
-        })
+            name,
+            judgment,
+        }
     }
 
-    pub(crate) fn coord(&self) -> Coordinate {
+    fn coord(&self) -> Coordinate {
         self.coord
     }
 
-    pub(crate) fn name(&self) -> &Name {
+    fn name(&self) -> &Name {
         &self.name
     }
 }
@@ -532,13 +518,9 @@ impl fmt::Display for Suspect {
     }
 }
 
-impl From<JudgedCardId> for Suspect {
-    fn from(update: JudgedCardId) -> Self {
-        Self {
-            name: update.name,
-            coord: update.coord,
-            judgment: update.judgment,
-        }
+impl From<Update> for Suspect {
+    fn from(update: Update) -> Self {
+        Self::new(update.coord, update.name, update.judgment)
     }
 }
 
