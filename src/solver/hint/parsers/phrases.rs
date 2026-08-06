@@ -2,7 +2,7 @@ use anyhow::bail;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
-use crate::models::{Column, Coordinate, Direction, Judgment, Profession, Row};
+use crate::models::{Column, Coord, Direction, Judgment, Profession, Row};
 use crate::solver::board::coordinates::{ModifiedSet, Set, Set1};
 use crate::solver::hint::recipes::{
     AddContext, ColumnRecipe, Context, LineRecipe, NameRecipe, RowRecipe,
@@ -358,7 +358,7 @@ impl AddContext for &Unit {
             &Unit::Line(line) => line.add_context(context)?.into(),
             Unit::Direction(direction, name) => {
                 let start = name.add_context(context)?;
-                Coordinate::direction(start, *direction).collect()
+                Coord::direction(start, *direction).collect()
             }
             Unit::Neighbor(name) => name.add_context(context)?.neighbors().collect(),
             Unit::NotNeighbor(name) => name
@@ -368,13 +368,13 @@ impl AddContext for &Unit {
                 .complement()
                 .into(),
             Unit::Profession(profession) => (*context.profession_as_set(profession)?).into(),
-            Unit::Edges => Coordinate::edges().collect(),
-            Unit::Corners => Coordinate::corners().collect(),
+            Unit::Edges => Coord::edges().collect(),
+            Unit::Corners => Coord::corners().collect(),
             Unit::Between(names) => {
                 let [a, b] = names.each_ref().map(|name| name.add_context(context));
                 Set::between([a?, b?])?.into()
             }
-            Unit::All => Coordinate::all().into_iter().collect(),
+            Unit::All => Coord::all().into_iter().collect(),
             Unit::Quantified(inner, quantity) => {
                 let set;
                 (set, hints) = inner.add_context(context)?;
@@ -487,7 +487,7 @@ impl UnitInSeries {
                 .map(|others| others.into_iter1().map(Set::from).collect1()),
             Self::Neighbor(name) => {
                 let coord = name.add_context(context)?;
-                Ok(Coordinate::all()
+                Ok(Coord::all()
                     .into_iter()
                     .filter(|&other| other != coord)
                     .map(|other| other.neighbors().collect())
@@ -582,7 +582,7 @@ impl Series {
                 .values1()
                 .map(|&set| set.into())
                 .collect1(),
-            Self::Neighbor => Coordinate::all()
+            Self::Neighbor => Coord::all()
                 .map(|center| center.neighbors().collect())
                 .collect1(),
         }

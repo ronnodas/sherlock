@@ -3,7 +3,7 @@ use std::ops::Index;
 use mitsein::iter1::IntoIterator1 as _;
 
 use crate::grid::Grid;
-use crate::models::{Coordinate, Judgment};
+use crate::models::{Coord, Judgment};
 use crate::solver::board::coordinates::{ModifiedSet, Modifier, Set};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
@@ -36,7 +36,7 @@ impl Solution {
         }
     }
 
-    pub(crate) fn all(fixed_values: impl IntoIterator<Item = (Coordinate, Judgment)>) -> Vec<Self> {
+    pub(crate) fn all(fixed_values: impl IntoIterator<Item = (Coord, Judgment)>) -> Vec<Self> {
         Generator::new(fixed_values).collect()
     }
 }
@@ -47,10 +47,10 @@ impl From<Grid<Judgment>> for Solution {
     }
 }
 
-impl Index<Coordinate> for Solution {
+impl Index<Coord> for Solution {
     type Output = Judgment;
 
-    fn index(&self, index: Coordinate) -> &Self::Output {
+    fn index(&self, index: Coord) -> &Self::Output {
         &self.0[index]
     }
 }
@@ -58,11 +58,11 @@ impl Index<Coordinate> for Solution {
 struct Generator {
     counter: u32,
     template: Grid<Judgment>,
-    free_indices: Vec<Coordinate>,
+    free_indices: Vec<Coord>,
 }
 
 impl Generator {
-    fn new(fixed_values: impl IntoIterator<Item = (Coordinate, Judgment)>) -> Self {
+    fn new(fixed_values: impl IntoIterator<Item = (Coord, Judgment)>) -> Self {
         let mut template = Grid::filled(Judgment::Innocent);
         let mut fixed_mask = Grid::filled(false);
 
@@ -71,7 +71,7 @@ impl Generator {
             fixed_mask[idx] = true;
         }
 
-        let free_indices: Vec<Coordinate> = Coordinate::all()
+        let free_indices: Vec<Coord> = Coord::all()
             .into_iter()
             .filter(|i| !fixed_mask[*i])
             .collect();

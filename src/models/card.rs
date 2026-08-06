@@ -4,7 +4,7 @@ use std::ops::Not;
 use colored::Color;
 use serde::{Deserialize, Serialize};
 
-use crate::models::{Coordinate, FlippedCard, HintText};
+use crate::models::{Coord, FlippedCard, HintText};
 use crate::solver::Suspect;
 
 // TODO force non-empty
@@ -53,7 +53,7 @@ impl Card {
         })
     }
 
-    pub(crate) fn hint_pending(&self, coord: Coordinate) -> Option<Suspect> {
+    pub(crate) fn hint_pending(&self, coord: Coord) -> Option<Suspect> {
         self.back
             .as_ref()?
             .hint_pending()

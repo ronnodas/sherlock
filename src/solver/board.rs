@@ -12,7 +12,7 @@ use select::predicate::{Any, Attr, Predicate as _};
 use serde::{Deserialize, Serialize};
 
 use crate::grid::Grid;
-use crate::models::{Card, CardBack, Coordinate, FlippedCard, Judgment, Name, Profession};
+use crate::models::{Card, CardBack, Coord, FlippedCard, Judgment, Name, Profession};
 use crate::solver::Suspect;
 use crate::solver::board::coordinates::Set1;
 use crate::solver::board::parsers::{Class, ClassName, Div, NodeExt as _, parse_card};
@@ -28,19 +28,19 @@ pub(crate) type SolvedBoard = Board<FlippedCard>;
 #[serde(from = "save::CardList", bound = "Self: From<save::CardList<'de>>")]
 pub(crate) struct Board<C = Card> {
     cards: Grid<C>,
-    coordinates: HashMap<Name, Coordinate>,
+    coordinates: HashMap<Name, Coord>,
     // TODO maybe change this to `IndexMap` or `HashMap` once `mitsein` supports that
     by_profession: BTreeMap1<Profession, Set1>,
     format: Format,
-    start: Option<Coordinate>,
+    start: Option<Coord>,
 }
 
 impl<C> Board<C> {
-    pub(crate) fn start(&self) -> Option<Coordinate> {
+    pub(crate) fn start(&self) -> Option<Coord> {
         self.start
     }
 
-    pub(crate) fn coordinates(&self) -> &HashMap<Name, Coordinate> {
+    pub(crate) fn coordinates(&self) -> &HashMap<Name, Coord> {
         &self.coordinates
     }
 
@@ -49,7 +49,7 @@ impl<C> Board<C> {
     }
 
     #[cfg(test)]
-    pub(crate) fn coord(&self, name: &str) -> Result<Coordinate> {
+    pub(crate) fn coord(&self, name: &str) -> Result<Coord> {
         self.coordinates
             .get(name)
             .copied()
@@ -94,16 +94,16 @@ impl Board {
         Ok(Self::new(cards, format, None))
     }
 
-    fn new(cards: Grid<Card>, format: Format, start: Option<Coordinate>) -> Self {
+    fn new(cards: Grid<Card>, format: Format, start: Option<Coord>) -> Self {
         let coordinates = cards
             .iter()
             .enumerate()
-            .map(|(index, card)| (card.name().to_owned(), Coordinate::from_index(index)))
+            .map(|(index, card)| (card.name().to_owned(), Coord::from_index(index)))
             .collect();
         let by_profession = cards
             .iter()
             .enumerate()
-            .map(|(index, card)| (card.profession().to_owned(), Coordinate::from_index(index)))
+            .map(|(index, card)| (card.profession().to_owned(), Coord::from_index(index)))
             .into_grouping_map()
             .aggregate(|set: Option<Set1>, _, coord| {
                 let set = set.map_or_else(|| Set1::from_one(coord), |set| set | coord);
@@ -154,16 +154,16 @@ impl Board {
         self.cards.each_ref().map(Card::judgment)
     }
 
-    pub(crate) fn set_new(&mut self, coord: Coordinate, judgment: Judgment) -> Option<&Card> {
+    pub(crate) fn set_new(&mut self, coord: Coord, judgment: Judgment) -> Option<&Card> {
         self.cards[coord].reveal(judgment)
     }
 
-    pub(crate) fn add_hint(&mut self, hint: String, coord: Coordinate) -> Result<()> {
+    pub(crate) fn add_hint(&mut self, hint: String, coord: Coord) -> Result<()> {
         self.card_back(coord)?.set_hint(hint);
         Ok(())
     }
 
-    pub(crate) fn mark_as_flavor(&mut self, coord: Coordinate) -> Result<()> {
+    pub(crate) fn mark_as_flavor(&mut self, coord: Coord) -> Result<()> {
         self.card_back(coord)?.mark_as_flavor();
         self.set_start();
         Ok(())
@@ -173,7 +173,7 @@ impl Board {
         self.cards
             .iter()
             .enumerate()
-            .filter_map(|(index, card)| card.hint_pending(Coordinate::from_index(index)))
+            .filter_map(|(index, card)| card.hint_pending(Coord::from_index(index)))
             .collect()
     }
 
@@ -189,7 +189,7 @@ impl Board {
             .to_string()
     }
 
-    fn card_back(&mut self, coord: Coordinate) -> Result<&mut CardBack> {
+    fn card_back(&mut self, coord: Coord) -> Result<&mut CardBack> {
         if self[coord].back().is_none() {
             bail!("{}'s card is not flipped", self[coord].name())
         }
@@ -205,7 +205,7 @@ impl Board {
                 .filter(|(_, card)| card.logical_hint().is_some())
                 .exactly_one()
                 .ok()
-                .map(|(index, _)| Coordinate::from_index(index))
+                .map(|(index, _)| Coord::from_index(index))
         });
     }
 }
@@ -216,16 +216,16 @@ impl Serialize for Board {
     }
 }
 
-impl<C> Index<Coordinate> for Board<C> {
+impl<C> Index<Coord> for Board<C> {
     type Output = C;
 
-    fn index(&self, index: Coordinate) -> &C {
+    fn index(&self, index: Coord) -> &C {
         &self.cards[index]
     }
 }
 
-impl<C> IndexMut<Coordinate> for Board<C> {
-    fn index_mut(&mut self, index: Coordinate) -> &mut C {
+impl<C> IndexMut<Coord> for Board<C> {
+    fn index_mut(&mut self, index: Coord) -> &mut C {
         &mut self.cards[index]
     }
 }

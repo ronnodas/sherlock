@@ -6,7 +6,7 @@ use bitvec::view::BitView as _;
 use mitsein::iter1::{IntoIterator1, Iterator1};
 use mitsein::vec1::{Vec1, vec1};
 
-use crate::models::{Column, Coordinate, Direction, Row};
+use crate::models::{Column, Coord, Direction, Row};
 use crate::solver::Judgment;
 use crate::solver::hint::Line;
 
@@ -17,14 +17,14 @@ pub(crate) struct Set(u32);
 impl Set {
     const CONNECTED: &[u8; 1 << 17] = include_bytes!("connected.bin");
 
-    pub(crate) fn between([a, b]: [Coordinate; 2]) -> Result<Self> {
+    pub(crate) fn between([a, b]: [Coord; 2]) -> Result<Self> {
         if a.row == b.row {
             Ok(Column::between([a.col, b.col])
-                .map(|col| Coordinate { row: a.row, col })
+                .map(|col| Coord { row: a.row, col })
                 .collect())
         } else if a.col == b.col {
             Ok(Row::between([a.row, b.row])
-                .map(|row| Coordinate { row, col: a.col })
+                .map(|row| Coord { row, col: a.col })
                 .collect())
         } else {
             Err(anyhow!("{a} and {b} not on the same line"))
@@ -36,7 +36,7 @@ impl Set {
         Self::CONNECTED.view_bits::<Lsb0>()[index]
     }
 
-    pub(crate) fn contains(self, coord: Coordinate) -> bool {
+    pub(crate) fn contains(self, coord: Coord) -> bool {
         self.0 & (1 << coord.to_index()) != 0
     }
 
@@ -71,8 +71,8 @@ impl BitAnd<Self> for Set {
     }
 }
 
-impl FromIterator<Coordinate> for Set {
-    fn from_iter<T: IntoIterator<Item = Coordinate>>(iter: T) -> Self {
+impl FromIterator<Coord> for Set {
+    fn from_iter<T: IntoIterator<Item = Coord>>(iter: T) -> Self {
         let bits = iter
             .into_iter()
             .fold(0, |set, coord| set | (1 << coord.to_index()));
@@ -81,7 +81,7 @@ impl FromIterator<Coordinate> for Set {
 }
 
 impl IntoIterator for Set {
-    type Item = Coordinate;
+    type Item = Coord;
 
     type IntoIter = SetIntoIter;
 
@@ -101,7 +101,7 @@ pub(crate) struct SetIntoIter {
 }
 
 impl Iterator for SetIntoIter {
-    type Item = Coordinate;
+    type Item = Coord;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.bits == 0 {
@@ -109,9 +109,7 @@ impl Iterator for SetIntoIter {
         }
         let index = self.bits.trailing_zeros();
         self.bits ^= 1 << index;
-        Some(Coordinate::from_index(
-            index.try_into().expect("at most 20"),
-        ))
+        Some(Coord::from_index(index.try_into().expect("at most 20")))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -127,15 +125,15 @@ impl ExactSizeIterator for SetIntoIter {}
 pub(crate) struct Set1(u32);
 
 impl Set1 {
-    pub(crate) fn from_one(coord: Coordinate) -> Self {
+    pub(crate) fn from_one(coord: Coord) -> Self {
         Self(1 << coord.to_index())
     }
 }
 
-impl BitOr<Coordinate> for Set1 {
+impl BitOr<Coord> for Set1 {
     type Output = Self;
 
-    fn bitor(self, rhs: Coordinate) -> Self::Output {
+    fn bitor(self, rhs: Coord) -> Self::Output {
         Self(self.0 | (1 << rhs.to_index()))
     }
 }
@@ -153,7 +151,7 @@ impl TryFrom<Set> for Set1 {
 }
 
 impl IntoIterator for Set1 {
-    type Item = Coordinate;
+    type Item = Coord;
 
     type IntoIter = SetIntoIter;
 
@@ -268,8 +266,8 @@ impl From<Line> for ModifiedSet {
     }
 }
 
-impl FromIterator<Coordinate> for ModifiedSet {
-    fn from_iter<T: IntoIterator<Item = Coordinate>>(iter: T) -> Self {
+impl FromIterator<Coord> for ModifiedSet {
+    fn from_iter<T: IntoIterator<Item = Coord>>(iter: T) -> Self {
         Self::Regular(iter.into_iter().collect())
     }
 }
@@ -300,7 +298,7 @@ mod tests {
 
     #[test]
     fn coordinate_all_order() {
-        let coords = Coordinate::all().into_iter().collect_vec();
+        let coords = Coord::all().into_iter().collect_vec();
         assert_eq!(coords.len(), 20);
         assert_eq!(coords[0].to_string(), "A1");
         assert_eq!(coords[1].to_string(), "B1");

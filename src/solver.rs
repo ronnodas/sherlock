@@ -15,7 +15,7 @@ use ron::ser::{PrettyConfig, to_string_pretty};
 
 use crate::SAVE_DIRECTORY;
 use crate::grid::Grid;
-use crate::models::{Coordinate, FullCard, Judgment, Name, Puzzle};
+use crate::models::{Coord, FullCard, Judgment, Name, Puzzle};
 use crate::solver::board::{Board, Format, SolvedBoard};
 use crate::solver::hint::recipes::{AddContext as _, Context};
 use crate::solver::hint::{Hint, Sentence};
@@ -99,7 +99,7 @@ impl Solver {
 
         let mut fixed = first.as_grid().clone().map(Some);
         for solution in rest {
-            for coord in Coordinate::all() {
+            for coord in Coord::all() {
                 let fixed = &mut fixed[coord];
                 if let Some(val) = *fixed
                     && val != solution.as_grid()[coord]
@@ -108,7 +108,7 @@ impl Solver {
                 }
             }
         }
-        Ok(Coordinate::all()
+        Ok(Coord::all()
             .into_iter()
             .filter_map(|coord| {
                 let judgment = fixed[coord]?;
@@ -122,7 +122,7 @@ impl Solver {
             .collect())
     }
 
-    fn handle_unknown_hints(&mut self, unknown: Vec<(Name, Coordinate, String)>) -> Result<()> {
+    fn handle_unknown_hints(&mut self, unknown: Vec<(Name, Coord, String)>) -> Result<()> {
         for (suspect, coord, hint) in unknown {
             let flavor = Confirm::new(&format!(
                 "Is {suspect}'s ({coord}) hint, \"{hint}\", just flavor text?"
@@ -137,7 +137,7 @@ impl Solver {
         Ok(())
     }
 
-    fn add_hint(&mut self, hint: String, coord: Coordinate) -> Result<()> {
+    fn add_hint(&mut self, hint: String, coord: Coord) -> Result<()> {
         Sentence::parse(&hint)?
             .add_context(Context::new(&self.board, coord))?
             .into_iter()
@@ -169,7 +169,7 @@ impl Solver {
         Ok(())
     }
 
-    fn mark_as_flavor(&mut self, coord: Coordinate) -> Result<()> {
+    fn mark_as_flavor(&mut self, coord: Coord) -> Result<()> {
         self.board.mark_as_flavor(coord)
     }
 
@@ -244,7 +244,7 @@ impl Solved {
         let start = if let Some(coord) = self.board.start() {
             coord
         } else {
-            let options = Coordinate::all()
+            let options = Coord::all()
                 .into_iter()
                 .map(|coord| {
                     let card = &self.board[coord];
@@ -256,7 +256,7 @@ impl Solved {
                 .coord
         };
         let mut unknown = Vec::with_capacity(20);
-        for coord in Coordinate::all() {
+        for coord in Coord::all() {
             let card = &self.board[coord];
             if card.back().hint().is_unknown() {
                 let judgment = card.judgment();
@@ -327,7 +327,7 @@ fn ron_config() -> PrettyConfig {
 #[derive(Debug)]
 pub(crate) struct SolverWithUpdates {
     solver: Solver,
-    unknown_if_flavor: Vec<(Name, Coordinate, String)>,
+    unknown_if_flavor: Vec<(Name, Coord, String)>,
     pending_hints: Vec<Suspect>,
 }
 
@@ -344,7 +344,7 @@ impl SolverWithUpdates {
             .iter()
             .enumerate()
             .filter_map(|(index, card)| {
-                let coord = Coordinate::from_index(index);
+                let coord = Coord::from_index(index);
                 Some((coord, card.name().clone(), card.logical_hint()?))
             })
             .map(|(coord, speaker, hint)| {
@@ -376,7 +376,7 @@ impl SolverWithUpdates {
         };
 
         let old = board.fixed();
-        let fixed_values = Coordinate::all()
+        let fixed_values = Coord::all()
             .into_iter()
             .filter_map(|coord| Some((coord, old[coord]?)));
         let solutions = Solution::all(fixed_values);
@@ -448,12 +448,12 @@ impl fmt::Display for HintOption<'_> {
 #[derive(Debug, Clone)]
 struct Update {
     name: Name,
-    coord: Coordinate,
+    coord: Coord,
     judgment: Judgment,
 }
 
 impl Update {
-    fn new(coord: Coordinate, name: Name, judgment: Judgment) -> Self {
+    fn new(coord: Coord, name: Name, judgment: Judgment) -> Self {
         Self {
             name,
             coord,
@@ -477,13 +477,13 @@ impl fmt::Display for Update {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Suspect {
-    coord: Coordinate,
+    coord: Coord,
     name: Name,
     judgment: Judgment,
 }
 
 impl Suspect {
-    pub(crate) fn new(coord: Coordinate, name: Name, judgment: Judgment) -> Self {
+    pub(crate) fn new(coord: Coord, name: Name, judgment: Judgment) -> Self {
         Self {
             coord,
             name,
@@ -491,7 +491,7 @@ impl Suspect {
         }
     }
 
-    fn coord(&self) -> Coordinate {
+    fn coord(&self) -> Coord {
         self.coord
     }
 

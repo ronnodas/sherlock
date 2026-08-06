@@ -11,12 +11,12 @@ use mitsein::iter1::{IntoIterator1 as _, Iterator1};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, SerializeDisplay, DeserializeFromStr)]
-pub(crate) struct Coordinate {
+pub(crate) struct Coord {
     pub row: Row,
     pub col: Column,
 }
 
-impl Coordinate {
+impl Coord {
     pub(crate) fn from_index(index: usize) -> Self {
         Self {
             row: Row::from_index(index / 4),
@@ -100,13 +100,13 @@ impl Coordinate {
     }
 }
 
-impl fmt::Display for Coordinate {
+impl fmt::Display for Coord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}{}", self.col, self.row)
     }
 }
 
-impl FromStr for Coordinate {
+impl FromStr for Coord {
     type Err = ParseCoordinateError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -114,13 +114,13 @@ impl FromStr for Coordinate {
     }
 }
 
-impl Ord for Coordinate {
+impl Ord for Coord {
     fn cmp(&self, other: &Self) -> Ordering {
         self.row.cmp(&other.row).then(self.col.cmp(&other.col))
     }
 }
 
-impl PartialOrd for Coordinate {
+impl PartialOrd for Coord {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
@@ -190,8 +190,8 @@ impl Row {
         }
     }
 
-    pub(crate) fn all(self) -> [Coordinate; 4] {
-        Column::ALL.map(move |col| Coordinate { row: self, col })
+    pub(crate) fn all(self) -> [Coord; 4] {
+        Column::ALL.map(move |col| Coord { row: self, col })
     }
 
     pub(crate) fn others(&self) -> impl Iterator<Item = Self> {
@@ -278,8 +278,8 @@ impl Column {
         }
     }
 
-    pub(crate) fn all(self) -> [Coordinate; 5] {
-        Row::ALL.map(move |row| Coordinate { row, col: self })
+    pub(crate) fn all(self) -> [Coord; 5] {
+        Row::ALL.map(move |row| Coord { row, col: self })
     }
 
     pub(crate) fn others(&self) -> impl Iterator<Item = Self> {

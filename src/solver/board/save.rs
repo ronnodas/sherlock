@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 use crate::grid::Grid;
-use crate::models::{Card, CardBack, Coordinate, Name, Profession};
+use crate::models::{Card, CardBack, Coord, Name, Profession};
 use crate::solver::board::{Board, Format};
 
 #[derive(Serialize, Deserialize)]
@@ -11,7 +11,7 @@ pub(crate) struct CardList<'card> {
     cards: Grid<RefCard<'card>>,
     format: Format,
     #[serde(skip_serializing_if = "Option::is_none")]
-    start: Option<Coordinate>,
+    start: Option<Coord>,
 }
 
 impl From<CardList<'_>> for Board {

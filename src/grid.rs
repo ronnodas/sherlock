@@ -3,7 +3,7 @@ use std::ops::{Index, IndexMut};
 use linearize::StaticMap;
 use serde::{Deserialize, Serialize};
 
-use crate::models::{Column, Coordinate, Row};
+use crate::models::{Column, Coord, Row};
 
 // TODO custom Debug
 #[derive(Clone, Debug, Deserialize, Default, PartialEq, Eq)]
@@ -26,9 +26,9 @@ impl<T> Grid<T> {
         }
     }
 
-    pub(crate) fn from_fn(mut f: impl FnMut(Coordinate) -> T) -> Self {
+    pub(crate) fn from_fn(mut f: impl FnMut(Coord) -> T) -> Self {
         Self {
-            inner: StaticMap::from_fn(|row| StaticMap::from_fn(|col| f(Coordinate { row, col }))),
+            inner: StaticMap::from_fn(|row| StaticMap::from_fn(|col| f(Coord { row, col }))),
         }
     }
 
@@ -90,16 +90,16 @@ impl<T> Grid<T> {
     }
 }
 
-impl<T> Index<Coordinate> for Grid<T> {
+impl<T> Index<Coord> for Grid<T> {
     type Output = T;
 
-    fn index(&self, index: Coordinate) -> &Self::Output {
+    fn index(&self, index: Coord) -> &Self::Output {
         &self.inner[index.row][index.col]
     }
 }
 
-impl<T> IndexMut<Coordinate> for Grid<T> {
-    fn index_mut(&mut self, index: Coordinate) -> &mut Self::Output {
+impl<T> IndexMut<Coord> for Grid<T> {
+    fn index_mut(&mut self, index: Coord) -> &mut Self::Output {
         &mut self.inner[index.row][index.col]
     }
 }

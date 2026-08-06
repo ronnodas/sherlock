@@ -5,7 +5,7 @@ use mitsein::btree_map1::BTreeMap1;
 use mitsein::iter1::IteratorExt as _;
 use mitsein::vec1::Vec1;
 
-use crate::models::{Column, Coordinate, Name, Profession, Row};
+use crate::models::{Column, Coord, Name, Profession, Row};
 use crate::solver::board::Board;
 use crate::solver::board::coordinates::Set1;
 use crate::solver::hint::{Line, LineKind};
@@ -22,13 +22,13 @@ pub(crate) trait AddContext {
 
 #[derive(Clone, Copy)]
 pub(crate) struct Context<'ctx> {
-    pub coordinates: &'ctx HashMap<Name, Coordinate>,
+    pub coordinates: &'ctx HashMap<Name, Coord>,
     pub by_profession: &'ctx BTreeMap1<Profession, Set1>,
-    pub speaker: Coordinate,
+    pub speaker: Coord,
 }
 
 impl<'ctx> Context<'ctx> {
-    pub(crate) fn new<C>(board: &'ctx Board<C>, speaker: Coordinate) -> Self {
+    pub(crate) fn new<C>(board: &'ctx Board<C>, speaker: Coord) -> Self {
         Self {
             coordinates: board.coordinates(),
             by_profession: board.by_profession(),
@@ -36,7 +36,7 @@ impl<'ctx> Context<'ctx> {
         }
     }
 
-    fn coord(&self, name: &str) -> Result<Coordinate> {
+    fn coord(&self, name: &str) -> Result<Coord> {
         self.coordinates
             .get(name)
             .copied()
@@ -74,7 +74,7 @@ impl From<&str> for NameRecipe {
 }
 
 impl AddContext for &NameRecipe {
-    type Output = Coordinate;
+    type Output = Coord;
 
     fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
         match self {

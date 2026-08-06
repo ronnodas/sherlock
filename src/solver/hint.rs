@@ -2,7 +2,7 @@ use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
-use crate::models::{Column, Coordinate, Judgment, Row};
+use crate::models::{Column, Coord, Judgment, Row};
 use crate::solver::board::coordinates::{ModifiedSet, Set};
 use crate::solver::solution::Solution;
 
@@ -15,7 +15,7 @@ pub(crate) use parsers::Sentence;
 #[derive(Clone, Debug)]
 pub(crate) enum Hint {
     /// Given coordinate has given judgment
-    Judgment(Coordinate, Judgment),
+    Judgment(Coord, Judgment),
     /// Given set of coordinates has that many suspects
     Count(ModifiedSet, Cardinal),
     /// Given set of coordinates does not have that many suspects

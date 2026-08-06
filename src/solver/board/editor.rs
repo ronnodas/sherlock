@@ -14,9 +14,7 @@ use tabled::settings::formatting::AlignmentStrategy;
 use tabled::settings::{Color as TabledColor, Style, object::Cell};
 
 use crate::grid::Grid;
-use crate::models::{
-    Card, CardBack, Column, Coordinate, Judgment, MaybeHint, Name, Profession, Row,
-};
+use crate::models::{Card, CardBack, Column, Coord, Judgment, MaybeHint, Name, Profession, Row};
 use crate::solver::board::{Board, Format};
 
 pub(crate) struct BoardEditor {
@@ -83,7 +81,7 @@ impl BoardEditor {
             .with(AlignmentStrategy::PerLine)
             .with(Alignment::center());
 
-        for coord in Coordinate::all() {
+        for coord in Coord::all() {
             if let Some(judgment) = self.cards[coord].judgment() {
                 let color = match judgment {
                     Judgment::Innocent => TabledColor::FG_GREEN,
@@ -101,7 +99,7 @@ impl BoardEditor {
     }
 
     fn select_cell_and_edit(&mut self) -> Result<()> {
-        let cells = Coordinate::all()
+        let cells = Coord::all()
             .into_iter()
             .map(|coord| {
                 let edit = &self.cards[coord];
@@ -143,28 +141,28 @@ impl From<Board> for BoardEditor {
     }
 }
 
-impl Index<Coordinate> for BoardEditor {
+impl Index<Coord> for BoardEditor {
     type Output = CardEdit;
 
-    fn index(&self, index: Coordinate) -> &CardEdit {
+    fn index(&self, index: Coord) -> &CardEdit {
         &self.cards[index]
     }
 }
 
-impl IndexMut<Coordinate> for BoardEditor {
-    fn index_mut(&mut self, index: Coordinate) -> &mut CardEdit {
+impl IndexMut<Coord> for BoardEditor {
+    fn index_mut(&mut self, index: Coord) -> &mut CardEdit {
         &mut self.cards[index]
     }
 }
 
 struct IndexedCard<'edit> {
-    coord: Coordinate,
+    coord: Coord,
     card: &'edit CardEdit,
 }
 
 impl<'edit> IndexedCard<'edit> {
     fn new(row: Row, col: Column, card: &'edit CardEdit) -> Self {
-        let coord = Coordinate { row, col };
+        let coord = Coord { row, col };
         Self { coord, card }
     }
 }
@@ -200,7 +198,7 @@ impl CardEdit {
         }
     }
 
-    fn edit(&mut self, professions: ProfessionAutocomplete<'_>) -> Result<Option<Coordinate>> {
+    fn edit(&mut self, professions: ProfessionAutocomplete<'_>) -> Result<Option<Coord>> {
         let Self::Draft(front, back) = self else {
             let name = Text::new("Name:").prompt()?;
             let profession = Text::new("Profession:")
@@ -468,7 +466,7 @@ impl fmt::Display for FlippedAction<'_> {
 
 #[derive(Clone)]
 struct CellOption<'edit> {
-    coord: Coordinate,
+    coord: Coord,
     edit: &'edit CardEdit,
 }
 
