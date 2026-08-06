@@ -13,7 +13,7 @@ use mitsein::str1::Str1;
 use mitsein::string1::String1;
 
 use crate::solver::SolverWithUpdates;
-use crate::solver::grid::editor::GridEditor;
+use crate::solver::board::editor::BoardEditor;
 
 mod models;
 mod solver;
@@ -274,9 +274,9 @@ impl fmt::Display for InputMode {
 }
 
 fn manual_mode() -> Result<Option<SolverWithUpdates>> {
-    GridEditor::new()
+    BoardEditor::new()
         .interact()?
-        .map(|grid| SolverWithUpdates::new(grid, None))
+        .map(|board| SolverWithUpdates::new(board, None))
         .transpose()
 }
 

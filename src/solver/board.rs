@@ -13,19 +13,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::{Card, CardBack, Coordinate, FlippedCard, Judgment, Name, Profession};
 use crate::solver::Suspect;
-use crate::solver::grid::coordinates::Set1;
-use crate::solver::grid::parsers::{Class, ClassName, Div, NodeExt as _, parse_card};
+use crate::solver::board::coordinates::Set1;
+use crate::solver::board::parsers::{Class, ClassName, Div, NodeExt as _, parse_card};
 
 pub(crate) mod coordinates;
 pub(crate) mod editor;
 mod parsers;
 mod save;
 
-pub(crate) type SolvedGrid = Grid<FlippedCard>;
+pub(crate) type SolvedBoard = Board<FlippedCard>;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(from = "save::CardList", bound = "Self: From<save::CardList<'de>>")]
-pub(crate) struct Grid<C = Card> {
+pub(crate) struct Board<C = Card> {
     cards: [C; 20],
     coordinates: HashMap<Name, Coordinate>,
     // TODO maybe change this to `IndexMap` or `HashMap` once `mitsein` supports that
@@ -34,7 +34,7 @@ pub(crate) struct Grid<C = Card> {
     start: Option<Coordinate>,
 }
 
-impl<C> Grid<C> {
+impl<C> Board<C> {
     pub(crate) fn start(&self) -> Option<Coordinate> {
         self.start
     }
@@ -56,7 +56,7 @@ impl<C> Grid<C> {
     }
 }
 
-impl Grid {
+impl Board {
     pub(crate) fn parse(html: &str) -> Result<Self> {
         let document = Document::from(html);
         let Ok(cards) = document
@@ -108,15 +108,15 @@ impl Grid {
             .into_iter()
             .try_collect1()
             .expect("total len 20");
-        let mut grid = Self {
+        let mut board = Self {
             cards,
             coordinates,
             by_profession,
             format,
             start,
         };
-        grid.set_start();
-        grid
+        board.set_start();
+        board
     }
 
     pub(crate) fn iter(&self) -> impl Iterator<Item = &Card> {
@@ -127,14 +127,14 @@ impl Grid {
         self.cards.iter().all(Card::flipped)
     }
 
-    pub(crate) fn into_solved(self) -> Option<Grid<FlippedCard>> {
+    pub(crate) fn into_solved(self) -> Option<Board<FlippedCard>> {
         // TODO This could be better using try_map()
         let cards = self
             .cards
             .into_iter()
             .map(Card::into_flipped)
             .collect::<Option<Vec<FlippedCard>>>()?;
-        Some(Grid {
+        Some(Board {
             cards: cards.try_into().ok()?,
             coordinates: self.coordinates,
             by_profession: self.by_profession,
@@ -203,13 +203,13 @@ impl Grid {
     }
 }
 
-impl Serialize for Grid {
+impl Serialize for Board {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         save::CardList::from(self).serialize(serializer)
     }
 }
 
-impl<C> Index<Coordinate> for Grid<C> {
+impl<C> Index<Coordinate> for Board<C> {
     type Output = C;
 
     fn index(&self, index: Coordinate) -> &C {
@@ -217,7 +217,7 @@ impl<C> Index<Coordinate> for Grid<C> {
     }
 }
 
-impl<C> IndexMut<Coordinate> for Grid<C> {
+impl<C> IndexMut<Coordinate> for Board<C> {
     fn index_mut(&mut self, index: Coordinate) -> &mut C {
         &mut self.cards[index.to_index()]
     }

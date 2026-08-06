@@ -93,9 +93,7 @@ impl Coordinate {
 
     pub(crate) fn all() -> Iterator1<impl Iterator<Item = Self>> {
         // TODO replace with `cartesian_product()`
-        Row::ALL
-            .into_iter1()
-            .flat_map(|row| Column::ALL.into_iter1().map(move |col| Self { row, col }))
+        Row::ALL.into_iter1().flat_map(Row::all)
     }
 }
 

@@ -16,14 +16,14 @@ use tabled::settings::{Color as TabledColor, Style, object::Cell};
 use crate::models::{
     Card, CardBack, Column, Coordinate, Judgment, MaybeHint, Name, Profession, Row,
 };
-use crate::solver::grid::{Format, Grid};
+use crate::solver::board::{Format, Board};
 
-pub(crate) struct GridEditor {
+pub(crate) struct BoardEditor {
     cards: [CardEdit; 20],
     professions: BTreeSet<Profession>,
 }
 
-impl GridEditor {
+impl BoardEditor {
     pub(crate) fn new() -> Self {
         Self {
             cards: <[CardEdit; 20]>::default(),
@@ -38,7 +38,7 @@ impl GridEditor {
             && self.cards.iter().any(|card| card.logical_hint().is_some())
     }
 
-    fn build(self) -> Result<Grid> {
+    fn build(self) -> Result<Board> {
         let cards: [Card; 20] = self
             .cards
             .into_iter()
@@ -49,12 +49,12 @@ impl GridEditor {
                 anyhow!("grid is incomplete: only {}/20 cards defined", cards.len())
             })?;
 
-        Ok(Grid::new(cards, Format::Sep2025, None))
+        Ok(Board::new(cards, Format::Sep2025, None))
     }
 
-    pub(crate) fn interact(mut self) -> Result<Option<Grid>> {
+    pub(crate) fn interact(mut self) -> Result<Option<Board>> {
         loop {
-            self.print_grid();
+            self.print_board();
             let mut options = vec![EditorOption::SelectCell, EditorOption::Quit];
             if self.is_complete() {
                 options.insert(1, EditorOption::Play);
@@ -69,7 +69,7 @@ impl GridEditor {
         }
     }
 
-    fn render_grid(&self) -> Table {
+    fn render_board(&self) -> Table {
         let (rows, _) = self.cards.as_chunks();
         let mut table = Table::nohead(rows.iter().zip(Row::ALL).map(
             |(cards, row): (&[CardEdit; 4], Row)| -> [IndexedCard<'_>; 4] {
@@ -96,8 +96,8 @@ impl GridEditor {
         table
     }
 
-    fn print_grid(&self) {
-        let table = self.render_grid();
+    fn print_board(&self) {
+        let table = self.render_board();
         println!("{table}");
     }
 
@@ -127,22 +127,22 @@ impl GridEditor {
     }
 }
 
-impl From<Grid> for GridEditor {
-    fn from(grid: Grid) -> Self {
-        let professions = grid
+impl From<Board> for BoardEditor {
+    fn from(board: Board) -> Self {
+        let professions = board
             .by_profession()
             .as_btree_map()
             .keys()
             .cloned()
             .collect();
         Self {
-            cards: grid.cards.map(CardEdit::from),
+            cards: board.cards.map(CardEdit::from),
             professions,
         }
     }
 }
 
-impl Index<Coordinate> for GridEditor {
+impl Index<Coordinate> for BoardEditor {
     type Output = CardEdit;
 
     fn index(&self, index: Coordinate) -> &CardEdit {
@@ -150,7 +150,7 @@ impl Index<Coordinate> for GridEditor {
     }
 }
 
-impl IndexMut<Coordinate> for GridEditor {
+impl IndexMut<Coordinate> for BoardEditor {
     fn index_mut(&mut self, index: Coordinate) -> &mut CardEdit {
         &mut self.cards[index.to_index()]
     }

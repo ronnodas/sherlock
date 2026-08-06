@@ -3,7 +3,7 @@ use std::ops::Index;
 use mitsein::iter1::IntoIterator1 as _;
 
 use crate::models::{Coordinate, Judgment};
-use crate::solver::grid::coordinates::{ModifiedSet, Modifier, Set};
+use crate::solver::board::coordinates::{ModifiedSet, Modifier, Set};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Clone, Debug)]

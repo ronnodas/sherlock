@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 use crate::models::{Card, CardBack, Coordinate, Name, Profession};
-use crate::solver::grid::{Format, Grid};
+use crate::solver::board::{Board, Format};
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct CardList<'card> {
@@ -14,7 +14,7 @@ pub(crate) struct CardList<'card> {
     start: Option<Coordinate>,
 }
 
-impl From<CardList<'_>> for Grid {
+impl From<CardList<'_>> for Board {
     fn from(mut card_list: CardList) -> Self {
         card_list.cards.sort_by_key(|a| a.coord);
         let cards = card_list.cards.map(Card::from);
@@ -22,10 +22,10 @@ impl From<CardList<'_>> for Grid {
     }
 }
 
-impl<'card> From<&'card Grid> for CardList<'card> {
-    fn from(grid: &'card Grid) -> Self {
+impl<'card> From<&'card Board> for CardList<'card> {
+    fn from(board: &'card Board) -> Self {
         let cards = array::from_fn(|i| {
-            let card = &grid.cards[i];
+            let card = &board.cards[i];
             IndexedCard {
                 coord: Coordinate::from_index(i),
                 name: Cow::Borrowed(card.name()),
@@ -35,8 +35,8 @@ impl<'card> From<&'card Grid> for CardList<'card> {
         });
         Self {
             cards,
-            format: grid.format,
-            start: grid.start,
+            format: board.format,
+            start: board.start,
         }
     }
 }

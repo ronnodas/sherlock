@@ -6,8 +6,8 @@ use mitsein::iter1::IteratorExt as _;
 use mitsein::vec1::Vec1;
 
 use crate::models::{Column, Coordinate, Name, Profession, Row};
-use crate::solver::grid::Grid;
-use crate::solver::grid::coordinates::Set1;
+use crate::solver::board::Board;
+use crate::solver::board::coordinates::Set1;
 use crate::solver::hint::{Line, LineKind};
 
 pub(crate) type NameRecipe = MeOrExplicit<Name>;
@@ -28,10 +28,10 @@ pub(crate) struct Context<'ctx> {
 }
 
 impl<'ctx> Context<'ctx> {
-    pub(crate) fn new<C>(grid: &'ctx Grid<C>, speaker: Coordinate) -> Self {
+    pub(crate) fn new<C>(board: &'ctx Board<C>, speaker: Coordinate) -> Self {
         Self {
-            coordinates: grid.coordinates(),
-            by_profession: grid.by_profession(),
+            coordinates: board.coordinates(),
+            by_profession: board.by_profession(),
             speaker,
         }
     }
@@ -40,13 +40,13 @@ impl<'ctx> Context<'ctx> {
         self.coordinates
             .get(name)
             .copied()
-            .ok_or_else(|| anyhow!("{name} not in grid"))
+            .ok_or_else(|| anyhow!("{name} not in puzzle"))
     }
 
     pub(crate) fn profession_as_set(&self, profession: &Profession) -> Result<&Set1> {
         self.by_profession
             .get(profession)
-            .ok_or_else(|| anyhow!("{profession} not in grid"))
+            .ok_or_else(|| anyhow!("{profession} not in puzzle"))
     }
 
     pub(crate) fn other_professions(&self, profession: &str) -> Result<Vec1<Set1>> {
@@ -56,7 +56,7 @@ impl<'ctx> Context<'ctx> {
             .filter(move |&(other, _)| other != profession)
             .map(|(_, &set)| set)
             .try_collect1()
-            .map_err(|_empty| anyhow!("only {profession}s on grid"))
+            .map_err(|_empty| anyhow!("only {profession}s in puzzle"))
     }
 }
 

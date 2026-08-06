@@ -15,12 +15,12 @@ use ron::ser::{PrettyConfig, to_string_pretty};
 
 use crate::SAVE_DIRECTORY;
 use crate::models::{Coordinate, FullCard, Judgment, Name, Puzzle};
-use crate::solver::grid::{Format, Grid, SolvedGrid};
+use crate::solver::board::{Board, Format, SolvedBoard};
 use crate::solver::hint::recipes::{AddContext as _, Context};
 use crate::solver::hint::{Hint, Sentence};
 use crate::solver::solution::Solution;
 
-pub(crate) mod grid;
+pub(crate) mod board;
 mod hint;
 mod solution;
 
@@ -29,7 +29,7 @@ const ARCHIVE_DIR: &str = "archive";
 #[derive(Clone, Debug)]
 struct Solver {
     title: Option<String1>,
-    grid: Grid,
+    board: Board,
 
     solutions: Vec<Solution>,
 }
@@ -40,9 +40,9 @@ impl Solver {
             let new = self.infer()?;
             print_inferences(&new);
 
-            println!("{}", self.grid.emoji_summary());
+            println!("{}", self.board.emoji_summary());
             // TODO parse, don't validate
-            if self.grid.solved() {
+            if self.board.solved() {
                 let solved = self.into_solved().expect("solved");
                 println!("Puzzle solved!");
                 return solved.save_puzzle();
@@ -86,7 +86,7 @@ impl Solver {
 
     fn into_solved(self) -> Option<Solved> {
         Some(Solved {
-            grid: self.grid.into_solved()?,
+            board: self.board.into_solved()?,
             title: self.title,
         })
     }
@@ -114,7 +114,7 @@ impl Solver {
                 let judgment = judgment?;
                 Some(Update::new(
                     Coordinate::from_index(index),
-                    self.grid.set_new(index, judgment)?.name().to_owned(),
+                    self.board.set_new(index, judgment)?.name().to_owned(),
                     judgment,
                 ))
             })
@@ -139,10 +139,10 @@ impl Solver {
 
     fn add_hint(&mut self, hint: String, coord: Coordinate) -> Result<()> {
         Sentence::parse(&hint)?
-            .add_context(Context::new(&self.grid, coord))?
+            .add_context(Context::new(&self.board, coord))?
             .into_iter()
             .for_each(|hint| self.add_parsed_hint(&hint));
-        self.grid.add_hint(hint, coord)
+        self.board.add_hint(hint, coord)
     }
 
     fn add_parsed_hint(&mut self, hint: &Hint) {
@@ -153,9 +153,9 @@ impl Solver {
         self.title = Some(title);
     }
 
-    fn save_grid(&self) -> Result<String> {
+    fn save_board(&self) -> Result<String> {
         let config = ron_config();
-        to_string_pretty(&self.grid, config).map_err(Into::into)
+        to_string_pretty(&self.board, config).map_err(Into::into)
     }
 
     fn handle_mark_flavor(&mut self, pending: &mut Vec<Suspect>) -> Result<()> {
@@ -170,11 +170,11 @@ impl Solver {
     }
 
     fn mark_as_flavor(&mut self, coord: Coordinate) -> Result<()> {
-        self.grid.mark_as_flavor(coord)
+        self.board.mark_as_flavor(coord)
     }
 
     fn save(&mut self) -> Result<()> {
-        let save = self.save_grid()?;
+        let save = self.save_board()?;
         let path = self.title.as_ref().map_or_else(
             || SAVE_DIRECTORY.to_owned(),
             |title| {
@@ -203,7 +203,7 @@ impl Solver {
 }
 
 struct Solved {
-    grid: SolvedGrid,
+    board: SolvedBoard,
     title: Option<String1>,
 }
 
@@ -241,13 +241,13 @@ impl Solved {
     }
 
     fn extract_puzzle(mut self) -> Result<Puzzle> {
-        let start = if let Some(coord) = self.grid.start() {
+        let start = if let Some(coord) = self.board.start() {
             coord
         } else {
             let options = Coordinate::all()
                 .into_iter()
                 .map(|coord| {
-                    let card = &self.grid[coord];
+                    let card = &self.board[coord];
                     Suspect::new(coord, card.name().to_owned(), card.judgment())
                 })
                 .collect_vec();
@@ -257,7 +257,7 @@ impl Solved {
         };
         let mut unknown = Vec::with_capacity(20);
         for coord in Coordinate::all() {
-            let card = &self.grid[coord];
+            let card = &self.board[coord];
             if card.back().hint().is_unknown() {
                 let judgment = card.judgment();
                 unknown.push(Suspect::new(coord, card.name().clone(), judgment));
@@ -271,7 +271,7 @@ impl Solved {
             );
             if Confirm::new(&message).prompt()? {
                 for suspect in unknown {
-                    self.grid[suspect.coord].back_mut().mark_as_flavor();
+                    self.board[suspect.coord].back_mut().mark_as_flavor();
                 }
                 break;
             }
@@ -290,10 +290,10 @@ impl Solved {
 
                 if let Ok(sentence) = Sentence::parse(&text)
                     && sentence
-                        .add_context(Context::new(&self.grid, suspect.coord))
+                        .add_context(Context::new(&self.board, suspect.coord))
                         .is_ok()
                 {
-                    self.grid[suspect.coord]
+                    self.board[suspect.coord]
                         .back_mut()
                         .set_hint(mem::take(&mut text));
                     drop(unknown.remove(index));
@@ -303,12 +303,11 @@ impl Solved {
         }
         let mut cards = Vec::with_capacity(20);
         for coord in Coordinate::all() {
-            let card = &self.grid[coord];
+            let card = &self.board[coord];
             // TODO should deconstruct here rather than clone
             let name = card.name().clone();
             let profession = card.profession().clone();
             let judgment = card.judgment();
-
             let hint = card.back().hint().known().expect("set above");
             cards.push(FullCard::new(name, profession, judgment, hint));
         }
@@ -335,14 +334,14 @@ pub(crate) struct SolverWithUpdates {
 
 impl SolverWithUpdates {
     pub(crate) fn parse(html: &str, name: Option<String1>) -> Result<Self> {
-        let grid = Grid::parse(html)?;
-        Self::new(grid, name)
+        let board = Board::parse(html)?;
+        Self::new(board, name)
     }
 
-    pub(crate) fn new(grid: Grid, title: Option<String1>) -> Result<Self> {
-        let pending_hints = grid.pending_hints();
+    pub(crate) fn new(board: Board, title: Option<String1>) -> Result<Self> {
+        let pending_hints = board.pending_hints();
 
-        let maybe_parsed = grid
+        let maybe_parsed = board
             .iter()
             .enumerate()
             .filter_map(|(index, card)| {
@@ -351,11 +350,11 @@ impl SolverWithUpdates {
             })
             .map(|(coord, speaker, hint)| {
                 let hint = Sentence::parse(hint)
-                    .and_then(|sentence| sentence.add_context(Context::new(&grid, coord)))
+                    .and_then(|sentence| sentence.add_context(Context::new(&board, coord)))
                     .map_err(|e| (e, hint));
                 (coord, speaker, hint)
             });
-        let (hints, unknown_if_flavor) = match grid.format() {
+        let (hints, unknown_if_flavor) = match board.format() {
             Format::Original => {
                 let mut hints = Vec::new();
                 let mut unknown = Vec::new();
@@ -377,7 +376,7 @@ impl SolverWithUpdates {
             }
         };
 
-        let old = grid.fixed();
+        let old = board.fixed();
         let fixed_values = old
             .iter()
             .enumerate()
@@ -386,7 +385,7 @@ impl SolverWithUpdates {
 
         let mut solver = Solver {
             title,
-            grid,
+            board,
 
             solutions,
         };
@@ -403,8 +402,8 @@ impl SolverWithUpdates {
     }
 
     pub(crate) fn load(contents: &str, title: Option<String1>) -> Result<Self> {
-        let grid = ron::from_str(contents)?;
-        Self::new(grid, title)
+        let board = ron::from_str(contents)?;
+        Self::new(board, title)
     }
 
     pub(crate) fn solve(mut self) -> Result<()> {
@@ -618,7 +617,7 @@ mod tests {
             assert_eq!(inferences, deductions);
             for &(speaker, _, hint) in changes {
                 if let Some(hint) = hint {
-                    let coord = solver.grid.coord(speaker).unwrap();
+                    let coord = solver.board.coord(speaker).unwrap();
                     solver.add_hint(hint.to_owned(), coord).unwrap();
                 }
             }
