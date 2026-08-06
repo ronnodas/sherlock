@@ -5,6 +5,7 @@ use std::{fmt, fs, mem};
 
 use anyhow::{Context as _, Result, bail};
 use colored::Colorize as _;
+use inquire::list_option::ListOption;
 use inquire::{Confirm, MultiSelect, Select, Text};
 use itertools::Itertools as _;
 use mitsein::str1::Str1;
@@ -271,15 +272,14 @@ impl Solved {
                 }
                 break;
             }
-            if let Some(IndexedSuspect { index, suspect }) = Select::new(
+            if let Some(ListOption {
+                index,
+                value: suspect,
+            }) = Select::new(
                 "Select suspect with logical hint:",
-                unknown
-                    .iter()
-                    .enumerate()
-                    .map(|(index, suspect)| IndexedSuspect { index, suspect })
-                    .collect(),
+                unknown.iter().collect(),
             )
-            .prompt_skippable()?
+            .raw_prompt_skippable()?
             {
                 text = Text::new(&format!("Enter {}'s (logical) hint:", suspect.name))
                     .with_initial_value(&text)
@@ -472,17 +472,6 @@ impl fmt::Display for Update {
             self.coord,
             self.judgment.to_string().color(color)
         )
-    }
-}
-
-struct IndexedSuspect<'card> {
-    index: usize,
-    suspect: &'card Suspect,
-}
-
-impl fmt::Display for IndexedSuspect<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.suspect)
     }
 }
 
