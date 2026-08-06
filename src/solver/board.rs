@@ -11,6 +11,7 @@ use select::document::Document;
 use select::predicate::{Any, Attr, Predicate as _};
 use serde::{Deserialize, Serialize};
 
+use crate::grid::Grid;
 use crate::models::{Card, CardBack, Coordinate, FlippedCard, Judgment, Name, Profession};
 use crate::solver::Suspect;
 use crate::solver::board::coordinates::Set1;
@@ -26,7 +27,7 @@ pub(crate) type SolvedBoard = Board<FlippedCard>;
 #[derive(Clone, Debug, Deserialize)]
 #[serde(from = "save::CardList", bound = "Self: From<save::CardList<'de>>")]
 pub(crate) struct Board<C = Card> {
-    cards: [C; 20],
+    cards: Grid<C>,
     coordinates: HashMap<Name, Coordinate>,
     // TODO maybe change this to `IndexMap` or `HashMap` once `mitsein` supports that
     by_profession: BTreeMap1<Profession, Set1>,
@@ -65,13 +66,16 @@ impl Board {
         else {
             bail!("expecting unique element in {html}");
         };
-        let cards: [(Card, bool); 20] = cards
-            .expect_children::<20>(Any)?
-            .iter()
-            .map(|card| parse_card(card))
-            .collect::<Result<Vec<(Card, bool)>>>()?
-            .try_into()
-            .unwrap_or_else(|_| unreachable!());
+        let cards: Grid<(Card, bool)> = Grid::from_flattened(
+            cards
+                .expect_children::<20>(Any)?
+                .iter()
+                .map(|card| parse_card(card))
+                .collect::<Result<Vec<(Card, bool)>>>()?
+                .try_into()
+                .unwrap_or_else(|_| unreachable!()),
+        );
+
         // A valid puzzle must have at least one actual hint
         let format = if cards.iter().any(|&(_, has_hint)| has_hint) {
             Format::Sep2025
@@ -90,7 +94,7 @@ impl Board {
         Ok(Self::new(cards, format, None))
     }
 
-    fn new(cards: [Card; 20], format: Format, start: Option<Coordinate>) -> Self {
+    fn new(cards: Grid<Card>, format: Format, start: Option<Coordinate>) -> Self {
         let coordinates = cards
             .iter()
             .enumerate()
@@ -128,14 +132,17 @@ impl Board {
     }
 
     pub(crate) fn into_solved(self) -> Option<Board<FlippedCard>> {
-        // TODO This could be better using try_map()
-        let cards = self
-            .cards
-            .into_iter()
-            .map(Card::into_flipped)
-            .collect::<Option<Vec<FlippedCard>>>()?;
+        // TODO use try_map()
+        let cards = Grid::from_flattened(
+            self.cards
+                .into_iter()
+                .map(Card::into_flipped)
+                .collect::<Option<Vec<FlippedCard>>>()?
+                .try_into()
+                .expect("length unchanged"),
+        );
         Some(Board {
-            cards: cards.try_into().ok()?,
+            cards,
             coordinates: self.coordinates,
             by_profession: self.by_profession,
             format: self.format,
@@ -143,12 +150,12 @@ impl Board {
         })
     }
 
-    pub(crate) fn fixed(&self) -> [Option<Judgment>; 20] {
+    pub(crate) fn fixed(&self) -> Grid<Option<Judgment>> {
         self.cards.each_ref().map(Card::judgment)
     }
 
-    pub(crate) fn set_new(&mut self, index: usize, judgment: Judgment) -> Option<&Card> {
-        self.cards[index].reveal(judgment)
+    pub(crate) fn set_new(&mut self, coord: Coordinate, judgment: Judgment) -> Option<&Card> {
+        self.cards[coord].reveal(judgment)
     }
 
     pub(crate) fn add_hint(&mut self, hint: String, coord: Coordinate) -> Result<()> {
@@ -175,8 +182,8 @@ impl Board {
     }
 
     pub(crate) fn emoji_summary(&self) -> String {
-        let (rows, _) = self.cards.as_chunks::<4>();
-        rows.iter()
+        self.cards
+            .rows()
             .map(|row| row.each_ref().map(Card::emoji))
             .format_with("\n", |row, f| f(&row.iter().format_with("", |c, g| g(c))))
             .to_string()
@@ -213,13 +220,13 @@ impl<C> Index<Coordinate> for Board<C> {
     type Output = C;
 
     fn index(&self, index: Coordinate) -> &C {
-        &self.cards[index.to_index()]
+        &self.cards[index]
     }
 }
 
 impl<C> IndexMut<Coordinate> for Board<C> {
     fn index_mut(&mut self, index: Coordinate) -> &mut C {
-        &mut self.cards[index.to_index()]
+        &mut self.cards[index]
     }
 }
 

@@ -15,6 +15,7 @@ use mitsein::string1::String1;
 use crate::solver::SolverWithUpdates;
 use crate::solver::board::editor::BoardEditor;
 
+mod grid;
 mod models;
 mod solver;
 

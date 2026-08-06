@@ -1,15 +1,16 @@
 use serde::{Deserialize, Serialize};
 
+use crate::grid::Grid;
 use crate::models::{CardBack, Coordinate, Judgment, Name, Profession};
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Puzzle {
-    cards: [FullCard; 20],
+    cards: Grid<FullCard>,
     start: Coordinate,
 }
 
 impl Puzzle {
-    pub(crate) fn new(cards: [FullCard; 20], start: Coordinate) -> Self {
+    pub(crate) fn new(cards: Grid<FullCard>, start: Coordinate) -> Self {
         Self { cards, start }
     }
 }

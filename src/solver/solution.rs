@@ -2,15 +2,16 @@ use std::ops::Index;
 
 use mitsein::iter1::IntoIterator1 as _;
 
+use crate::grid::Grid;
 use crate::models::{Coordinate, Judgment};
 use crate::solver::board::coordinates::{ModifiedSet, Modifier, Set};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Clone, Debug)]
-pub(crate) struct Solution([Judgment; 20]);
+pub(crate) struct Solution(Grid<Judgment>);
 
 impl Solution {
-    pub(crate) fn as_array(&self) -> &[Judgment; 20] {
+    pub(crate) fn as_grid(&self) -> &Grid<Judgment> {
         &self.0
     }
 
@@ -35,14 +36,14 @@ impl Solution {
         }
     }
 
-    pub(crate) fn all(fixed_values: impl IntoIterator<Item = (usize, Judgment)>) -> Vec<Self> {
+    pub(crate) fn all(fixed_values: impl IntoIterator<Item = (Coordinate, Judgment)>) -> Vec<Self> {
         Generator::new(fixed_values).collect()
     }
 }
 
-impl From<[Judgment; 20]> for Solution {
-    fn from(array: [Judgment; 20]) -> Self {
-        Self(array)
+impl From<Grid<Judgment>> for Solution {
+    fn from(grid: Grid<Judgment>) -> Self {
+        Self(grid)
     }
 }
 
@@ -50,27 +51,30 @@ impl Index<Coordinate> for Solution {
     type Output = Judgment;
 
     fn index(&self, index: Coordinate) -> &Self::Output {
-        &self.0[index.to_index()]
+        &self.0[index]
     }
 }
 
 struct Generator {
     counter: u32,
-    template: [Judgment; 20],
-    free_indices: Vec<usize>,
+    template: Grid<Judgment>,
+    free_indices: Vec<Coordinate>,
 }
 
 impl Generator {
-    fn new(fixed_values: impl IntoIterator<Item = (usize, Judgment)>) -> Self {
-        let mut template = [Judgment::Innocent; 20];
-        let mut fixed_mask = [false; 20];
+    fn new(fixed_values: impl IntoIterator<Item = (Coordinate, Judgment)>) -> Self {
+        let mut template = Grid::filled(Judgment::Innocent);
+        let mut fixed_mask = Grid::filled(false);
 
         for (idx, val) in fixed_values {
             template[idx] = val;
             fixed_mask[idx] = true;
         }
 
-        let free_indices: Vec<usize> = (0..20).filter(|i| !fixed_mask[*i]).collect();
+        let free_indices: Vec<Coordinate> = Coordinate::all()
+            .into_iter()
+            .filter(|i| !fixed_mask[*i])
+            .collect();
 
         Self {
             counter: 0,
@@ -92,7 +96,7 @@ impl Iterator for Generator {
             return None;
         }
 
-        let mut current = self.template;
+        let mut current = self.template.clone();
 
         for (bit_pos, &target_idx) in self.free_indices.iter().enumerate() {
             // Check if the nth bit of the counter is set

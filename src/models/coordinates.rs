@@ -1,9 +1,12 @@
+#![expect(unsafe_code, reason = "external derive macro")]
+
 use std::cmp::Ordering;
 use std::error::Error;
 use std::str::FromStr;
 use std::{fmt, iter};
 
 use itertools::Itertools as _;
+use linearize::Linearize;
 use mitsein::iter1::{IntoIterator1 as _, Iterator1};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 
@@ -134,7 +137,7 @@ impl fmt::Display for ParseCoordinateError {
 
 impl Error for ParseCoordinateError {}
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord, Linearize)]
 pub(crate) enum Row {
     One,
     Two,
@@ -227,7 +230,7 @@ impl fmt::Display for Row {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord, Linearize)]
 pub(crate) enum Column {
     A,
     B,

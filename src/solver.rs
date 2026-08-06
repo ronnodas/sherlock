@@ -14,6 +14,7 @@ use ron::extensions::Extensions;
 use ron::ser::{PrettyConfig, to_string_pretty};
 
 use crate::SAVE_DIRECTORY;
+use crate::grid::Grid;
 use crate::models::{Coordinate, FullCard, Judgment, Name, Puzzle};
 use crate::solver::board::{Board, Format, SolvedBoard};
 use crate::solver::hint::recipes::{AddContext as _, Context};
@@ -96,25 +97,24 @@ impl Solver {
             bail!("no solutions!")
         };
 
-        let mut fixed = first.as_array().map(Some);
+        let mut fixed = first.as_grid().clone().map(Some);
         for solution in rest {
-            for i in 0..20 {
-                let fixed = &mut fixed[i];
+            for coord in Coordinate::all() {
+                let fixed = &mut fixed[coord];
                 if let Some(val) = *fixed
-                    && val != solution.as_array()[i]
+                    && val != solution.as_grid()[coord]
                 {
                     *fixed = None;
                 }
             }
         }
-        Ok(fixed
+        Ok(Coordinate::all()
             .into_iter()
-            .enumerate()
-            .filter_map(|(index, judgment)| {
-                let judgment = judgment?;
+            .filter_map(|coord| {
+                let judgment = fixed[coord]?;
                 Some(Update::new(
-                    Coordinate::from_index(index),
-                    self.board.set_new(index, judgment)?.name().to_owned(),
+                    coord,
+                    self.board.set_new(coord, judgment)?.name().to_owned(),
                     judgment,
                 ))
             })
@@ -301,17 +301,16 @@ impl Solved {
                 println!("I didn't understand that hint :(\n{text}");
             }
         }
-        let mut cards = Vec::with_capacity(20);
-        for coord in Coordinate::all() {
+
+        let cards = Grid::from_fn(|coord| {
             let card = &self.board[coord];
             // TODO should deconstruct here rather than clone
             let name = card.name().clone();
             let profession = card.profession().clone();
             let judgment = card.judgment();
             let hint = card.back().hint().known().expect("set above");
-            cards.push(FullCard::new(name, profession, judgment, hint));
-        }
-        let cards: [FullCard; 20] = cards.try_into().unwrap_or_else(|_| unreachable!());
+            FullCard::new(name, profession, judgment, hint)
+        });
         let puzzle = Puzzle::new(cards, start);
         Ok(puzzle)
     }
@@ -377,10 +376,9 @@ impl SolverWithUpdates {
         };
 
         let old = board.fixed();
-        let fixed_values = old
-            .iter()
-            .enumerate()
-            .filter_map(|(index, &judgment)| Some((index, judgment?)));
+        let fixed_values = Coordinate::all()
+            .into_iter()
+            .filter_map(|coord| Some((coord, old[coord]?)));
         let solutions = Solution::all(fixed_values);
 
         let mut solver = Solver {
@@ -522,6 +520,7 @@ mod tests {
     use anyhow::Context as _;
     use itertools::Itertools as _;
 
+    use crate::grid::Grid;
     use crate::solver::solution::Solution;
 
     use super::{Judgment, SolverWithUpdates};
@@ -536,7 +535,13 @@ mod tests {
         };
         let parsed = SolverWithUpdates::parse(&contents, None).unwrap();
         assert!(parsed.pending_hints.is_empty());
-        let solution = Solution::from([I, C, C, C, C, C, I, C, I, C, C, C, C, I, C, C, C, I, C, I]);
+        let solution = Solution::from(Grid::from([
+            [I, C, C, C],
+            [C, C, I, C],
+            [I, C, C, C],
+            [C, I, C, C],
+            [C, I, C, I],
+        ]));
 
         let steps: &[&[(&str, Judgment, Option<&str>)]] = &[
             &[

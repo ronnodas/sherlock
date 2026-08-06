@@ -13,20 +13,21 @@ use tabled::settings::Alignment;
 use tabled::settings::formatting::AlignmentStrategy;
 use tabled::settings::{Color as TabledColor, Style, object::Cell};
 
+use crate::grid::Grid;
 use crate::models::{
     Card, CardBack, Column, Coordinate, Judgment, MaybeHint, Name, Profession, Row,
 };
-use crate::solver::board::{Format, Board};
+use crate::solver::board::{Board, Format};
 
 pub(crate) struct BoardEditor {
-    cards: [CardEdit; 20],
+    cards: Grid<CardEdit>,
     professions: BTreeSet<Profession>,
 }
 
 impl BoardEditor {
     pub(crate) fn new() -> Self {
         Self {
-            cards: <[CardEdit; 20]>::default(),
+            cards: Grid::<CardEdit>::default(),
             professions: BTreeSet::new(),
         }
     }
@@ -39,7 +40,7 @@ impl BoardEditor {
     }
 
     fn build(self) -> Result<Board> {
-        let cards: [Card; 20] = self
+        let flattened = self
             .cards
             .into_iter()
             .filter_map(CardEdit::finalize)
@@ -48,6 +49,7 @@ impl BoardEditor {
             .map_err(|cards: Vec<_>| {
                 anyhow!("grid is incomplete: only {}/20 cards defined", cards.len())
             })?;
+        let cards: Grid<Card> = Grid::from_flattened(flattened);
 
         Ok(Board::new(cards, Format::Sep2025, None))
     }
@@ -70,8 +72,8 @@ impl BoardEditor {
     }
 
     fn render_board(&self) -> Table {
-        let (rows, _) = self.cards.as_chunks();
-        let mut table = Table::nohead(rows.iter().zip(Row::ALL).map(
+        let rows = self.cards.rows();
+        let mut table = Table::nohead(rows.zip(Row::ALL).map(
             |(cards, row): (&[CardEdit; 4], Row)| -> [IndexedCard<'_>; 4] {
                 from_fn(|col| IndexedCard::new(row, Column::from_index(col), &cards[col]))
             },
@@ -81,16 +83,13 @@ impl BoardEditor {
             .with(AlignmentStrategy::PerLine)
             .with(Alignment::center());
 
-        for coordinate in Coordinate::all() {
-            if let Some(judgment) = self.cards[coordinate.to_index()].judgment() {
+        for coord in Coordinate::all() {
+            if let Some(judgment) = self.cards[coord].judgment() {
                 let color = match judgment {
                     Judgment::Innocent => TabledColor::FG_GREEN,
                     Judgment::Criminal => TabledColor::FG_RED,
                 };
-                _ = table.modify(
-                    Cell::new(coordinate.row.to_index(), coordinate.col.to_index()),
-                    color,
-                );
+                _ = table.modify(Cell::new(coord.row.to_index(), coord.col.to_index()), color);
             }
         }
         table
@@ -104,8 +103,10 @@ impl BoardEditor {
     fn select_cell_and_edit(&mut self) -> Result<()> {
         let cells = Coordinate::all()
             .into_iter()
-            .zip(&self.cards)
-            .map(|(coord, edit)| CellOption { coord, edit })
+            .map(|coord| {
+                let edit = &self.cards[coord];
+                CellOption { coord, edit }
+            })
             .sorted()
             .collect_vec();
 
@@ -113,7 +114,7 @@ impl BoardEditor {
             let mut coord = cell.coord;
             loop {
                 let professions = ProfessionAutocomplete::new(&self.professions);
-                let card = &mut self.cards[coord.to_index()];
+                let card = &mut self.cards[coord];
                 let update = card.edit(professions)?;
                 let profession = card.profession().cloned();
                 self.professions.extend(profession);
@@ -146,13 +147,13 @@ impl Index<Coordinate> for BoardEditor {
     type Output = CardEdit;
 
     fn index(&self, index: Coordinate) -> &CardEdit {
-        &self.cards[index.to_index()]
+        &self.cards[index]
     }
 }
 
 impl IndexMut<Coordinate> for BoardEditor {
     fn index_mut(&mut self, index: Coordinate) -> &mut CardEdit {
-        &mut self.cards[index.to_index()]
+        &mut self.cards[index]
     }
 }
 
