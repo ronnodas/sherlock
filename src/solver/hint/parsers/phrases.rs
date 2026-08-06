@@ -367,7 +367,7 @@ impl AddContext for &Unit {
                 .collect::<Set>()
                 .complement()
                 .into(),
-            Unit::Profession(profession) => (*context.grid.profession_as_set(profession)?).into(),
+            Unit::Profession(profession) => (*context.profession_as_set(profession)?).into(),
             Unit::Edges => Coordinate::edges().collect(),
             Unit::Corners => Coordinate::corners().collect(),
             Unit::Between(names) => {
@@ -483,7 +483,6 @@ impl UnitInSeries {
                 .map(Set::from)
                 .collect1()),
             Self::Profession(profession) => context
-                .grid
                 .other_professions(profession)
                 .map(|others| others.into_iter1().map(Set::from).collect1()),
             Self::Neighbor(name) => {
@@ -575,12 +574,11 @@ pub(crate) enum Series {
 }
 
 impl Series {
-    pub(crate) fn all(self, context: Context) -> Vec1<Set> {
+    pub(crate) fn all(self, context: Context<'_>) -> Vec1<Set> {
         match self {
             Self::Line(line_kind) => line_kind.all().into_iter1().map(Set::from).collect1(),
             Self::Profession => context
-                .grid
-                .by_profession()
+                .by_profession
                 .values1()
                 .map(|&set| set.into())
                 .collect1(),

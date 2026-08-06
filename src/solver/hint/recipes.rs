@@ -1,7 +1,13 @@
-use anyhow::Result;
+use std::collections::HashMap;
 
-use crate::models::{Column, Coordinate, Name, Row};
+use anyhow::{Result, anyhow};
+use mitsein::btree_map1::BTreeMap1;
+use mitsein::iter1::IteratorExt as _;
+use mitsein::vec1::Vec1;
+
+use crate::models::{Column, Coordinate, Name, Profession, Row};
 use crate::solver::grid::Grid;
+use crate::solver::grid::coordinates::Set1;
 use crate::solver::hint::{Line, LineKind};
 
 pub(crate) type NameRecipe = MeOrExplicit<Name>;
@@ -16,17 +22,41 @@ pub(crate) trait AddContext {
 
 #[derive(Clone, Copy)]
 pub(crate) struct Context<'ctx> {
-    pub grid: &'ctx Grid,
-    pub speaker: &'ctx Name,
+    pub coordinates: &'ctx HashMap<Name, Coordinate>,
+    pub by_profession: &'ctx BTreeMap1<Profession, Set1>,
+    pub speaker: Coordinate,
 }
 
 impl<'ctx> Context<'ctx> {
-    pub(crate) fn new(grid: &'ctx Grid, speaker: &'ctx Name) -> Self {
-        Self { grid, speaker }
+    pub(crate) fn new<C>(grid: &'ctx Grid<C>, speaker: Coordinate) -> Self {
+        Self {
+            coordinates: grid.coordinates(),
+            by_profession: grid.by_profession(),
+            speaker,
+        }
     }
 
-    fn speaker_coord(&self) -> Result<Coordinate> {
-        self.grid.coord(self.speaker)
+    pub(crate) fn coord(&self, name: &str) -> Result<Coordinate> {
+        self.coordinates
+            .get(name)
+            .copied()
+            .ok_or_else(|| anyhow!("{name} not in grid"))
+    }
+
+    pub(crate) fn profession_as_set(&self, profession: &Profession) -> Result<&Set1> {
+        self.by_profession
+            .get(profession)
+            .ok_or_else(|| anyhow!("{profession} not in grid"))
+    }
+
+    pub(crate) fn other_professions(&self, profession: &str) -> Result<Vec1<Set1>> {
+        self.by_profession
+            .as_btree_map()
+            .iter()
+            .filter(move |&(other, _)| other != profession)
+            .map(|(_, &set)| set)
+            .try_collect1()
+            .map_err(|_empty| anyhow!("only {profession}s on grid"))
     }
 }
 
@@ -47,11 +77,10 @@ impl AddContext for &NameRecipe {
     type Output = Coordinate;
 
     fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
-        let name = match self {
-            NameRecipe::Me => context.speaker,
-            NameRecipe::Explicit(name) => name,
-        };
-        context.grid.coord(name)
+        match self {
+            NameRecipe::Me => Ok(context.speaker),
+            NameRecipe::Explicit(name) => context.coord(name),
+        }
     }
 }
 
@@ -60,7 +89,7 @@ impl AddContext for RowRecipe {
 
     fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
         let row = match self {
-            Self::Me => context.speaker_coord()?.row,
+            Self::Me => context.speaker.row,
             Self::Explicit(row) => row,
         };
         Ok(row)
@@ -72,7 +101,7 @@ impl AddContext for ColumnRecipe {
 
     fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
         let col = match self {
-            Self::Me => context.speaker_coord()?.col,
+            Self::Me => context.speaker.col,
             Self::Explicit(col) => col,
         };
         Ok(col)

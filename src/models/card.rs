@@ -4,6 +4,8 @@ use std::ops::Not;
 use colored::Color;
 use serde::{Deserialize, Serialize};
 
+use crate::models::{FlippedCard, HintText};
+
 pub(crate) type Name = String;
 pub(crate) type Profession = String;
 
@@ -75,6 +77,10 @@ impl Card {
             Some(Judgment::Criminal) => '🟥',
             None => '⬛',
         }
+    }
+
+    pub(crate) fn into_flipped(self) -> Option<FlippedCard> {
+        Some(FlippedCard::new(self.name, self.profession, self.back?))
     }
 }
 
@@ -181,6 +187,14 @@ impl MaybeHint {
     pub(crate) fn is_flavor(&self) -> bool {
         matches!(self, Self::Flavor)
     }
+
+    pub(crate) fn known(&self) -> Option<HintText> {
+        match self {
+            Self::Unknown => None,
+            Self::Flavor => Some(HintText::Flavor),
+            Self::Logical(hint) => Some(HintText::Logical(hint.clone())),
+        }
+    }
 }
 
 impl From<Option<String>> for MaybeHint {
@@ -189,6 +203,15 @@ impl From<Option<String>> for MaybeHint {
             Some(string) if string == "Flavor" => Self::Flavor,
             Some(string) => Self::Logical(string),
             None => Self::Unknown,
+        }
+    }
+}
+
+impl From<HintText> for MaybeHint {
+    fn from(value: HintText) -> Self {
+        match value {
+            HintText::Flavor => Self::Flavor,
+            HintText::Logical(string) => Self::Logical(string),
         }
     }
 }

@@ -1,20 +1,19 @@
 use std::borrow::Cow;
-use std::ffi::OsStr;
-use std::fs::File;
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::{fmt, fs};
 
-use anyhow::{Result, bail};
+use anyhow::{Context as _, Result, bail};
 use bpaf::{Bpaf, Parser as _};
-use inquire::{Confirm, Editor, MultiSelect, Select, Text};
-use itertools::Itertools as _;
+use inquire::{Confirm, CustomType, Editor, Select, Text};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
+use mitsein::EmptyError;
+use mitsein::str1::Str1;
+use mitsein::string1::String1;
 
-use crate::models::{Coordinate, Name};
+use crate::solver::SolverWithUpdates;
 use crate::solver::grid::editor::GridEditor;
-use crate::solver::{Solver, SolverWithUpdates, Suspect, Update};
 
 mod models;
 mod solver;
@@ -30,10 +29,12 @@ fn main() -> Result<()> {
         Args::Html { path } => read_from_file(path, FileType::Html),
         Args::Load { path } => read_from_file(path, FileType::Ron),
         Args::Today => fetch_today(),
-        Args::Archive { id_or_url } => archive(id_or_url),
+        Args::Archive { id_or_url } => {
+            archive(id_or_url.try_into().context("id or url cannot be empty")?)
+        }
     }?;
 
-    play(parsed)?;
+    parsed.solve()?;
     Ok(())
 }
 
@@ -47,9 +48,10 @@ fn main_menu() -> Result<SolverWithUpdates> {
         return match mode {
             InputMode::Today => fetch_today(),
             InputMode::Fetch => {
-                let archive_id = Text::new("Enter puzzle archive id or url")
+                let archive_id = CustomType::<NonEmptyText>::new("Enter puzzle archive id or url")
                     .with_placeholder("s/a0b1c2d3e4f5")
-                    .prompt()?;
+                    .prompt()?
+                    .into();
                 archive(archive_id)
             }
             InputMode::Load => {
@@ -84,17 +86,22 @@ fn main_menu() -> Result<SolverWithUpdates> {
     }
 }
 
-fn archive(input: String) -> Result<SolverWithUpdates> {
+fn archive(input: String1) -> Result<SolverWithUpdates> {
     let (url, id) = if let Some(url) = input.strip_prefix("https://") {
         if let Some(id) = extract_id(url) {
-            (Cow::Borrowed(&input), Cow::Borrowed(id))
+            (Cow::Borrowed(input.as_str()), Cow::Borrowed(id))
         } else {
             bail!("did not recognize url")
         }
     } else if let Some(id) = extract_id(&input) {
         (Cow::Owned(format!("https://{input}")), Cow::Borrowed(id))
-    } else if let Some(id) = input.strip_prefix("s/") {
-        (Cow::Owned(archive_url(id, true)), Cow::Borrowed(id))
+    } else if let Some(id) = input.strip_prefix("s/")
+        && let Ok(id) = Str1::try_from_str(id)
+    {
+        (
+            Cow::Owned(archive_url(id.as_str(), true)),
+            Cow::Borrowed(id),
+        )
     } else {
         let url_with_s = archive_url(&input, true);
         let mut parsed = fetch_from_url(&url_with_s, None).or_else(|_e| {
@@ -105,7 +112,7 @@ fn archive(input: String) -> Result<SolverWithUpdates> {
         return Ok(parsed);
     };
 
-    fetch_from_url(url.as_str(), Some(id.into_owned()))
+    fetch_from_url(url.as_ref(), Some(id.into_owned()))
 }
 
 fn archive_url(input: &str, with_s: bool) -> String {
@@ -116,7 +123,7 @@ fn archive_url(input: &str, with_s: bool) -> String {
     }
 }
 
-fn extract_id(url: &str) -> Option<&str> {
+fn extract_id(url: &str) -> Option<&Str1> {
     // TODO use trim_suffix('/')
     let url = url.trim().trim_end_matches('/');
     let prefixes = [
@@ -127,21 +134,23 @@ fn extract_id(url: &str) -> Option<&str> {
     prefixes
         .into_iter()
         .find_map(|prefix| url.strip_prefix(prefix))
-        .filter(|id| !id.is_empty())
+        .and_then(|id| id.try_into().ok())
 }
 
 fn fetch_today() -> Result<SolverWithUpdates> {
     fetch_from_url("https://cluesbysam.com/", Some(date_string()))
 }
 
-fn date_string() -> String {
+fn date_string() -> String1 {
     Timestamp::now()
         .to_zoned(TimeZone::get("America/New_York").expect("valid identifier"))
         .date()
         .to_string()
+        .try_into()
+        .expect("YYYY-MM-DD")
 }
 
-fn fetch_from_url(target_url: &str, name: Option<Name>) -> Result<SolverWithUpdates> {
+fn fetch_from_url(target_url: &str, name: Option<String1>) -> Result<SolverWithUpdates> {
     let api_key = read_api_key()?;
     let json = format!(r#"{{"url": "{target_url}"}}"#);
     let html = ureq::post(format!(
@@ -178,134 +187,13 @@ fn read_from_file(path: impl AsRef<Path>, file_type: FileType) -> Result<SolverW
     let contents = fs::read_to_string(path)?;
     let name = path
         .file_stem()
-        .and_then(|name| name.to_str())
-        .map(str::to_owned);
+        .and_then(|name| Str1::try_from_str(name.to_str()?).ok())
+        .map(Str1::to_owned);
     let parsed = match file_type {
         FileType::Ron => SolverWithUpdates::load(&contents, name)?,
         FileType::Html => SolverWithUpdates::parse(&contents, name)?,
     };
     Ok(parsed)
-}
-
-fn play(solver: SolverWithUpdates) -> Result<()> {
-    let SolverWithUpdates {
-        mut solver,
-        unknown_if_flavor,
-        mut pending_hints,
-    } = solver;
-    handle_unknown_hints(&mut solver, unknown_if_flavor)?;
-
-    loop {
-        let new = solver.infer()?;
-        print_inferences(&new);
-
-        println!("{}", solver.emoji_summary());
-        if solver.solved() {
-            println!("Puzzle solved!");
-            break;
-        }
-        pending_hints.extend(new.into_iter().map_into());
-        pending_hints.sort_unstable_by_key(Suspect::coord);
-
-        loop {
-            let selected = Select::new(
-                "Add a logical hint:",
-                pending_hints
-                    .iter()
-                    .map(HintOption::Suspect)
-                    .chain(HintOption::FIXED)
-                    .collect(),
-            )
-            .prompt()?;
-            match selected {
-                HintOption::Suspect(suspect) => {
-                    if let Some(hint) = Text::new(&format!("Enter {}'s hint:", suspect.name()))
-                        .prompt_skippable()?
-                    {
-                        match solver.add_hint(hint, suspect.coord()) {
-                            Ok(()) => {
-                                let coord = suspect.coord();
-                                pending_hints.retain(|pending| pending.coord() != coord);
-                                break;
-                            }
-                            Err(e) => {
-                                println!("I didn't understand that hint :(\n{e}");
-                            }
-                        }
-                    }
-                }
-                HintOption::MarkAsFlavor => {
-                    handle_mark_flavor(&mut solver, &mut pending_hints)?;
-                }
-                HintOption::Save => save_solver(&mut solver)?,
-            }
-        }
-    }
-    Ok(())
-}
-
-fn handle_unknown_hints(
-    solver: &mut Solver,
-    unknown: Vec<(Name, Coordinate, String)>,
-) -> Result<()> {
-    for (suspect, coord, hint) in unknown {
-        let flavor = Confirm::new(&format!(
-            "Is {suspect}'s ({coord}) hint, \"{hint}\", just flavor text?"
-        ))
-        .prompt()?;
-        if flavor {
-            solver.mark_as_flavor(coord)?;
-        } else {
-            solver.add_hint(hint, coord)?;
-        }
-    }
-    Ok(())
-}
-
-fn print_inferences(new: &[Update]) {
-    if let Some((last, rest)) = new.split_last() {
-        if rest.is_empty() {
-            println!("Mark {last}");
-        } else {
-            println!("Mark {} and {last}", rest.iter().format(", "));
-        }
-    }
-}
-
-fn handle_mark_flavor(solver: &mut Solver, pending: &mut Vec<Suspect>) -> Result<()> {
-    let flavor = MultiSelect::new("Select characters with flavor text", pending.clone())
-        .prompt_skippable()?
-        .unwrap_or_default();
-    pending.retain(|p| !flavor.iter().any(|f| f.coord() == p.coord()));
-    for f in flavor {
-        solver.mark_as_flavor(f.coord())?;
-    }
-    Ok(())
-}
-
-fn save_solver(solver: &mut Solver) -> Result<()> {
-    let save = solver.save_grid()?;
-    let path = solver.name().map_or_else(
-        || SAVE_DIRECTORY.to_owned(),
-        |name| {
-            Path::new(SAVE_DIRECTORY)
-                .join(name)
-                .with_added_extension("ron")
-                .display()
-                .to_string()
-        },
-    );
-    let path = Text::new("Save file:").with_initial_value(&path).prompt()?;
-    let path = PathBuf::from(path);
-    if let Some(file_stem) = path.file_stem().and_then(OsStr::to_str) {
-        solver.set_name(file_stem.to_owned());
-    }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut file = File::create(path)?;
-    file.write_all(save.as_bytes())?;
-    Ok(())
 }
 
 #[derive(Debug, Clone, Bpaf)]
@@ -389,36 +277,44 @@ fn manual_mode() -> Result<Option<SolverWithUpdates>> {
         .transpose()
 }
 
-enum HintOption<'suspect> {
-    Suspect(&'suspect Suspect),
-    MarkAsFlavor,
-    Save,
+#[derive(Clone, Debug)]
+struct NonEmptyText(String1);
+
+impl FromStr for NonEmptyText {
+    type Err = EmptyError<String>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.to_owned().try_into().map(Self)
+    }
 }
 
-impl HintOption<'_> {
-    const FIXED: [Self; 2] = [Self::MarkAsFlavor, Self::Save];
-}
-
-impl fmt::Display for HintOption<'_> {
+impl fmt::Display for NonEmptyText {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Suspect(name) => write!(f, "{name}"),
-            Self::MarkAsFlavor => write!(f, "mark hints as flavor"),
-            Self::Save => write!(f, "save progress to file"),
-        }
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<NonEmptyText> for String1 {
+    fn from(value: NonEmptyText) -> Self {
+        value.0
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use mitsein::str1::str1;
+
     use super::extract_id;
 
     #[test]
     fn recognizes_archive_urls() {
-        assert_eq!(extract_id("cluesbysam.com/archive/abc123/"), Some("abc123"));
+        assert_eq!(
+            extract_id("cluesbysam.com/archive/abc123/"),
+            Some(str1!("abc123"))
+        );
         assert_eq!(
             extract_id("cluesbysam.com/s/archive/abc123/"),
-            Some("abc123")
+            Some(str1!("abc123"))
         );
     }
 
@@ -426,7 +322,7 @@ mod tests {
     fn recognizes_play_page_urls() {
         assert_eq!(
             extract_id("cluesbysam.com/s/play/?puzzleId=abc123"),
-            Some("abc123")
+            Some(str1!("abc123"))
         );
     }
 }

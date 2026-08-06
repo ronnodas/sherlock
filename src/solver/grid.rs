@@ -1,16 +1,17 @@
 use std::collections::HashMap;
 use std::ops::{Index, IndexMut};
 
-use anyhow::{Result, anyhow, bail};
+#[cfg(test)]
+use anyhow::anyhow;
+use anyhow::{Result, bail};
 use itertools::Itertools as _;
 use mitsein::btree_map1::BTreeMap1;
 use mitsein::iter1::IteratorExt as _;
-use mitsein::vec1::Vec1;
 use select::document::Document;
 use select::predicate::{Any, Attr, Predicate as _};
 use serde::{Deserialize, Serialize};
 
-use crate::models::{Card, CardBack, Coordinate, Judgment, Name, Profession};
+use crate::models::{Card, CardBack, Coordinate, FlippedCard, Judgment, Name, Profession};
 use crate::solver::Suspect;
 use crate::solver::grid::coordinates::Set1;
 use crate::solver::grid::parsers::{Class, ClassName, Div, NodeExt as _, parse_card};
@@ -20,15 +21,39 @@ pub(crate) mod editor;
 mod parsers;
 mod save;
 
+pub(crate) type SolvedGrid = Grid<FlippedCard>;
+
 #[derive(Clone, Debug, Deserialize)]
-#[serde(from = "save::CardList")]
-pub(crate) struct Grid {
-    cards: [Card; 20],
+#[serde(from = "save::CardList", bound = "Self: From<save::CardList<'de>>")]
+pub(crate) struct Grid<C = Card> {
+    cards: [C; 20],
     coordinates: HashMap<Name, Coordinate>,
     // TODO maybe change this to `IndexMap` or `HashMap` once `mitsein` supports that
     by_profession: BTreeMap1<Profession, Set1>,
     format: Format,
     start: Option<Coordinate>,
+}
+
+impl<C> Grid<C> {
+    pub(crate) fn start(&self) -> Option<Coordinate> {
+        self.start
+    }
+
+    pub(crate) fn coordinates(&self) -> &HashMap<Name, Coordinate> {
+        &self.coordinates
+    }
+
+    pub(crate) fn by_profession(&self) -> &BTreeMap1<String, Set1> {
+        &self.by_profession
+    }
+
+    #[cfg(test)]
+    pub(crate) fn coord(&self, name: &str) -> Result<Coordinate> {
+        self.coordinates
+            .get(name)
+            .copied()
+            .ok_or_else(|| anyhow!("{name} not in grid"))
+    }
 }
 
 impl Grid {
@@ -102,15 +127,23 @@ impl Grid {
         self.cards
     }
 
-    pub(crate) fn coord(&self, name: &str) -> Result<Coordinate> {
-        self.coordinates
-            .get(name)
-            .copied()
-            .ok_or_else(|| anyhow!("{name} not in grid"))
-    }
-
     pub(crate) fn solved(&self) -> bool {
         self.cards.iter().all(Card::flipped)
+    }
+    pub(crate) fn into_solved(self) -> Option<Grid<FlippedCard>> {
+        // TODO This could be better using try_map()
+        let cards = self
+            .cards
+            .into_iter()
+            .map(Card::into_flipped)
+            .collect::<Option<Vec<FlippedCard>>>()?;
+        Some(Grid {
+            cards: cards.try_into().ok()?,
+            coordinates: self.coordinates,
+            by_profession: self.by_profession,
+            format: self.format,
+            start: self.start,
+        })
     }
 
     pub(crate) fn fixed(&self) -> [Option<Judgment>; 20] {
@@ -119,12 +152,6 @@ impl Grid {
 
     pub(crate) fn set_new(&mut self, index: usize, judgment: Judgment) -> Option<&Card> {
         self.cards[index].reveal(judgment)
-    }
-
-    pub(crate) fn profession_as_set(&self, profession: &Profession) -> Result<&Set1> {
-        self.by_profession
-            .get(profession)
-            .ok_or_else(|| anyhow!("{profession} not in grid"))
     }
 
     pub(crate) fn add_hint(&mut self, hint: String, coord: Coordinate) -> Result<()> {
@@ -144,16 +171,6 @@ impl Grid {
             .enumerate()
             .filter_map(|(index, card)| Suspect::from_card(card, Coordinate::from_index(index)))
             .collect()
-    }
-
-    pub(crate) fn other_professions(&self, profession: &str) -> Result<Vec1<Set1>> {
-        self.by_profession
-            .as_btree_map()
-            .iter()
-            .filter(move |&(other, _)| other != profession)
-            .map(|(_, &set)| set)
-            .try_collect1()
-            .map_err(|_empty| anyhow!("only {profession}s on grid"))
     }
 
     pub(crate) fn format(&self) -> Format {
@@ -176,10 +193,6 @@ impl Grid {
         Ok(self[coord].back_mut().expect("checked above"))
     }
 
-    pub(crate) fn by_profession(&self) -> &BTreeMap1<Profession, Set1> {
-        &self.by_profession
-    }
-
     pub(crate) fn set_start(&mut self) {
         self.start = self.start.or_else(|| {
             self.cards
@@ -193,28 +206,28 @@ impl Grid {
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
-pub(crate) enum Format {
-    Original,
-    Sep2025,
-}
-
 impl Serialize for Grid {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         save::CardList::from(self).serialize(serializer)
     }
 }
 
-impl Index<Coordinate> for Grid {
-    type Output = Card;
+impl<C> Index<Coordinate> for Grid<C> {
+    type Output = C;
 
-    fn index(&self, index: Coordinate) -> &Card {
+    fn index(&self, index: Coordinate) -> &C {
         &self.cards[index.to_index()]
     }
 }
 
-impl IndexMut<Coordinate> for Grid {
-    fn index_mut(&mut self, index: Coordinate) -> &mut Card {
+impl<C> IndexMut<Coordinate> for Grid<C> {
+    fn index_mut(&mut self, index: Coordinate) -> &mut C {
         &mut self.cards[index.to_index()]
     }
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub(crate) enum Format {
+    Original,
+    Sep2025,
 }
