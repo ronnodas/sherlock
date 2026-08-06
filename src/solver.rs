@@ -264,11 +264,14 @@ impl Solved {
             }
         }
         let mut text = String::new();
-        loop {
-            println!("{}", unknown.iter().format("; "));
-            if Confirm::new("Are all of the above suspects' hints flavor text?").prompt()? {
-                for card in unknown {
-                    self.grid[card.coord].back_mut().mark_as_flavor();
+        while !unknown.is_empty() {
+            let message = format!(
+                "Are all of the following suspects' hints flavor text (y/n): {}",
+                unknown.iter().format(", ")
+            );
+            if Confirm::new(&message).prompt()? {
+                for suspect in unknown {
+                    self.grid[suspect.coord].back_mut().mark_as_flavor();
                 }
                 break;
             }
