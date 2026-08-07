@@ -393,7 +393,7 @@ impl Sentence {
     fn units_share_n_traits(input: &mut &[&str]) -> Result<Self> {
         alt((
             terminated(
-                separated_pair(pair(name), word("have"), cardinal_judgment),
+                separated_pair(pair(name, "and"), word("have"), cardinal_judgment),
                 words((neighbor_any, "in", "common")),
             )
             .map(|(names, (count, judgment))| (names.map(Unit::Neighbor), judgment, count)),
@@ -416,7 +416,7 @@ impl Sentence {
             .map(|(name, ((quantity, judgment), unit))| {
                 ([Unit::Neighbor(name), unit], judgment, quantity)
             }),
-            separated_pair(pair(name), word("share"), cardinal_judged_neighbors).map(
+            separated_pair(pair(name, "and"), word("share"), cardinal_judged_neighbors).map(
                 |(names, (quantity, judgment))| (names.map(Unit::Neighbor), judgment, quantity),
             ),
         ))
@@ -442,7 +442,7 @@ impl Sentence {
                 (judgment_a == judgment_b).then_some((judgment_a, [a, b]))
             }),
             separated_pair(
-                pair(name),
+                pair(name, "and"),
                 words(("have", "an", "equal", "number", "of")),
                 terminated(word(judgment_singular), word("neighbors")),
             )
@@ -505,14 +505,20 @@ impl Sentence {
     }
 
     fn equal_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
-        preceded(
-            words(("There", "are", "as", "many")),
-            (
-                separated_pair(word(judgment_plural), word("as"), word(judgment_plural)),
-                unit,
+        alt((
+            preceded(
+                words(("There", "are", "as", "many")),
+                (pair(judgment_plural, "as"), unit),
             ),
-        )
-        .verify(|&((a, b), _)| a == !b)
+            preceded(
+                words(("There's", "an", "equal", "number", "of")),
+                (
+                    pair(judgment_singular, "and"),
+                    word(profession_plural).map(Unit::Profession),
+                ),
+            ),
+        ))
+        .verify(|&([a, b], _)| a == !b)
         .map(|(_, unit)| Self::UnitEquallySplit(unit))
         .parse_next(input)
     }
@@ -544,7 +550,7 @@ impl Sentence {
 
     fn total_number_of_traits_in_units(input: &mut &[&str]) -> Result<Self> {
         terminated(
-            separated_pair(pair(name), word("have"), cardinal_judged_neighbors),
+            separated_pair(pair(name, "and"), word("have"), cardinal_judged_neighbors),
             words(("in", "total")),
         )
         .map(|(names, (quantity, judgment))| {
@@ -859,7 +865,7 @@ fn be_verb<'input>(input: &mut &'input str) -> Result<&'input str> {
 }
 
 fn between(input: &mut &[&str]) -> Result<Unit> {
-    preceded(words(("in", "between")), pair(name))
+    preceded(words(("in", "between")), pair(name, "and"))
         .map(Unit::Between)
         .parse_next(input)
 }
@@ -966,8 +972,9 @@ fn pair<
     E: ParserError<&'input [&'inner str]> + ParserError<&'inner str>,
 >(
     inner: impl Parser<&'inner str, T, E> + Copy,
+    sep: &'static str,
 ) -> impl Parser<&'input [&'inner str], [T; 2], E> {
-    separated_pair(word(inner), word("and"), word(inner)).map(Into::into)
+    separated_pair(word(inner), word(sep), word(inner)).map(Into::into)
 }
 
 fn word<

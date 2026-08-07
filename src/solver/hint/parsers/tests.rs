@@ -742,6 +742,14 @@ fn kumar_2026_08_04() {
 }
 
 #[test]
+fn zed_2026_08_07() {
+    sentence(
+        "There's an equal number of innocent and criminal cops",
+        &Sentence::UnitEquallySplit(Unit::profession("cop")),
+    );
+}
+
+#[test]
 fn diane_0cf47() {
     sentence(
         "Xavi has more criminal neighbors than Ben",
