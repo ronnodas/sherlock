@@ -6,7 +6,6 @@ use mitsein::iter1::IteratorExt as _;
 use mitsein::vec1::Vec1;
 
 use crate::models::{Column, Coord, Name, Profession, Row};
-use crate::solver::board::Board;
 use crate::solver::board::coordinates::Set1;
 use crate::solver::hint::{Line, LineKind};
 
@@ -27,15 +26,7 @@ pub(crate) struct Context<'ctx> {
     pub speaker: Coord,
 }
 
-impl<'ctx> Context<'ctx> {
-    pub(crate) fn new<C>(board: &'ctx Board<C>, speaker: Coord) -> Self {
-        Self {
-            coordinates: board.coordinates(),
-            by_profession: board.by_profession(),
-            speaker,
-        }
-    }
-
+impl Context<'_> {
     fn coord(&self, name: &str) -> Result<Coord> {
         self.coordinates
             .get(name)

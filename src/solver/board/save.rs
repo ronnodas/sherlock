@@ -4,12 +4,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::grid::Grid;
 use crate::models::{Card, CardBack, Coord, Name, Profession};
-use crate::solver::board::{Board, Format};
+use crate::solver::board::Board;
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct CardList<'card> {
     cards: Grid<RefCard<'card>>,
-    format: Format,
     #[serde(skip_serializing_if = "Option::is_none")]
     start: Option<Coord>,
 }
@@ -17,7 +16,7 @@ pub(crate) struct CardList<'card> {
 impl From<CardList<'_>> for Board {
     fn from(card_list: CardList) -> Self {
         let cards = card_list.cards.map(Card::from);
-        Self::new(cards, card_list.format, card_list.start)
+        Self::new(cards, card_list.start)
     }
 }
 
@@ -33,7 +32,6 @@ impl<'card> From<&'card Board> for CardList<'card> {
         });
         Self {
             cards,
-            format: board.format,
             start: board.start,
         }
     }

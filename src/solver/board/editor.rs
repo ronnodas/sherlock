@@ -15,7 +15,7 @@ use tabled::settings::{Color as TabledColor, Style, object::Cell};
 
 use crate::grid::Grid;
 use crate::models::{Card, CardBack, Column, Coord, Judgment, MaybeHint, Name, Profession, Row};
-use crate::solver::board::{Board, Format};
+use crate::solver::board::Board;
 
 pub(crate) struct BoardEditor {
     cards: Grid<CardEdit>,
@@ -49,7 +49,7 @@ impl BoardEditor {
             })?;
         let cards: Grid<Card> = Grid::from_flattened(flattened);
 
-        Ok(Board::new(cards, Format::Sep2025, None))
+        Ok(Board::new(cards, None))
     }
 
     pub(crate) fn interact(mut self) -> Result<Option<Board>> {
@@ -129,15 +129,12 @@ impl BoardEditor {
 impl From<Board> for BoardEditor {
     fn from(board: Board) -> Self {
         let professions = board
-            .by_profession()
-            .as_btree_map()
-            .keys()
-            .cloned()
+            .cards
+            .iter()
+            .map(|card| card.profession().clone())
             .collect();
-        Self {
-            cards: board.cards.map(CardEdit::from),
-            professions,
-        }
+        let cards = board.cards.map(CardEdit::from);
+        Self { cards, professions }
     }
 }
 

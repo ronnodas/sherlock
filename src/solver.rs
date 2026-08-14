@@ -16,8 +16,8 @@ use ron::ser::{PrettyConfig, to_string_pretty};
 use crate::SAVE_DIRECTORY;
 use crate::grid::Grid;
 use crate::models::{Coord, FullCard, Judgment, Name, Puzzle};
-use crate::solver::board::{Board, Format, SolvedBoard};
-use crate::solver::hint::recipes::{AddContext as _, Context};
+use crate::solver::board::{Board, Format, HtmlBoard, SolvedBoard};
+use crate::solver::hint::recipes::AddContext as _;
 use crate::solver::hint::{Hint, Sentence};
 use crate::solver::solution::Solution;
 
@@ -36,6 +36,21 @@ struct Solver {
 }
 
 impl Solver {
+    fn new(board: Board, title: Option<String1>) -> Self {
+        let old = board.fixed();
+        let fixed_values = Coord::all()
+            .into_iter()
+            .filter_map(|coord| Some((coord, old[coord]?)));
+        let solutions = Solution::all(fixed_values);
+
+        Self {
+            title,
+            board,
+
+            solutions,
+        }
+    }
+
     fn solve(mut self, mut pending_hints: Vec<Suspect>) -> Result<()> {
         loop {
             let new = self.infer()?;
@@ -122,27 +137,12 @@ impl Solver {
             .collect())
     }
 
-    fn handle_unknown_hints(&mut self, unknown: Vec<(Name, Coord, String)>) -> Result<()> {
-        for (suspect, coord, hint) in unknown {
-            let flavor = Confirm::new(&format!(
-                "Is {suspect}'s ({coord}) hint, \"{hint}\", just flavor text?"
-            ))
-            .prompt()?;
-            if flavor {
-                self.mark_as_flavor(coord)?;
-            } else {
-                self.add_hint(hint, coord)?;
-            }
-        }
-        Ok(())
-    }
-
-    fn add_hint(&mut self, hint: String, coord: Coord) -> Result<()> {
+    fn add_hint(&mut self, hint: String, speaker: Coord) -> Result<()> {
         Sentence::parse(&hint)?
-            .add_context(Context::new(&self.board, coord))?
+            .add_context(self.board.context(speaker))?
             .into_iter()
             .for_each(|hint| self.add_parsed_hint(&hint));
-        self.board.add_hint(hint, coord)
+        self.board.add_hint(hint, speaker)
     }
 
     fn add_parsed_hint(&mut self, hint: &Hint) {
@@ -290,7 +290,7 @@ impl Solved {
 
                 if let Ok(sentence) = Sentence::parse(&text)
                     && sentence
-                        .add_context(Context::new(&self.board, suspect.coord))
+                        .add_context(self.board.context(suspect.coord))
                         .is_ok()
                 {
                     self.board[suspect.coord]
@@ -325,76 +325,41 @@ fn ron_config() -> PrettyConfig {
 }
 
 #[derive(Debug)]
-pub(crate) struct SolverWithUpdates {
-    solver: Solver,
-    unknown_if_flavor: Vec<(Name, Coord, String)>,
-    pending_hints: Vec<Suspect>,
+pub(crate) struct ParsedBoard {
+    pub title: Option<String1>,
+    pub board: Board,
+    pub hints: Vec<Hint>,
+    pub pending_hints: Vec<Suspect>,
 }
 
-impl SolverWithUpdates {
-    pub(crate) fn parse(html: &str, name: Option<String1>) -> Result<Self> {
-        let board = Board::parse(html)?;
-        Self::new(board, name)
-    }
-
+impl ParsedBoard {
     pub(crate) fn new(board: Board, title: Option<String1>) -> Result<Self> {
         let pending_hints = board.pending_hints();
 
-        let maybe_parsed = board
-            .iter()
-            .enumerate()
-            .filter_map(|(index, card)| {
-                let coord = Coord::from_index(index);
-                Some((coord, card.name().clone(), card.logical_hint()?))
-            })
-            .map(|(coord, speaker, hint)| {
-                let hint = Sentence::parse(hint)
-                    .and_then(|sentence| sentence.add_context(Context::new(&board, coord)))
-                    .map_err(|e| (e, hint));
-                (coord, speaker, hint)
-            });
-        let (hints, unknown_if_flavor) = match board.format() {
-            Format::Original => {
-                let mut hints = Vec::new();
-                let mut unknown = Vec::new();
-
-                for (coord, name, maybe_parsed) in maybe_parsed {
-                    match maybe_parsed {
-                        Ok(parsed) => hints.extend(parsed),
-                        Err((_, hint)) => unknown.push((name, coord, hint.to_owned())),
-                    }
-                }
-                (hints, unknown)
-            }
-            Format::Sep2025 => {
-                let hints: Vec<Hint> = maybe_parsed
-                    .map(|(_, _, hint)| hint.map_err(|(e, _)| e))
-                    .flatten_ok()
-                    .try_collect()?;
-                (hints, Vec::new())
-            }
-        };
-
-        let old = board.fixed();
-        let fixed_values = Coord::all()
-            .into_iter()
-            .filter_map(|coord| Some((coord, old[coord]?)));
-        let solutions = Solution::all(fixed_values);
-
-        let mut solver = Solver {
-            title,
-            board,
-
-            solutions,
-        };
-
-        for hint in hints {
-            solver.add_parsed_hint(&hint);
-        }
+        let hints = board.parse_all_hints()?;
 
         Ok(Self {
-            solver,
-            unknown_if_flavor,
+            title,
+            board,
+            hints,
+            pending_hints,
+        })
+    }
+
+    pub(crate) fn from_html(html: &str, title: Option<String1>) -> Result<Self> {
+        let HtmlBoard { mut board, format } = HtmlBoard::parse(html)?;
+
+        let pending_hints = board.pending_hints();
+
+        let hints = match format {
+            Format::Original => board.parse_hints_and_confirm_flavor()?,
+            Format::Sep2025 => board.parse_all_hints()?,
+        };
+
+        Ok(Self {
+            title,
+            board,
+            hints,
             pending_hints,
         })
     }
@@ -404,13 +369,20 @@ impl SolverWithUpdates {
         Self::new(board, title)
     }
 
-    pub(crate) fn solve(mut self) -> Result<()> {
-        self.solver.handle_unknown_hints(self.unknown_if_flavor)?;
-        self.solver.solve(self.pending_hints)
+    pub(crate) fn solve(self) -> Result<()> {
+        let (solver, pending) = self.into_solver();
+
+        solver.solve(pending)
     }
 
-    pub(crate) fn set_title(&mut self, title: String1) {
-        self.solver.set_title(title);
+    fn into_solver(self) -> (Solver, Vec<Suspect>) {
+        let mut solver = Solver::new(self.board, self.title);
+
+        for hint in self.hints {
+            solver.add_parsed_hint(&hint);
+        }
+
+        (solver, self.pending_hints)
     }
 }
 
@@ -523,7 +495,7 @@ mod tests {
     use crate::grid::Grid;
     use crate::solver::solution::Solution;
 
-    use super::{Judgment, SolverWithUpdates};
+    use super::{Judgment, ParsedBoard};
 
     #[test]
     fn sample_2026_02_08() {
@@ -533,7 +505,7 @@ mod tests {
             Err(e) if e.kind() == io::ErrorKind::NotFound => return,
             Err(e) => panic!("Failed to read sample: {e}"),
         };
-        let parsed = SolverWithUpdates::parse(&contents, None).unwrap();
+        let parsed = ParsedBoard::from_html(&contents, None).unwrap();
         assert!(parsed.pending_hints.is_empty());
         let solution = Solution::from(Grid::from([
             [I, C, C, C],
@@ -607,7 +579,7 @@ mod tests {
             ],
         ];
 
-        let mut solver = parsed.solver;
+        let (mut solver, _pending) = parsed.into_solver();
         for &changes in steps {
             let deductions = changes
                 .iter()
@@ -655,7 +627,7 @@ mod tests {
             let path = entry.path();
             let contents = fs::read_to_string(&path).unwrap();
             drop(
-                SolverWithUpdates::parse(&contents, None)
+                ParsedBoard::from_html(&contents, None)
                     .with_context(|| format!("parsing {}", path.to_string_lossy()))
                     .unwrap(),
             );

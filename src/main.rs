@@ -12,7 +12,7 @@ use mitsein::EmptyError;
 use mitsein::str1::Str1;
 use mitsein::string1::String1;
 
-use crate::solver::SolverWithUpdates;
+use crate::solver::ParsedBoard;
 use crate::solver::board::editor::BoardEditor;
 
 mod grid;
@@ -39,7 +39,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn main_menu() -> Result<SolverWithUpdates> {
+fn main_menu() -> Result<ParsedBoard> {
     loop {
         let mode = Select::new(
             "Which puzzle do you want to solve?",
@@ -74,7 +74,7 @@ fn main_menu() -> Result<SolverWithUpdates> {
             }
             InputMode::Paste => {
                 let html = Editor::new("Enter HTML in your editor:").prompt()?;
-                SolverWithUpdates::parse(&html, None)
+                ParsedBoard::from_html(&html, None)
             }
             InputMode::Manual => {
                 if let Some(solver) = manual_mode()? {
@@ -87,7 +87,7 @@ fn main_menu() -> Result<SolverWithUpdates> {
     }
 }
 
-fn archive(id_or_url: String1) -> Result<SolverWithUpdates> {
+fn archive(id_or_url: String1) -> Result<ParsedBoard> {
     let (url, id) = if let Some(url) = id_or_url.strip_prefix("https://") {
         if let Some(id) = extract_id(url) {
             (Cow::Borrowed(id_or_url.as_str()), Cow::Borrowed(id))
@@ -108,12 +108,10 @@ fn archive(id_or_url: String1) -> Result<SolverWithUpdates> {
         )
     } else {
         let url_with_s = archive_url(&id_or_url, true);
-        let mut parsed = fetch_from_url(&url_with_s, None).or_else(|_e| {
+        return fetch_from_url(&url_with_s, None).or_else(|_e| {
             let url_without_s = archive_url(&id_or_url, false);
-            fetch_from_url(&url_without_s, None)
-        })?;
-        parsed.set_title(id_or_url);
-        return Ok(parsed);
+            fetch_from_url(&url_without_s, Some(id_or_url))
+        });
     };
 
     fetch_from_url(url.as_ref(), Some(id.into_owned()))
@@ -141,7 +139,7 @@ fn extract_id(url: &str) -> Option<&Str1> {
         .and_then(|id| id.try_into().ok())
 }
 
-fn fetch_today() -> Result<SolverWithUpdates> {
+fn fetch_today() -> Result<ParsedBoard> {
     fetch_from_url("https://cluesbysam.com/", Some(date_string()))
 }
 
@@ -154,7 +152,7 @@ fn date_string() -> String1 {
         .expect("YYYY-MM-DD")
 }
 
-fn fetch_from_url(target_url: &str, name: Option<String1>) -> Result<SolverWithUpdates> {
+fn fetch_from_url(target_url: &str, title: Option<String1>) -> Result<ParsedBoard> {
     let api_key = read_api_key()?;
     let json = format!(r#"{{"url": "{target_url}"}}"#);
     let html = ureq::post(format!(
@@ -164,7 +162,7 @@ fn fetch_from_url(target_url: &str, name: Option<String1>) -> Result<SolverWithU
     .send(&json)?
     .body_mut()
     .read_to_string()?;
-    SolverWithUpdates::parse(&html, name)
+    ParsedBoard::from_html(&html, title)
 }
 
 fn read_api_key() -> Result<String> {
@@ -186,16 +184,16 @@ fn read_api_key() -> Result<String> {
     Ok(api_key)
 }
 
-fn read_from_file(path: impl AsRef<Path>, file_type: FileType) -> Result<SolverWithUpdates> {
+fn read_from_file(path: impl AsRef<Path>, file_type: FileType) -> Result<ParsedBoard> {
     let path = path.as_ref();
     let contents = fs::read_to_string(path)?;
-    let name = path
+    let title = path
         .file_stem()
         .and_then(|name| Str1::try_from_str(name.to_str()?).ok())
         .map(Str1::to_owned);
     let parsed = match file_type {
-        FileType::Ron => SolverWithUpdates::load(&contents, name)?,
-        FileType::Html => SolverWithUpdates::parse(&contents, name)?,
+        FileType::Ron => ParsedBoard::load(&contents, title)?,
+        FileType::Html => ParsedBoard::from_html(&contents, title)?,
     };
     Ok(parsed)
 }
@@ -274,10 +272,10 @@ impl fmt::Display for InputMode {
     }
 }
 
-fn manual_mode() -> Result<Option<SolverWithUpdates>> {
+fn manual_mode() -> Result<Option<ParsedBoard>> {
     BoardEditor::new()
         .interact()?
-        .map(|board| SolverWithUpdates::new(board, None))
+        .map(|board| ParsedBoard::new(board, None))
         .transpose()
 }
 
