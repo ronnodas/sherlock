@@ -271,7 +271,7 @@ impl Solved {
             );
             if Confirm::new(&message).prompt()? {
                 for suspect in unknown {
-                    self.board[suspect.coord].back_mut().mark_as_flavor();
+                    self.board[suspect.coord].mark_as_flavor();
                 }
                 break;
             }
@@ -293,9 +293,7 @@ impl Solved {
                         .add_context(self.board.context(suspect.coord))
                         .is_ok()
                 {
-                    self.board[suspect.coord]
-                        .back_mut()
-                        .set_hint(mem::take(&mut text));
+                    self.board[suspect.coord].set_hint(mem::take(&mut text));
                     drop(unknown.remove(index));
                 }
                 println!("I didn't understand that hint :(\n{text}");

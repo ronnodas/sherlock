@@ -61,10 +61,6 @@ impl JudgedCard {
         self.back.judgment()
     }
 
-    pub(crate) fn back_mut(&mut self) -> &mut CardBack {
-        &mut self.back
-    }
-
     pub(crate) fn back(&self) -> &CardBack {
         &self.back
     }
@@ -79,5 +75,13 @@ impl JudgedCard {
             profession,
             back,
         }
+    }
+
+    pub(crate) fn set_hint(&mut self, hint: String) {
+        self.back.set_hint(hint);
+    }
+
+    pub(crate) fn mark_as_flavor(&mut self) {
+        self.back.mark_as_flavor();
     }
 }

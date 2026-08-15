@@ -3,7 +3,7 @@ use std::ops::{Index, IndexMut};
 
 #[cfg(test)]
 use anyhow::anyhow;
-use anyhow::{Result, bail};
+use anyhow::{Context as _, Result, bail};
 use inquire::Confirm;
 use itertools::Itertools as _;
 use mitsein::btree_map1::BTreeMap1;
@@ -127,12 +127,16 @@ impl Board {
     }
 
     pub(crate) fn add_hint(&mut self, hint: String, coord: Coord) -> Result<()> {
-        self.card_back(coord)?.set_hint(hint);
+        self.card_back_mut(coord)
+            .with_context(|| format!("{coord} is not flipped"))?
+            .set_hint(hint);
         Ok(())
     }
 
     pub(crate) fn mark_as_flavor(&mut self, coord: Coord) -> Result<()> {
-        self.card_back(coord)?.mark_as_flavor();
+        self.card_back_mut(coord)
+            .with_context(|| format!("{coord} is not flipped"))?
+            .mark_as_flavor();
         self.set_start();
         Ok(())
     }
@@ -153,12 +157,8 @@ impl Board {
             .to_string()
     }
 
-    fn card_back(&mut self, coord: Coord) -> Result<&mut CardBack> {
-        if self[coord].back().is_none() {
-            bail!("{}'s card is not flipped", self[coord].name())
-        }
-        // https://github.com/rust-lang/rust/issues/54663
-        Ok(self[coord].back_mut().expect("checked above"))
+    fn card_back_mut(&mut self, coord: Coord) -> Option<&mut CardBack> {
+        self[coord].back_mut()
     }
 
     fn set_start(&mut self) {
