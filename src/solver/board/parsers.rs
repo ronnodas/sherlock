@@ -5,9 +5,9 @@ use itertools::Itertools as _;
 use select::node::Node;
 use select::predicate::{self, Name, Predicate};
 
-use crate::models::{Card, CardBack, Judgment, MaybeHint};
+use crate::models::{CardBack, Judgment, MaybeHint, SolveCard};
 
-pub(crate) fn parse_card(node: &Node<'_>) -> Result<(Card, bool)> {
+pub(crate) fn parse_card(node: &Node<'_>) -> Result<(SolveCard, bool)> {
     let node = node
         .expect(Div)?
         .unique_child(Div.and(Class(ClassName::Card)))?;
@@ -35,7 +35,7 @@ pub(crate) fn parse_card(node: &Node<'_>) -> Result<(Card, bool)> {
         .map(|judgment| parse_back(card, judgment))
         .transpose()?;
     let has_hint = node.is(Class(ClassName::HasHint));
-    let card = Card::new(name, profession, back);
+    let card = SolveCard::new(name, profession, back);
     Ok((card, has_hint))
 }
 

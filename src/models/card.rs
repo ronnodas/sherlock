@@ -4,7 +4,7 @@ use std::ops::Not;
 use colored::Color;
 use serde::{Deserialize, Serialize};
 
-use crate::models::{Coord, FlippedCard, HintText};
+use crate::models::{Coord, HintText, JudgedCard};
 use crate::solver::Suspect;
 
 // TODO force non-empty
@@ -12,13 +12,13 @@ pub(crate) type Name = String;
 pub(crate) type Profession = String;
 
 #[derive(Clone, Debug)]
-pub(crate) struct Card {
+pub(crate) struct SolveCard {
     name: Name,
     profession: Profession,
     back: Option<CardBack>,
 }
 
-impl Card {
+impl SolveCard {
     pub(crate) fn logical_hint(&self) -> Option<&str> {
         self.back.as_ref()?.hint().as_logical()
     }
@@ -84,8 +84,8 @@ impl Card {
         }
     }
 
-    pub(crate) fn into_flipped(self) -> Option<FlippedCard> {
-        Some(FlippedCard::new(self.name, self.profession, self.back?))
+    pub(crate) fn judged(self) -> Option<JudgedCard> {
+        Some(JudgedCard::new(self.name, self.profession, self.back?))
     }
 }
 

@@ -15,7 +15,7 @@ use ron::ser::{PrettyConfig, to_string_pretty};
 
 use crate::SAVE_DIRECTORY;
 use crate::grid::Grid;
-use crate::models::{Coord, FullCard, Judgment, Name, Puzzle};
+use crate::models::{Card, Coord, Judgment, Name, Puzzle};
 use crate::solver::board::{Board, Format, HtmlBoard, SolvedBoard};
 use crate::solver::hint::recipes::AddContext as _;
 use crate::solver::hint::{Hint, Sentence};
@@ -309,7 +309,7 @@ impl Solved {
             let profession = card.profession().clone();
             let judgment = card.judgment();
             let hint = card.back().hint().known().expect("set above");
-            FullCard::new(name, profession, judgment, hint)
+            Card::new(name, profession, judgment, hint)
         });
         let puzzle = Puzzle::new(cards, start);
         Ok(puzzle)

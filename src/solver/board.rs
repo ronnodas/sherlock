@@ -13,7 +13,7 @@ use select::predicate::{Any, Attr, Predicate as _};
 use serde::{Deserialize, Serialize};
 
 use crate::grid::Grid;
-use crate::models::{Card, CardBack, Coord, FlippedCard, Judgment, Name, Profession};
+use crate::models::{CardBack, Coord, JudgedCard, Judgment, Name, Profession, SolveCard};
 use crate::solver::Suspect;
 use crate::solver::board::coordinates::Set1;
 use crate::solver::board::parsers::{Class, ClassName, Div, NodeExt as _, parse_card};
@@ -25,11 +25,11 @@ pub(crate) mod editor;
 mod parsers;
 mod save;
 
-pub(crate) type SolvedBoard = Board<FlippedCard>;
+pub(crate) type SolvedBoard = Board<JudgedCard>;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(from = "save::CardList", bound = "Self: From<save::CardList<'de>>")]
-pub(crate) struct Board<C = Card> {
+pub(crate) struct Board<C = SolveCard> {
     cards: Grid<C>,
     coordinates: HashMap<Name, Coord>,
     // TODO maybe change this to `IndexMap` or `HashMap` once `mitsein` supports that
@@ -64,7 +64,7 @@ impl<C> Board<C> {
 }
 
 impl Board {
-    fn new(cards: Grid<Card>, start: Option<Coord>) -> Self {
+    fn new(cards: Grid<SolveCard>, start: Option<Coord>) -> Self {
         let coordinates = cards
             .iter()
             .enumerate()
@@ -92,21 +92,21 @@ impl Board {
         board
     }
 
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &Card> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &SolveCard> {
         self.cards.iter()
     }
 
     pub(crate) fn solved(&self) -> bool {
-        self.cards.iter().all(Card::flipped)
+        self.cards.iter().all(SolveCard::flipped)
     }
 
-    pub(crate) fn into_solved(self) -> Option<Board<FlippedCard>> {
+    pub(crate) fn into_solved(self) -> Option<Board<JudgedCard>> {
         // TODO use try_map()
         let cards = Grid::from_flattened(
             self.cards
                 .into_iter()
-                .map(Card::into_flipped)
-                .collect::<Option<Vec<FlippedCard>>>()?
+                .map(SolveCard::judged)
+                .collect::<Option<Vec<JudgedCard>>>()?
                 .try_into()
                 .expect("length unchanged"),
         );
@@ -119,10 +119,10 @@ impl Board {
     }
 
     pub(crate) fn fixed(&self) -> Grid<Option<Judgment>> {
-        self.cards.each_ref().map(Card::judgment)
+        self.cards.each_ref().map(SolveCard::judgment)
     }
 
-    pub(crate) fn set_new(&mut self, coord: Coord, judgment: Judgment) -> Option<&Card> {
+    pub(crate) fn set_new(&mut self, coord: Coord, judgment: Judgment) -> Option<&SolveCard> {
         self.cards[coord].reveal(judgment)
     }
 
@@ -148,7 +148,7 @@ impl Board {
     pub(crate) fn emoji_summary(&self) -> String {
         self.cards
             .rows()
-            .map(|row| row.each_ref().map(Card::emoji))
+            .map(|row| row.each_ref().map(SolveCard::emoji))
             .format_with("\n", |row, f| f(&row.iter().format_with("", |c, g| g(c))))
             .to_string()
     }
@@ -246,11 +246,11 @@ impl HtmlBoard {
             bail!("expecting unique element in {html}");
         };
 
-        let mut cards: [(Card, bool); 20] = cards
+        let mut cards: [(SolveCard, bool); 20] = cards
             .expect_children::<20>(Any)?
             .iter()
             .map(|card| parse_card(card))
-            .collect::<Result<Vec<(Card, bool)>>>()?
+            .collect::<Result<Vec<(SolveCard, bool)>>>()?
             .try_into()
             .unwrap_or_else(|_| unreachable!());
 

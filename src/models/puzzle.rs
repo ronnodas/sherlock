@@ -5,25 +5,25 @@ use crate::models::{CardBack, Coord, Judgment, Name, Profession};
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Puzzle {
-    cards: Grid<FullCard>,
+    cards: Grid<Card>,
     start: Coord,
 }
 
 impl Puzzle {
-    pub(crate) fn new(cards: Grid<FullCard>, start: Coord) -> Self {
+    pub(crate) fn new(cards: Grid<Card>, start: Coord) -> Self {
         Self { cards, start }
     }
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct FullCard {
+pub(crate) struct Card {
     name: Name,
     profession: Profession,
     judgment: Judgment,
     hint: HintText,
 }
 
-impl FullCard {
+impl Card {
     pub(crate) fn new(
         name: String,
         profession: String,
@@ -46,13 +46,13 @@ pub(crate) enum HintText {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct FlippedCard {
+pub(crate) struct JudgedCard {
     name: Name,
     profession: Profession,
     back: CardBack,
 }
 
-impl FlippedCard {
+impl JudgedCard {
     pub(crate) fn name(&self) -> &Name {
         &self.name
     }

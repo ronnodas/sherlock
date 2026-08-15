@@ -14,7 +14,9 @@ use tabled::settings::formatting::AlignmentStrategy;
 use tabled::settings::{Color as TabledColor, Style, object::Cell};
 
 use crate::grid::Grid;
-use crate::models::{Card, CardBack, Column, Coord, Judgment, MaybeHint, Name, Profession, Row};
+use crate::models::{
+    CardBack, Column, Coord, Judgment, MaybeHint, Name, Profession, Row, SolveCard,
+};
 use crate::solver::board::Board;
 
 pub(crate) struct BoardEditor {
@@ -47,7 +49,7 @@ impl BoardEditor {
             .map_err(|cards: Vec<_>| {
                 anyhow!("grid is incomplete: only {}/20 cards defined", cards.len())
             })?;
-        let cards: Grid<Card> = Grid::from_flattened(flattened);
+        let cards: Grid<SolveCard> = Grid::from_flattened(flattened);
 
         Ok(Board::new(cards, None))
     }
@@ -188,10 +190,10 @@ impl CardEdit {
         }
     }
 
-    fn finalize(self) -> Option<Card> {
+    fn finalize(self) -> Option<SolveCard> {
         match self {
             Self::Empty => None,
-            Self::Draft(front, back) => Some(Card::new(front.name, front.profession, back)),
+            Self::Draft(front, back) => Some(SolveCard::new(front.name, front.profession, back)),
         }
     }
 
@@ -239,8 +241,8 @@ impl CardEdit {
     }
 }
 
-impl From<Card> for CardEdit {
-    fn from(card: Card) -> Self {
+impl From<SolveCard> for CardEdit {
+    fn from(card: SolveCard) -> Self {
         let (name, profession, back) = card.into_parts();
         Self::Draft(CardFront { name, profession }, back)
     }
