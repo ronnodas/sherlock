@@ -4,89 +4,16 @@ use std::ops::Not;
 use colored::Color;
 use serde::{Deserialize, Serialize};
 
-use crate::models::{Coord, HintText, JudgedCard};
-use crate::solver::Suspect;
+use crate::models::HintText;
 
 // TODO force non-empty
 pub(crate) type Name = String;
 pub(crate) type Profession = String;
 
 #[derive(Clone, Debug)]
-pub(crate) struct SolveCard {
-    name: Name,
-    profession: Profession,
-    back: Option<CardBack>,
-}
-
-impl SolveCard {
-    pub(crate) fn logical_hint(&self) -> Option<&str> {
-        self.back.as_ref()?.hint().as_logical()
-    }
-
-    pub(crate) fn name(&self) -> &Name {
-        &self.name
-    }
-
-    pub(crate) fn profession(&self) -> &Profession {
-        &self.profession
-    }
-
-    pub(crate) fn flipped(&self) -> bool {
-        self.back.is_some()
-    }
-
-    pub(crate) fn back_mut(&mut self) -> Option<&mut CardBack> {
-        self.back.as_mut()
-    }
-
-    pub(crate) fn judgment(&self) -> Option<Judgment> {
-        self.back.as_ref().map(|back| back.judgment)
-    }
-
-    pub(crate) fn reveal(&mut self, judgment: Judgment) -> Option<&Self> {
-        (self.back.is_none()).then(|| {
-            self.back = Some(CardBack {
-                judgment,
-                hint: MaybeHint::Unknown,
-            });
-            &*self
-        })
-    }
-
-    pub(crate) fn hint_pending(&self, coord: Coord) -> Option<Suspect> {
-        self.back
-            .as_ref()?
-            .hint_pending()
-            .map(|judgment| Suspect::new(coord, self.name().clone(), judgment))
-    }
-
-    pub(crate) fn back(&self) -> Option<&CardBack> {
-        self.back.as_ref()
-    }
-
-    pub(crate) fn into_parts(self) -> (Name, Profession, Option<CardBack>) {
-        (self.name, self.profession, self.back)
-    }
-
-    pub(crate) fn new(name: String, profession: String, back: Option<CardBack>) -> Self {
-        Self {
-            name,
-            profession,
-            back,
-        }
-    }
-
-    pub(crate) fn emoji(&self) -> char {
-        match self.judgment() {
-            Some(Judgment::Innocent) => '🟩',
-            Some(Judgment::Criminal) => '🟥',
-            None => '⬛',
-        }
-    }
-
-    pub(crate) fn judged(self) -> Option<JudgedCard> {
-        Some(JudgedCard::new(self.name, self.profession, self.back?))
-    }
+pub(crate) struct CardFront {
+    pub name: Name,
+    pub profession: Profession,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -100,6 +27,13 @@ impl Judgment {
         match self {
             Self::Innocent => Color::Green,
             Self::Criminal => Color::Red,
+        }
+    }
+
+    pub(crate) fn emoji(self) -> char {
+        match self {
+            Self::Innocent => '🟩',
+            Self::Criminal => '🟥',
         }
     }
 }
@@ -132,6 +66,13 @@ pub(crate) struct CardBack {
 }
 
 impl CardBack {
+    pub(crate) fn new(judgment: Judgment) -> Self {
+        Self {
+            judgment,
+            hint: MaybeHint::Unknown,
+        }
+    }
+
     pub(crate) fn mark_as_flavor(&mut self) {
         self.hint = MaybeHint::Flavor;
     }
@@ -140,7 +81,7 @@ impl CardBack {
         self.hint = MaybeHint::Logical(hint);
     }
 
-    pub(crate) fn new(judgment: Judgment, hint: MaybeHint) -> Self {
+    pub(crate) fn with_hint(judgment: Judgment, hint: MaybeHint) -> Self {
         Self { judgment, hint }
     }
 
@@ -156,8 +97,12 @@ impl CardBack {
         self.judgment = judgment;
     }
 
-    fn hint_pending(&self) -> Option<Judgment> {
+    pub(crate) fn hint_pending(&self) -> Option<Judgment> {
         self.hint.is_unknown().then_some(self.judgment)
+    }
+
+    pub(crate) fn logical_hint(&self) -> Option<&str> {
+        self.hint.as_logical()
     }
 }
 
@@ -191,6 +136,11 @@ impl MaybeHint {
     #[must_use]
     pub(crate) fn is_flavor(&self) -> bool {
         matches!(self, Self::Flavor)
+    }
+
+    #[must_use]
+    pub(crate) fn is_logical(&self) -> bool {
+        matches!(self, Self::Logical(_))
     }
 
     pub(crate) fn known(&self) -> Option<HintText> {

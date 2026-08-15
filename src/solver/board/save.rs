@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 use crate::grid::Grid;
-use crate::models::{CardBack, Coord, Name, Profession, SolveCard};
+use crate::models::{CardBack, CardFront, Coord, Name, Profession};
 use crate::solver::board::Board;
 
 #[derive(Serialize, Deserialize)]
@@ -14,25 +14,33 @@ pub(crate) struct CardList<'card> {
 }
 
 impl From<CardList<'_>> for Board {
-    fn from(card_list: CardList) -> Self {
-        let cards = card_list.cards.map(SolveCard::from);
-        Self::new(cards, card_list.start)
+    fn from(mut card_list: CardList) -> Self {
+        let backs = card_list
+            .cards
+            .each_mut()
+            .map(|card| card.back.take().map(Cow::into_owned));
+        let fronts = card_list.cards.map(|card| CardFront {
+            name: card.name.into_owned(),
+            profession: card.profession.into_owned(),
+        });
+        Self::new(fronts, backs, card_list.start)
     }
 }
 
 impl<'card> From<&'card Board> for CardList<'card> {
     fn from(board: &'card Board) -> Self {
         let cards = Grid::from_fn(|coord| {
-            let card = &board.cards[coord];
+            let CardFront { name, profession } = board.front(coord);
+            let back = board.back(coord);
             RefCard {
-                name: Cow::Borrowed(card.name()),
-                profession: Cow::Borrowed(card.profession()),
-                back: card.back().map(Cow::Borrowed),
+                name: Cow::Borrowed(name),
+                profession: Cow::Borrowed(profession),
+                back: back.map(Cow::Borrowed),
             }
         });
         Self {
             cards,
-            start: board.start,
+            start: board.start(),
         }
     }
 }
@@ -43,14 +51,4 @@ struct RefCard<'card> {
     profession: Cow<'card, Profession>,
     #[serde(skip_serializing_if = "Option::is_none")]
     back: Option<Cow<'card, CardBack>>,
-}
-
-impl From<RefCard<'_>> for SolveCard {
-    fn from(card: RefCard) -> Self {
-        Self::new(
-            card.name.into_owned(),
-            card.profession.into_owned(),
-            card.back.map(Cow::into_owned),
-        )
-    }
 }

@@ -15,7 +15,7 @@ use tabled::settings::{Color as TabledColor, Style, object::Cell};
 
 use crate::grid::Grid;
 use crate::models::{
-    CardBack, Column, Coord, Judgment, MaybeHint, Name, Profession, Row, SolveCard,
+    CardBack, CardFront, Column, Coord, Judgment, MaybeHint, Name, Profession, Row,
 };
 use crate::solver::board::Board;
 
@@ -34,24 +34,28 @@ impl BoardEditor {
 
     fn is_complete(&self) -> bool {
         self.cards
-            .iter()
+            .values()
             .all(|card| matches!(card, CardEdit::Draft(..)))
-            && self.cards.iter().any(|card| card.logical_hint().is_some())
+            && self
+                .cards
+                .values()
+                .any(|card| card.logical_hint().is_some())
     }
 
     fn build(self) -> Result<Board> {
-        let flattened = self
+        let mut flattened: [_; 20] = self
             .cards
-            .into_iter()
+            .into_values()
             .filter_map(CardEdit::finalize)
             .collect_vec()
             .try_into()
             .map_err(|cards: Vec<_>| {
                 anyhow!("grid is incomplete: only {}/20 cards defined", cards.len())
             })?;
-        let cards: Grid<SolveCard> = Grid::from_flattened(flattened);
+        let backs = Grid::from_flattened(flattened.each_mut().map(|(_, back)| back.take()));
+        let fronts = Grid::from_flattened(flattened.map(|(front, _)| front));
 
-        Ok(Board::new(cards, None))
+        Ok(Board::new(fronts, backs, None))
     }
 
     pub(crate) fn interact(mut self) -> Result<Option<Board>> {
@@ -128,14 +132,15 @@ impl BoardEditor {
     }
 }
 
-impl From<Board> for BoardEditor {
-    fn from(board: Board) -> Self {
+impl From<&Board> for BoardEditor {
+    fn from(board: &Board) -> Self {
         let professions = board
-            .cards
-            .iter()
-            .map(|card| card.profession().clone())
+            .fronts()
+            .map(|(_, card)| card.profession.clone())
             .collect();
-        let cards = board.cards.map(CardEdit::from);
+        let cards = Grid::from_fn(|coord| {
+            CardEdit::from((board.front(coord).clone(), board.back(coord).cloned()))
+        });
         Self { cards, professions }
     }
 }
@@ -190,10 +195,10 @@ impl CardEdit {
         }
     }
 
-    fn finalize(self) -> Option<SolveCard> {
+    fn finalize(self) -> Option<(CardFront, Option<CardBack>)> {
         match self {
             Self::Empty => None,
-            Self::Draft(front, back) => Some(SolveCard::new(front.name, front.profession, back)),
+            Self::Draft(front, back) => Some((front, back)),
         }
     }
 
@@ -208,13 +213,13 @@ impl CardEdit {
         };
 
         if back.is_none()
-            && let Some(new_back) = front.edit_unflipped(professions)?
+            && let Some(new_back) = Self::edit_unflipped(front, professions)?
         {
             *back = Some(new_back);
         }
 
         if let Some(b) = back {
-            match front.edit_flipped(b, professions)? {
+            match Self::edit_flipped(front, b, professions)? {
                 FlippedUpdate::None => {}
                 FlippedUpdate::Unflip => *back = None,
             }
@@ -239,27 +244,12 @@ impl CardEdit {
             Self::Draft(_, back) => back.as_ref(),
         }
     }
-}
 
-impl From<SolveCard> for CardEdit {
-    fn from(card: SolveCard) -> Self {
-        let (name, profession, back) = card.into_parts();
-        Self::Draft(CardFront { name, profession }, back)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct CardFront {
-    name: Name,
-    profession: Profession,
-}
-
-impl CardFront {
     fn edit_unflipped(
-        &mut self,
+        front: &mut CardFront,
         professions: ProfessionAutocomplete<'_>,
     ) -> Result<Option<CardBack>> {
-        let options = UnflippedAction::options(self);
+        let options = UnflippedAction::options(front);
 
         let Some(action) = Select::new("Edit cell:", options).prompt_skippable()? else {
             return Ok(None);
@@ -267,31 +257,31 @@ impl CardFront {
         let update = match action {
             UnflippedAction::Common(common) => {
                 let update = common.prompt(professions)?;
-                self.handle(update);
+                Self::handle(front, update);
                 None
             }
             UnflippedAction::SetInnocent => {
-                Some(CardBack::new(Judgment::Innocent, MaybeHint::Unknown))
+                Some(CardBack::with_hint(Judgment::Innocent, MaybeHint::Unknown))
             }
             UnflippedAction::SetCriminal => {
-                Some(CardBack::new(Judgment::Criminal, MaybeHint::Unknown))
+                Some(CardBack::with_hint(Judgment::Criminal, MaybeHint::Unknown))
             }
         };
         Ok(update)
     }
 
     fn edit_flipped(
-        &mut self,
+        front: &mut CardFront,
         back: &mut CardBack,
         professions: ProfessionAutocomplete<'_>,
     ) -> Result<FlippedUpdate> {
-        let options = FlippedAction::options(self, back);
+        let options = FlippedAction::options(front, back);
 
         if let Some(action) = Select::new("Edit cell:", options).prompt_skippable()? {
             match action {
                 FlippedAction::Common(common) => {
                     let update = common.prompt(professions)?;
-                    self.handle(update);
+                    Self::handle(front, update);
                 }
                 FlippedAction::ToggleJudgment(current) => {
                     back.set_judgment(!current);
@@ -313,12 +303,18 @@ impl CardFront {
         Ok(FlippedUpdate::None)
     }
 
-    fn handle(&mut self, update: CommonUpdate) {
+    fn handle(front: &mut CardFront, update: CommonUpdate) {
         match update {
-            CommonUpdate::Name(name) => self.name = name,
-            CommonUpdate::Profession(profession) => self.profession = profession,
+            CommonUpdate::Name(name) => front.name = name,
+            CommonUpdate::Profession(profession) => front.profession = profession,
             CommonUpdate::None => {}
         }
+    }
+}
+
+impl From<(CardFront, Option<CardBack>)> for CardEdit {
+    fn from((front, back): (CardFront, Option<CardBack>)) -> Self {
+        Self::Draft(front, back)
     }
 }
 

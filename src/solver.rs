@@ -15,7 +15,7 @@ use ron::ser::{PrettyConfig, to_string_pretty};
 
 use crate::SAVE_DIRECTORY;
 use crate::grid::Grid;
-use crate::models::{Card, Coord, Judgment, Name, Puzzle};
+use crate::models::{Card, CardFront, Coord, Judgment, Name, Puzzle};
 use crate::solver::board::{Board, Format, HtmlBoard, SolvedBoard};
 use crate::solver::hint::recipes::AddContext as _;
 use crate::solver::hint::{Hint, Sentence};
@@ -127,11 +127,10 @@ impl Solver {
             .into_iter()
             .filter_map(|coord| {
                 let judgment = fixed[coord]?;
-                Some(Update::new(
-                    coord,
-                    self.board.set_new(coord, judgment)?.name().to_owned(),
-                    judgment,
-                ))
+                self.board.try_judge(coord, judgment).then(|| {
+                    let name = self.board.front(coord).name.clone();
+                    Update::new(coord, name, judgment)
+                })
             })
             .sorted_by(|a, b| a.name.cmp(&b.name))
             .collect())
@@ -247,8 +246,9 @@ impl Solved {
             let options = Coord::all()
                 .into_iter()
                 .map(|coord| {
-                    let card = &self.board[coord];
-                    Suspect::new(coord, card.name().to_owned(), card.judgment())
+                    let name = self.board.front(coord).name.clone();
+                    let judgment = self.board.back(coord).judgment();
+                    Suspect::new(coord, name, judgment)
                 })
                 .collect_vec();
             Select::new("Which card is revealed at the start?", options)
@@ -257,10 +257,11 @@ impl Solved {
         };
         let mut unknown = Vec::with_capacity(20);
         for coord in Coord::all() {
-            let card = &self.board[coord];
-            if card.back().hint().is_unknown() {
-                let judgment = card.judgment();
-                unknown.push(Suspect::new(coord, card.name().clone(), judgment));
+            let back = self.board.back(coord);
+            if back.hint().is_unknown() {
+                let name = self.board.front(coord).name.clone();
+                let judgment = back.judgment();
+                unknown.push(Suspect::new(coord, name, judgment));
             }
         }
         let mut text = String::new();
@@ -271,7 +272,7 @@ impl Solved {
             );
             if Confirm::new(&message).prompt()? {
                 for suspect in unknown {
-                    self.board[suspect.coord].mark_as_flavor();
+                    self.board.back_mut(suspect.coord).mark_as_flavor();
                 }
                 break;
             }
@@ -293,7 +294,9 @@ impl Solved {
                         .add_context(self.board.context(suspect.coord))
                         .is_ok()
                 {
-                    self.board[suspect.coord].set_hint(mem::take(&mut text));
+                    self.board
+                        .back_mut(suspect.coord)
+                        .set_hint(mem::take(&mut text));
                     drop(unknown.remove(index));
                 }
                 println!("I didn't understand that hint :(\n{text}");
@@ -301,12 +304,11 @@ impl Solved {
         }
 
         let cards = Grid::from_fn(|coord| {
-            let card = &self.board[coord];
             // TODO should deconstruct here rather than clone
-            let name = card.name().clone();
-            let profession = card.profession().clone();
-            let judgment = card.judgment();
-            let hint = card.back().hint().known().expect("set above");
+            let CardFront { name, profession } = self.board.front(coord).clone();
+            let back = self.board.back(coord);
+            let judgment = back.judgment();
+            let hint = back.hint().known().expect("set above");
             Card::new(name, profession, judgment, hint)
         });
         let puzzle = Puzzle::new(cards, start);

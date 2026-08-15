@@ -5,9 +5,9 @@ use itertools::Itertools as _;
 use select::node::Node;
 use select::predicate::{self, Name, Predicate};
 
-use crate::models::{CardBack, Judgment, MaybeHint, SolveCard};
+use crate::models::{CardBack, CardFront, Judgment, MaybeHint};
 
-pub(crate) fn parse_card(node: &Node<'_>) -> Result<(SolveCard, bool)> {
+pub(crate) fn parse_card(node: &Node<'_>) -> Result<(CardFront, Option<CardBack>, bool)> {
     let node = node
         .expect(Div)?
         .unique_child(Div.and(Class(ClassName::Card)))?;
@@ -35,8 +35,8 @@ pub(crate) fn parse_card(node: &Node<'_>) -> Result<(SolveCard, bool)> {
         .map(|judgment| parse_back(card, judgment))
         .transpose()?;
     let has_hint = node.is(Class(ClassName::HasHint));
-    let card = SolveCard::new(name, profession, back);
-    Ok((card, has_hint))
+    let front = CardFront { name, profession };
+    Ok((front, back, has_hint))
 }
 
 fn parse_back(card: Node<'_>, judgment: Judgment) -> Result<CardBack> {
@@ -45,7 +45,7 @@ fn parse_back(card: Node<'_>, judgment: Judgment) -> Result<CardBack> {
         .context("`.card-back` should be consistent with `.card`")?;
 
     let hint = MaybeHint::Logical(parse_hint(card)?);
-    Ok(CardBack::new(judgment, hint))
+    Ok(CardBack::with_hint(judgment, hint))
 }
 
 fn parse_hint(card: Node<'_>) -> Result<String> {

@@ -67,12 +67,12 @@ impl<T> Grid<T> {
         .into()
     }
 
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &T> {
-        self.inner.values().flat_map(|row| row.values())
-    }
-
-    pub(crate) fn into_iter(self) -> impl Iterator<Item = T> {
-        self.inner.into_values().flat_map(StaticMap::into_values)
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (Coord, &T)> {
+        self.inner.iter().flat_map(|(row, items)| {
+            items
+                .iter()
+                .map(move |(col, val)| (Coord { row, col }, val))
+        })
     }
 
     pub(crate) fn each_ref(&self) -> Grid<&T> {
@@ -87,6 +87,20 @@ impl<T> Grid<T> {
 
     pub(crate) fn rows(&self) -> impl Iterator<Item = &[T; 4]> {
         self.inner.each_ref().into_values().map(|row| &row.0)
+    }
+
+    pub(crate) fn values(&self) -> impl Iterator<Item = &T> {
+        self.inner.values().flat_map(|row| row.values())
+    }
+
+    pub(crate) fn into_values(self) -> impl Iterator<Item = T> {
+        self.inner.into_values().flat_map(StaticMap::into_values)
+    }
+
+    pub(crate) fn each_mut(&mut self) -> Grid<&mut T> {
+        Grid {
+            inner: self.inner.each_mut().map_values(|row| row.each_mut()),
+        }
     }
 }
 
