@@ -1,14 +1,80 @@
 use std::fmt;
 use std::ops::Not;
+use std::rc::Rc;
 
 use colored::Color;
 use serde::{Deserialize, Serialize};
 
 use crate::models::HintText;
 
-// TODO force non-empty
-pub(crate) type Name = String;
-pub(crate) type Profession = String;
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(transparent)]
+pub(crate) struct Name(Rc<str>);
+
+impl Name {
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for Name {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<String> for Name {
+    fn from(value: String) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<&str> for Name {
+    fn from(value: &str) -> Self {
+        Self(value.into())
+    }
+}
+
+// TODO Maybe should be `Rc<Str1>`, and always construct through `from_singular()`?
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(transparent)]
+pub(crate) struct Profession(Rc<str>);
+
+impl Profession {
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub(crate) fn from_singular(value: &str) -> Option<Self> {
+        value
+            .chars()
+            .next()
+            .is_some_and(char::is_lowercase)
+            .then(|| Self(value.into()))
+    }
+
+    pub(crate) fn from_plural(value: &str) -> Option<Self> {
+        Self::from_singular(value.strip_suffix('s')?)
+    }
+}
+
+impl fmt::Display for Profession {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<String> for Profession {
+    fn from(value: String) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<&str> for Profession {
+    fn from(value: &str) -> Self {
+        Self(value.into())
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct CardFront {

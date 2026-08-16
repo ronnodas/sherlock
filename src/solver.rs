@@ -440,7 +440,7 @@ impl fmt::Display for Update {
         write!(
             f,
             "{} ({}) as {}",
-            self.name.color(color),
+            self.name.as_str().color(color),
             self.coord,
             self.judgment.to_string().color(color)
         )
@@ -475,7 +475,7 @@ impl Suspect {
 impl fmt::Display for Suspect {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let color = self.judgment.color();
-        write!(f, "{} ({})", self.name.color(color), self.coord)
+        write!(f, "{} ({})", self.name.as_str().color(color), self.coord)
     }
 }
 
@@ -493,6 +493,7 @@ mod tests {
     use itertools::Itertools as _;
 
     use crate::grid::Grid;
+    use crate::models::Name;
     use crate::solver::solution::Solution;
 
     use super::{Judgment, ParsedBoard};
@@ -583,7 +584,7 @@ mod tests {
         for &changes in steps {
             let deductions = changes
                 .iter()
-                .map(|&(name, judgment, _)| (name.to_owned(), judgment))
+                .map(|&(name, judgment, _)| (Name::from(name), judgment))
                 .collect_vec();
             let inferences = solver
                 .infer()
@@ -594,7 +595,7 @@ mod tests {
             assert_eq!(inferences, deductions);
             for &(speaker, _, hint) in changes {
                 if let Some(hint) = hint {
-                    let coord = solver.board.coord(speaker).unwrap();
+                    let coord = solver.board.coord(&Name::from(speaker)).unwrap();
                     solver.add_hint(hint.to_owned(), coord).unwrap();
                 }
             }

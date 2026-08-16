@@ -25,8 +25,8 @@ pub(crate) struct Card {
 
 impl Card {
     pub(crate) fn new(
-        name: String,
-        profession: String,
+        name: Name,
+        profession: Profession,
         judgment: Judgment,
         hint: HintText,
     ) -> Self {

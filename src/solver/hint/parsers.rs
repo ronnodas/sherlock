@@ -746,7 +746,7 @@ fn name_possessive(input: &mut &str) -> Result<NameRecipe> {
                 s.strip_suffix("'s")
                     .or_else(|| s.strip_suffix("'").filter(|name| name.ends_with('s')))
             })
-            .map(|name| NameRecipe::Explicit(name.to_owned())),
+            .map(|name| NameRecipe::Explicit(name.into())),
     ))
     .parse_next(input)
 }
@@ -757,7 +757,7 @@ fn name(input: &mut &str) -> Result<NameRecipe> {
             if name == "I" || name == "Me" {
                 NameRecipe::Me
             } else {
-                NameRecipe::Explicit(name.to_owned())
+                NameRecipe::Explicit(name.into())
             }
         }),
         "me".value(NameRecipe::Me),
@@ -811,23 +811,13 @@ fn profession_any(input: &mut &[&str]) -> Result<Profession> {
     .parse_next(input)
 }
 
+// TODO combine the verify and map into a single constructor
 fn profession_singular(input: &mut &str) -> Result<Profession> {
-    rest.verify(starts_lowercase)
-        .map(str::to_owned)
-        .parse_next(input)
+    rest.verify_map(Profession::from_singular).parse_next(input)
 }
 
 fn profession_plural(input: &mut &str) -> Result<Profession> {
-    rest.verify_map(|s: &str| {
-        s.strip_suffix('s')
-            .filter(|profession| starts_lowercase(profession))
-    })
-    .map(str::to_owned)
-    .parse_next(input)
-}
-
-fn starts_lowercase(profession: &str) -> bool {
-    profession.chars().next().is_some_and(char::is_lowercase)
+    rest.verify_map(Profession::from_plural).parse_next(input)
 }
 
 fn neighbor_any(input: &mut &str) -> Result<()> {

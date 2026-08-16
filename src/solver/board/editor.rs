@@ -204,10 +204,11 @@ impl CardEdit {
 
     fn edit(&mut self, professions: ProfessionAutocomplete<'_>) -> Result<Option<Coord>> {
         let Self::Draft(front, back) = self else {
-            let name = Text::new("Name:").prompt()?;
+            let name = Text::new("Name:").prompt()?.into();
             let profession = Text::new("Profession:")
                 .with_autocomplete(professions)
-                .prompt()?;
+                .prompt()?
+                .into();
             *self = Self::Draft(CardFront { name, profession }, None);
             return self.edit(professions);
         };
@@ -351,14 +352,18 @@ enum CommonAction<'edit> {
 impl CommonAction<'_> {
     fn prompt(self, professions: ProfessionAutocomplete<'_>) -> Result<CommonUpdate> {
         let update = match self {
-            Self::EditName(name) => {
-                CommonUpdate::Name(Text::new("Name:").with_initial_value(name).prompt()?)
-            }
+            Self::EditName(name) => CommonUpdate::Name(
+                Text::new("Name:")
+                    .with_initial_value(name.as_str())
+                    .prompt()?
+                    .into(),
+            ),
             Self::EditProfession(profession) => CommonUpdate::Profession(
                 Text::new("Profession:")
-                    .with_initial_value(profession)
+                    .with_initial_value(profession.as_str())
                     .with_autocomplete(professions)
-                    .prompt()?,
+                    .prompt()?
+                    .into(),
             ),
             Self::Done => CommonUpdate::None,
         };
@@ -525,8 +530,8 @@ impl Autocomplete for ProfessionAutocomplete<'_> {
         Ok(self
             .professions
             .iter()
-            .filter(|p| p.starts_with(&input.to_lowercase()))
-            .map(Profession::to_owned)
+            .filter(|p| p.as_str().starts_with(&input.to_lowercase()))
+            .map(Profession::to_string)
             .collect())
     }
 

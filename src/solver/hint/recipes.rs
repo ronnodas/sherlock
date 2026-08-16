@@ -27,7 +27,7 @@ pub(crate) struct Context<'ctx> {
 }
 
 impl Context<'_> {
-    fn coord(&self, name: &str) -> Result<Coord> {
+    fn coord(&self, name: &Name) -> Result<Coord> {
         self.coordinates
             .get(name)
             .copied()
@@ -40,7 +40,7 @@ impl Context<'_> {
             .ok_or_else(|| anyhow!("{profession} not in puzzle"))
     }
 
-    pub(crate) fn other_professions(&self, profession: &str) -> Result<Vec1<Set1>> {
+    pub(crate) fn other_professions(&self, profession: &Profession) -> Result<Vec1<Set1>> {
         self.by_profession
             .as_btree_map()
             .iter()
@@ -60,7 +60,7 @@ pub(crate) enum MeOrExplicit<T> {
 
 impl From<&str> for NameRecipe {
     fn from(v: &str) -> Self {
-        Self::Explicit(v.to_owned())
+        Self::Explicit(Name::from(v))
     }
 }
 

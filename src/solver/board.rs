@@ -39,7 +39,7 @@ impl<B> Board<B> {
     }
 
     #[cfg(test)]
-    pub(crate) fn coord(&self, name: &str) -> Result<Coord> {
+    pub(crate) fn coord(&self, name: &Name) -> Result<Coord> {
         self.fixed.coord(name)
     }
 
@@ -229,7 +229,7 @@ impl BoardFixed {
     }
 
     #[cfg(test)]
-    fn coord(&self, name: &str) -> Result<Coord> {
+    fn coord(&self, name: &Name) -> Result<Coord> {
         self.coordinates
             .get(name)
             .copied()

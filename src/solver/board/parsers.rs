@@ -29,8 +29,8 @@ pub(crate) fn parse_card(node: &Node<'_>) -> Result<(CardFront, Option<CardBack>
         node.expect_children(Div.and(Class(ClassName::CardFront)))
     }
     .context("inside a `.card`")?;
-    let name = parse_name(card)?;
-    let profession = parse_profession(card)?;
+    let name = parse_name(card)?.into();
+    let profession = parse_profession(card)?.into();
     let back = status
         .map(|judgment| parse_back(card, judgment))
         .transpose()?;
