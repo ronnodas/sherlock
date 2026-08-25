@@ -28,6 +28,7 @@ use crate::{ARCHIVE_DIR, SAVE_DIR};
 pub(crate) mod board;
 mod brute_force;
 pub(crate) mod hint;
+mod inference;
 
 pub(crate) struct Solver<E> {
     board: Board,
