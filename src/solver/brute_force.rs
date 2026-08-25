@@ -1,3 +1,5 @@
+use std::iter;
+
 use anyhow::{Result, bail};
 
 use crate::models::{Coord, Judgment};
@@ -19,6 +21,11 @@ impl BruteForceSolver {
 }
 
 impl Engine for BruteForceSolver {
+    fn new() -> Self {
+        let solutions = Solution::all(iter::empty());
+        Self { solutions }
+    }
+
     fn for_board(board: &Board) -> Self {
         let fixed = board
             .fixed()

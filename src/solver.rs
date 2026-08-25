@@ -22,7 +22,7 @@ use crate::{ARCHIVE_DIR, SAVE_DIR};
 
 pub(crate) mod board;
 mod brute_force;
-mod hint;
+pub(crate) mod hint;
 mod solution;
 
 pub(crate) struct Solver<E> {
@@ -33,7 +33,7 @@ pub(crate) struct Solver<E> {
 
 impl<E: Engine> Solver<E> {
     fn new(board: Board, title: Option<String1>) -> Self {
-        let engine = Engine::for_board(&board);
+        let engine = E::for_board(&board);
         Self::with_engine(board, title, engine)
     }
 
@@ -180,10 +180,20 @@ impl<E: Engine> Solver<E> {
     }
 }
 
-pub(crate) trait Engine {
-    fn for_board(board: &Board) -> Self;
+pub(crate) trait Engine: Sized {
+    fn new() -> Self;
     fn add_parsed_hint(&mut self, hint: &Hint);
     fn updates(&mut self) -> Result<Vec<(Coord, Judgment)>>;
+
+    fn for_board(board: &Board) -> Self {
+        let mut this = Self::new();
+        for (coord, judgment) in board.fixed().into_iter() {
+            if let Some(judgment) = judgment {
+                this.add_parsed_hint(&Hint::Judgment(coord, judgment));
+            }
+        }
+        this
+    }
 }
 
 struct Solved {
@@ -476,9 +486,106 @@ impl From<Update> for Suspect {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
+    use mitsein::btree_map1::BTreeMap1;
+    use mitsein::iter1::IteratorExt as _;
+
+    use crate::models::Profession;
+    use crate::solver::board::coordinates::Set1;
+    use crate::solver::hint::recipes::Context;
     use crate::solver::solution::Solution;
 
     use super::*;
+
+    // TODO consolidate with BoardFixed
+    #[derive(Debug)]
+    struct ContextStore {
+        coordinates: HashMap<Name, Coord>,
+        by_profession: BTreeMap1<Profession, Set1>,
+    }
+
+    impl ContextStore {
+        fn new(puzzle: &Puzzle) -> Self {
+            let coordinates = puzzle
+                .cards
+                .iter()
+                .map(|(coord, card)| (card.front.name.clone(), coord))
+                .collect();
+            let by_profession = puzzle
+                .cards
+                .iter()
+                .map(|(coord, card)| (&card.front.profession, coord))
+                .into_grouping_map()
+                .aggregate(|set: Option<Set1>, _, coord| {
+                    let set = set.map_or_else(|| Set1::from_one(coord), |set| set | coord);
+                    Some(set)
+                })
+                .into_iter()
+                .map(|(profession, set)| (profession.clone(), set))
+                .try_collect1()
+                .expect("total len 20");
+            Self {
+                coordinates,
+                by_profession,
+            }
+        }
+
+        fn context(&self, speaker: Coord) -> Context<'_> {
+            Context {
+                coordinates: &self.coordinates,
+                by_profession: &self.by_profession,
+                speaker,
+            }
+        }
+    }
+
+    fn solve<E: Engine>(puzzle: &Puzzle) {
+        let mut engine = E::new();
+
+        engine.add_parsed_hint(&Hint::Judgment(
+            puzzle.start,
+            puzzle.cards[puzzle.start].judgment,
+        ));
+        let mut pending = vec![puzzle.start];
+        let mut marked = Grid::filled(false);
+
+        let context = ContextStore::new(puzzle);
+        while let Some(speaker) = pending.pop() {
+            let Some(hint) = puzzle.cards[speaker].hint.as_logical() else {
+                continue;
+            };
+            Sentence::parse(hint)
+                .unwrap()
+                .add_context(context.context(speaker))
+                .unwrap()
+                .into_iter()
+                .for_each(|hint| engine.add_parsed_hint(&hint));
+
+            for (coord, judgment) in engine.updates().unwrap() {
+                assert_eq!(puzzle.cards[coord].judgment, judgment);
+                if !marked[coord] {
+                    marked[coord] = true;
+                    pending.push(coord);
+                }
+            }
+        }
+        assert_eq!(marked.into_iter().filter(|&(_, marked)| marked).count(), 20);
+    }
+
+    #[ignore = "slow but comprehensive"]
+    #[test]
+    fn archive() {
+        for file in fs::read_dir(ARCHIVE_DIR).unwrap() {
+            let path = file.unwrap().path();
+            if path.extension().is_some_and(|ext| ext == "ron") {
+                println!("Trying to solve: {}", path.display());
+                let contents = fs::read_to_string(path).unwrap();
+                let puzzle = ron::from_str(&contents).unwrap();
+                solve::<BruteForceSolver>(&puzzle);
+            }
+        }
+    }
 
     #[test]
     fn sample_2026_02_08() {

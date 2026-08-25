@@ -218,6 +218,7 @@ impl Serialize for Board {
 pub(crate) struct BoardFixed {
     fronts: Grid<CardFront>,
     coordinates: HashMap<Name, Coord>,
+    // TODO move to Board
     start: Option<Coord>,
     // TODO maybe change this to `IndexMap` or `HashMap` once `mitsein` supports that
     by_profession: BTreeMap1<Profession, Set1>,
