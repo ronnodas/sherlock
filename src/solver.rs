@@ -13,19 +13,17 @@ use mitsein::string1::String1;
 use ron::extensions::Extensions;
 use ron::ser::{PrettyConfig, to_string_pretty};
 
-use crate::SAVE_DIRECTORY;
 use crate::grid::Grid;
 use crate::models::{Card, CardFront, Coord, Judgment, Name, Puzzle};
 use crate::solver::board::{Board, Format, HtmlBoard, SolvedBoard};
 use crate::solver::hint::recipes::AddContext as _;
 use crate::solver::hint::{Hint, Sentence};
 use crate::solver::solution::Solution;
+use crate::{ARCHIVE_DIR, SAVE_DIR};
 
 pub(crate) mod board;
 mod hint;
 mod solution;
-
-const ARCHIVE_DIR: &str = "archive";
 
 #[derive(Clone, Debug)]
 struct Solver {
@@ -175,9 +173,9 @@ impl Solver {
     fn save(&mut self) -> Result<()> {
         let save = self.save_board()?;
         let path = self.title.as_ref().map_or_else(
-            || SAVE_DIRECTORY.to_owned(),
+            || SAVE_DIR.to_owned(),
             |title| {
-                Path::new(SAVE_DIRECTORY)
+                Path::new(SAVE_DIR)
                     .join(title.as_str())
                     .with_added_extension("ron")
                     .display()
@@ -311,8 +309,8 @@ impl Solved {
             let hint = back.hint().known().expect("set above");
             Card::new(name, profession, judgment, hint)
         });
-        let puzzle = Puzzle::new(cards, start);
-        Ok(puzzle)
+
+        Puzzle::new(cards, start)
     }
 }
 

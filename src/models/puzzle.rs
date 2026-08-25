@@ -1,26 +1,37 @@
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::grid::Grid;
-use crate::models::{Coord, Judgment, Name, Profession};
+use crate::models::{CardFront, Coord, Judgment, Name, Profession};
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Puzzle {
-    cards: Grid<Card>,
-    start: Coord,
+    pub cards: Grid<Card>,
+    pub start: Coord,
 }
 
 impl Puzzle {
-    pub(crate) fn new(cards: Grid<Card>, start: Coord) -> Self {
-        Self { cards, start }
+    pub(crate) fn new(cards: Grid<Card>, start: Coord) -> Result<Self> {
+        if cards[start].hint.is_flavor() {
+            bail!("Starting hint is flavor text")
+        }
+        Ok(Self { cards, start })
+    }
+
+    pub(crate) fn starting_hint(&self) -> &str {
+        self.cards[self.start]
+            .hint
+            .as_logical()
+            .expect("checked at construction")
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(from = "Flattened", into = "Flattened")]
 pub(crate) struct Card {
-    name: Name,
-    profession: Profession,
-    judgment: Judgment,
-    hint: HintText,
+    pub front: CardFront,
+    pub judgment: Judgment,
+    pub hint: HintText,
 }
 
 impl Card {
@@ -30,17 +41,57 @@ impl Card {
         judgment: Judgment,
         hint: HintText,
     ) -> Self {
+        let front = CardFront { name, profession };
         Self {
-            name,
-            profession,
+            front,
             judgment,
             hint,
         }
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) enum HintText {
     Flavor,
     Logical(String),
+}
+
+impl HintText {
+    fn is_flavor(&self) -> bool {
+        matches!(self, Self::Flavor)
+    }
+
+    #[must_use]
+    pub(crate) fn as_logical(&self) -> Option<&str> {
+        if let Self::Logical(hint) = self {
+            Some(hint)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct Flattened {
+    name: Name,
+    profession: Profession,
+    judgment: Judgment,
+    hint: HintText,
+}
+
+impl From<Card> for Flattened {
+    fn from(card: Card) -> Self {
+        Self {
+            name: card.front.name,
+            profession: card.front.profession,
+            judgment: card.judgment,
+            hint: card.hint,
+        }
+    }
+}
+
+impl From<Flattened> for Card {
+    fn from(flat: Flattened) -> Self {
+        Self::new(flat.name, flat.profession, flat.judgment, flat.hint)
+    }
 }

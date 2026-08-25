@@ -98,6 +98,10 @@ impl Coord {
         // TODO replace with `cartesian_product()`
         Row::ALL.into_iter1().flat_map(Row::all)
     }
+
+    pub(crate) fn as_tuple(self) -> (usize, usize) {
+        (self.row.to_index(), self.col.to_index())
+    }
 }
 
 impl fmt::Display for Coord {

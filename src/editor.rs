@@ -9,9 +9,9 @@ use colored::Colorize as _;
 use inquire::{Autocomplete, Select, Text};
 use itertools::Itertools as _;
 use tabled::Table;
-use tabled::settings::Alignment;
 use tabled::settings::formatting::AlignmentStrategy;
-use tabled::settings::{Color as TabledColor, Style, object::Cell};
+use tabled::settings::object::Cell;
+use tabled::settings::{Alignment, Color as TabledColor, Style};
 
 use crate::grid::Grid;
 use crate::models::{
@@ -316,12 +316,6 @@ impl CardEdit {
 impl From<(CardFront, Option<CardBack>)> for CardEdit {
     fn from((front, back): (CardFront, Option<CardBack>)) -> Self {
         Self::Draft(front, back)
-    }
-}
-
-impl fmt::Display for CardFront {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}\n{}", self.name, self.profession)
     }
 }
 

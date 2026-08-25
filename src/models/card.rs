@@ -76,10 +76,16 @@ impl From<&str> for Profession {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct CardFront {
     pub name: Name,
     pub profession: Profession,
+}
+
+impl fmt::Display for CardFront {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}\n{}", self.name, self.profession)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]

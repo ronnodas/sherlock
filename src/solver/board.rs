@@ -20,7 +20,7 @@ use crate::solver::hint::recipes::{AddContext as _, Context};
 use crate::solver::hint::{Hint, Sentence};
 
 pub(crate) mod coordinates;
-pub(crate) mod editor;
+
 mod parsers;
 mod save;
 
@@ -51,13 +51,17 @@ impl<B> Board<B> {
         self.fixed.start
     }
 
-    fn fronts(&self) -> impl Iterator<Item = (Coord, &CardFront)> {
+    pub(crate) fn fronts(&self) -> impl Iterator<Item = (Coord, &CardFront)> {
         self.fixed.fronts.iter()
     }
 }
 
 impl Board {
-    fn new(fronts: Grid<CardFront>, backs: Grid<Option<CardBack>>, start: Option<Coord>) -> Self {
+    pub(crate) fn new(
+        fronts: Grid<CardFront>,
+        backs: Grid<Option<CardBack>>,
+        start: Option<Coord>,
+    ) -> Self {
         let fixed = BoardFixed::new(fronts, start);
         let mut board = Self { fixed, backs };
         board.set_start();
