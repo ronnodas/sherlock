@@ -157,7 +157,7 @@ fn archive_url(input: &str, with_s: bool) -> String {
 }
 
 fn extract_id(url: &str) -> Option<&Str1> {
-    // TODO use trim_suffix('/')
+    // TODO use trim_suffix('/') https://github.com/rust-lang/rust/issues/142312
     let url = url.trim().trim_end_matches('/');
     let prefixes = [
         "cluesbysam.com/s/archive/",

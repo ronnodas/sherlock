@@ -80,7 +80,7 @@ impl Board {
     }
 
     pub(crate) fn into_solved(self) -> Option<Board<CardBack>> {
-        // TODO use try_map()
+        // TODO use `try_map()` https://github.com/rust-lang/rust/issues/79711
         let backs = self
             .backs
             .into_values()

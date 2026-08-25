@@ -438,7 +438,7 @@ impl AddContext for [&Unit; 2] {
     type Output = ([ModifiedSet; 2], Vec<Hint>);
 
     fn add_context(self, context: Context<'_>) -> anyhow::Result<Self::Output> {
-        // TODO use `try_map`
+        // TODO use `try_map()` https://github.com/rust-lang/rust/issues/79711
         let [a, b] = self.each_ref().map(|unit| unit.add_context(context));
         let (a, mut hints) = a?;
         let (b, more_hints) = b?;
