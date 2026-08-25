@@ -54,7 +54,7 @@ impl Sentence {
                 terminated(Self::units_share_n_traits, eof),
                 terminated(Self::each_unit_in_series_has_n_traits, eof),
                 terminated(Self::unit_shares_quantified_traits_with_unit, eof),
-                terminated(Self::number_of_traits_in_unit, eof),
+                terminated(Self::unit_size, eof),
                 terminated(
                     Self::only_one_person_in_unit_has_cardinal_trait_neighbors,
                     eof,
@@ -180,7 +180,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn number_of_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
+    fn unit_size(input: &mut &[&str]) -> Result<Self> {
         alt((
             preceded(there_is, cardinal_judged_unit),
             separated_pair(word(name), word(has_have), cardinal_judged_neighbors)
@@ -196,13 +196,17 @@ impl Sentence {
             .map(|((quantifier, unit), (judgment, direction))| {
                 let (cardinal, unit) = match quantifier {
                     Quantifier::Simple(cardinal) => (cardinal, unit),
-                    Quantifier::Subset(count, total) => {
-                        (Cardinal::Exact(count), unit.quantify(total))
-                    }
+                    Quantifier::Subset(count, total) => (count, unit.quantify(total)),
                 };
                 let unit = unit.shift(direction);
                 (cardinal, judgment, unit)
             }),
+            separated_pair(quantified_unit, word(be_verb), word(judgment_any)).map(
+                |((quantifier, unit), judgment)| match quantifier {
+                    Quantifier::Simple(cardinal) => (cardinal, judgment, unit),
+                    Quantifier::Subset(count, total) => (count, judgment, unit.quantify(total)),
+                },
+            ),
         ))
         .map(|(count, judgment, unit)| Self::UnitSize(unit.with_judgment(judgment), count))
         .parse_next(input)
@@ -214,7 +218,7 @@ impl Sentence {
                 alt((
                     preceded((words(("Only", "one")), opt(word("person"))), unit),
                     quantified_profession.verify_map(|(quantifier, profession)| {
-                        if let Quantifier::Subset(1, total) = quantifier {
+                        if let Quantifier::Subset(Cardinal::Exact(1), total) = quantifier {
                             Some(Unit::Profession(profession).quantify(total))
                         } else {
                             None
@@ -249,7 +253,7 @@ impl Sentence {
             let unit = Unit::Profession(profession);
             let (quantity, unit) = match count {
                 Quantifier::Simple(cardinal) => (cardinal, unit),
-                Quantifier::Subset(count, total) => (Cardinal::Exact(count), unit.quantify(total)),
+                Quantifier::Subset(count, total) => (count, unit.quantify(total)),
             };
             Self::NInUnitHaveNNeighbors {
                 unit,
@@ -332,7 +336,7 @@ impl Sentence {
             )
             .map(|((quantified, judgment), other)| {
                 (
-                    Quantifier::Subset(1, 1),
+                    Quantifier::Subset(Cardinal::Exact(1), 1),
                     Unit::Neighbor(quantified),
                     other,
                     judgment,
@@ -627,7 +631,7 @@ fn quantified_judged_unit(input: &mut &[&str]) -> Result<(Quantifier, Judgment, 
             .map(|(name, quantity, judgment)| (quantity, judgment, Unit::Neighbor(name))),
         (
             quantifier,
-            preceded(opt(word(determiner)), word(judgment_any)),
+            preceded(opt((word("of"), opt(word(determiner)))), word(judgment_any)),
             unit,
         ),
     ))
@@ -645,20 +649,20 @@ fn cardinal_judged_unit(input: &mut &[&str]) -> Result<(Cardinal, Judgment, Unit
 
 fn quantifier(input: &mut &[&str]) -> Result<Quantifier> {
     alt((
-        word("both").value(Quantifier::Subset(2, 2)),
+        word("both").value(Quantifier::Subset(Cardinal::Exact(2), 2)),
         (
             word("neither"),
             opt((word("of"), opt(words((determiner, "2"))))),
         )
-            .value(Quantifier::Subset(0, 2)),
+            .value(Quantifier::Subset(Cardinal::Exact(0), 2)),
         separated_pair(
-            number_phrase,
-            (opt(word("out")), word("of"), opt(word(determiner))),
+            cardinal,
+            (opt(words(("out", "of"))), opt(word(determiner))),
             word(number),
         )
         .map(|(a, b)| Quantifier::Subset(a, b)),
-        cardinal.map(Quantifier::Simple),
-        words(("the", "only")).value(Quantifier::Subset(1, 1)),
+        terminated(cardinal, opt(word(determiner))).map(Quantifier::Simple),
+        words(("the", "only")).value(Quantifier::Subset(Cardinal::Exact(1), 1)),
     ))
     .parse_next(input)
 }
@@ -701,21 +705,20 @@ fn cardinal_judged_neighbors(input: &mut &[&str]) -> Result<(Cardinal, Judgment)
 fn quantified_possessive_judged_neighbors(
     input: &mut &[&str],
 ) -> Result<(NameRecipe, Quantifier, Judgment)> {
-    separated_pair(
-        number_phrase,
-        word("of"),
+    (
+        cardinal,
         terminated(
             (word(name_possessive), opt(word(number)), word(judgment_any)),
             word(neighbor_any),
         ),
     )
-    .map(|(number, (name, total, judgment))| {
-        let quantifier = total.map_or(Quantifier::Simple(Cardinal::Exact(number)), |total| {
-            Quantifier::Subset(number, total)
-        });
-        (name, quantifier, judgment)
-    })
-    .parse_next(input)
+        .map(|(number, (name, total, judgment))| {
+            let quantifier = total.map_or(Quantifier::Simple(number), |total| {
+                Quantifier::Subset(number, total)
+            });
+            (name, quantifier, judgment)
+        })
+        .parse_next(input)
 }
 
 fn judgment_any(input: &mut &str) -> Result<Judgment> {
@@ -771,16 +774,16 @@ fn raw_name<'input>(input: &mut &'input str) -> Result<&'input str> {
 }
 
 fn quantified_profession(input: &mut &[&str]) -> Result<(Quantifier, Profession)> {
-    separated_pair(
-        quantifier,
-        opt((word("of"), opt(word(determiner)))),
-        profession_any,
-    )
-    .parse_next(input)
+    separated_pair(quantifier, opt(word(determiner)), profession_any).parse_next(input)
 }
 
 fn quantified_unit(input: &mut &[&str]) -> Result<(Quantifier, Unit)> {
-    separated_pair(quantifier, opt((word("of"), opt(word(determiner)))), unit).parse_next(input)
+    alt((
+        separated_pair(quantifier, opt(word(determiner)), unit),
+        separated_pair(cardinal, opt(word(determiner)), (number_phrase, unit))
+            .map(|(cardinal, (total, unit))| (Quantifier::Subset(cardinal, total), unit)),
+    ))
+    .parse_next(input)
 }
 
 fn direction(input: &mut &[&str]) -> Result<Direction> {

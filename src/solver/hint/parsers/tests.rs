@@ -46,7 +46,7 @@ fn janet_2026_01_13() {
             total: 6,
             quantified: Unit::neighbor("Stella"),
             other: Unit::neighbor("Gabe"),
-            intersection: 2,
+            intersection: Cardinal::Exact(2),
             judgment: Judgment::Innocent,
         },
     );
@@ -156,7 +156,7 @@ fn chuck_2026_02_05() {
             total: 4,
             quantified: Unit::neighbor("Gary"),
             other: Row::One.into(),
-            intersection: 2,
+            intersection: Cardinal::Exact(2),
             judgment: Judgment::Innocent,
         },
     );
@@ -326,7 +326,7 @@ fn gary_2026_02_07() {
             total: 2,
             quantified: Column::C.into(),
             other: Unit::neighbor("Zara"),
-            intersection: 1,
+            intersection: Cardinal::Exact(1),
             judgment: Judgment::Innocent,
         },
     );
@@ -340,7 +340,7 @@ fn uma_2026_02_07() {
             total: 3,
             quantified: Unit::Neighbor(Name::Me),
             other: Unit::direction(Direction::Right, "Kay"),
-            intersection: 1,
+            intersection: Cardinal::Exact(1),
             judgment: Judgment::Innocent,
         },
     );
@@ -391,7 +391,7 @@ fn kumar_2026_02_09() {
             total: 3,
             quantified: Row::Five.into(),
             other: Unit::neighbor("Susan"),
-            intersection: 2,
+            intersection: Cardinal::Exact(2),
             judgment: Judgment::Innocent,
         },
     );
@@ -686,7 +686,7 @@ fn mary_2026_06_24() {
             total: 3,
             quantified: Row::One.into(),
             other: Unit::not_neighbor("Emily"),
-            intersection: 1,
+            intersection: Cardinal::Exact(1),
             judgment: Judgment::Criminal,
         },
     );
@@ -697,7 +697,7 @@ fn mary_2026_06_24() {
             total: 3,
             quantified: Row::One.into(),
             other: Unit::neighbor("Emily"),
-            intersection: 1,
+            intersection: Cardinal::Exact(1),
             judgment: Judgment::Criminal,
         },
     );
@@ -746,6 +746,19 @@ fn zed_2026_08_07() {
     sentence(
         "There's an equal number of innocent and criminal cops",
         &Sentence::UnitEquallySplit(Unit::profession("cop")),
+    );
+}
+
+#[test]
+fn bunty_2026_08_25() {
+    sentence(
+        "an odd number of us 3 painters are innocent",
+        &Sentence::UnitSize(
+            Unit::profession("painter")
+                .quantify(3)
+                .with_judgment(Judgment::Innocent),
+            Parity::Odd.into(),
+        ),
     );
 }
 
@@ -864,7 +877,7 @@ fn olof_puzzle_pack_1_1() {
             total: 1,
             quantified: Unit::direction(Direction::Below, "Julie"),
             other: Unit::neighbor("Terry"),
-            intersection: 1,
+            intersection: Cardinal::Exact(1),
             judgment: Judgment::Criminal,
         },
     );
@@ -878,7 +891,7 @@ fn flora_puzzle_pack_1_2() {
             total: 1,
             quantified: Unit::neighbor("Nicole"),
             other: Unit::neighbor("Martin"),
-            intersection: 1,
+            intersection: Cardinal::Exact(1),
             judgment: Judgment::Innocent,
         },
     );
@@ -916,7 +929,7 @@ fn frank_puzzle_pack_1_5() {
             total: 1,
             quantified: Unit::neighbor("Alice"),
             other: Unit::direction(Direction::Left, "Helen"),
-            intersection: 1,
+            intersection: Cardinal::Exact(1),
             judgment: Judgment::Innocent,
         },
     );
@@ -930,7 +943,7 @@ fn katie_puzzle_pack_1_6() {
             total: 2,
             quantified: Row::Four.into(),
             other: Unit::neighbor("Laura"),
-            intersection: 2,
+            intersection: Cardinal::Exact(2),
             judgment: Judgment::Innocent,
         },
     );
@@ -944,7 +957,7 @@ fn zara_puzzle_pack_1_6() {
             total: 2,
             quantified: Unit::neighbor("Olive"),
             other: Unit::direction(Direction::Left, "Noah"),
-            intersection: 0,
+            intersection: Cardinal::Exact(0),
             judgment: Judgment::Innocent,
         },
     );
@@ -958,7 +971,7 @@ fn bonnie_puzzle_pack_1_13() {
             total: 7,
             quantified: Unit::Edges,
             other: Unit::profession("painter"),
-            intersection: 0,
+            intersection: Cardinal::Exact(0),
             judgment: Judgment::Criminal,
         },
     );
@@ -1045,7 +1058,7 @@ fn eve_puzzle_pack_1_49() {
             total: 2,
             quantified: Unit::neighbor("Katie"),
             other: Unit::neighbor("Laura"),
-            intersection: 0,
+            intersection: Cardinal::Exact(0),
             judgment: Judgment::Innocent,
         },
     );

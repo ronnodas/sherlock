@@ -40,7 +40,7 @@ pub(crate) enum Sentence {
         total: Number,
         quantified: Unit,
         other: Unit,
-        intersection: Number,
+        intersection: Cardinal,
         judgment: Judgment,
     },
     IntersectionSize([Unit; 2], Cardinal, Judgment),
@@ -107,7 +107,7 @@ impl AddContext for Sentence {
                 judgment,
             } => quantified.intersects_with(
                 &other,
-                Cardinal::Exact(intersection),
+                intersection,
                 Some(quantity),
                 judgment,
                 context,
@@ -600,13 +600,13 @@ impl From<LineKind> for Series {
 pub(crate) enum Quantifier {
     Simple(Cardinal),
     // Maybe this needs to be Quantity, Quantity?
-    Subset(Number, Number),
+    Subset(Cardinal, Number),
 }
 
 impl Quantifier {
     pub(crate) fn exact(self) -> Option<u8> {
         match self {
-            Self::Subset(count, total) if count == total => Some(total),
+            Self::Subset(Cardinal::Exact(count), total) if count == total => Some(total),
             Self::Simple(Cardinal::Exact(total)) => Some(total),
             Self::Simple(Cardinal::AtLeast(_) | Cardinal::AtMost(_) | Cardinal::Parity(_))
             | Self::Subset(_, _) => None,
