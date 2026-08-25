@@ -67,6 +67,14 @@ impl<T> Grid<T> {
         .into()
     }
 
+    pub(crate) fn into_iter(self) -> impl Iterator<Item = (Coord, T)> {
+        self.inner.into_iter().flat_map(|(row, items)| {
+            items
+                .into_iter()
+                .map(move |(col, val)| (Coord { row, col }, val))
+        })
+    }
+
     pub(crate) fn iter(&self) -> impl Iterator<Item = (Coord, &T)> {
         self.inner.iter().flat_map(|(row, items)| {
             items

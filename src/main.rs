@@ -40,7 +40,7 @@ fn main() -> Result<()> {
         )?),
     };
     match result {
-        MainMenu::Solve(board) => board.solve()?,
+        MainMenu::Solve(board) => board.solve_brute_force()?,
         MainMenu::Play(puzzle) => App::new(&puzzle).play()?,
     }
 

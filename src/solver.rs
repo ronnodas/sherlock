@@ -1,9 +1,8 @@
-use std::fs::File;
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::{fmt, fs, mem};
 
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, Result};
 use colored::Colorize as _;
 use inquire::list_option::ListOption;
 use inquire::{Confirm, MultiSelect, Select, Text};
@@ -16,43 +15,40 @@ use ron::ser::{PrettyConfig, to_string_pretty};
 use crate::grid::Grid;
 use crate::models::{Card, CardFront, Coord, Judgment, Name, Puzzle};
 use crate::solver::board::{Board, Format, HtmlBoard, SolvedBoard};
+use crate::solver::brute_force::BruteForceSolver;
 use crate::solver::hint::recipes::AddContext as _;
 use crate::solver::hint::{Hint, Sentence};
-use crate::solver::solution::Solution;
 use crate::{ARCHIVE_DIR, SAVE_DIR};
 
 pub(crate) mod board;
+mod brute_force;
 mod hint;
 mod solution;
 
-#[derive(Clone, Debug)]
-struct Solver {
-    title: Option<String1>,
+pub(crate) struct Solver<E> {
     board: Board,
-
-    solutions: Vec<Solution>,
+    title: Option<String1>,
+    engine: E,
 }
 
-impl Solver {
+impl<E: Engine> Solver<E> {
     fn new(board: Board, title: Option<String1>) -> Self {
-        let old = board.fixed();
-        let fixed_values = Coord::all()
-            .into_iter()
-            .filter_map(|coord| Some((coord, old[coord]?)));
-        let solutions = Solution::all(fixed_values);
+        let engine = Engine::for_board(&board);
+        Self::with_engine(board, title, engine)
+    }
 
+    fn with_engine(board: Board, title: Option<String1>, engine: E) -> Self {
         Self {
-            title,
             board,
-
-            solutions,
+            title,
+            engine,
         }
     }
 
     fn solve(mut self, mut pending_hints: Vec<Suspect>) -> Result<()> {
         loop {
-            let new = self.infer()?;
-            print_inferences(&new);
+            let new = self.updates()?;
+            Update::print_all(&new);
 
             println!("{}", self.board.emoji_summary());
             // TODO parse, don't validate
@@ -105,32 +101,21 @@ impl Solver {
         })
     }
 
-    fn infer(&mut self) -> Result<Vec<Update>> {
-        let Some((first, rest)) = self.solutions.split_first() else {
-            bail!("no solutions!")
-        };
-
-        let mut fixed = first.as_grid().clone().map(Some);
-        for solution in rest {
-            for coord in Coord::all() {
-                let fixed = &mut fixed[coord];
-                if let Some(val) = *fixed
-                    && val != solution.as_grid()[coord]
-                {
-                    *fixed = None;
-                }
-            }
-        }
-        Ok(Coord::all()
+    fn updates(&mut self) -> Result<Vec<Update>> {
+        #[expect(
+            clippy::filter_map_bool_then,
+            reason = "FP, https://github.com/rust-lang/rust-clippy/issues/17629"
+        )]
+        Ok(self
+            .engine
+            .updates()?
             .into_iter()
-            .filter_map(|coord| {
-                let judgment = fixed[coord]?;
+            .filter_map(|(coord, judgment)| {
                 self.board.try_judge(coord, judgment).then(|| {
                     let name = self.board.front(coord).name.clone();
                     Update::new(coord, name, judgment)
                 })
             })
-            .sorted_by(|a, b| a.name.cmp(&b.name))
             .collect())
     }
 
@@ -138,12 +123,12 @@ impl Solver {
         Sentence::parse(&hint)?
             .add_context(self.board.context(speaker))?
             .into_iter()
-            .for_each(|hint| self.add_parsed_hint(&hint));
+            .for_each(|hint| self.engine.add_parsed_hint(&hint));
         self.board.add_hint(hint, speaker)
     }
 
     fn add_parsed_hint(&mut self, hint: &Hint) {
-        self.solutions.retain(|solution| hint.evaluate(solution));
+        self.engine.add_parsed_hint(hint);
     }
 
     pub(crate) fn set_title(&mut self, title: String1) {
@@ -161,13 +146,9 @@ impl Solver {
             .unwrap_or_default();
         pending.retain(|p| !flavor.iter().any(|f| f.coord() == p.coord()));
         for f in flavor {
-            self.mark_as_flavor(f.coord())?;
+            self.board.mark_as_flavor(f.coord())?;
         }
         Ok(())
-    }
-
-    fn mark_as_flavor(&mut self, coord: Coord) -> Result<()> {
-        self.board.mark_as_flavor(coord)
     }
 
     fn save(&mut self) -> Result<()> {
@@ -193,10 +174,16 @@ impl Solver {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let mut file = File::create(path)?;
+        let mut file = fs::File::create(path)?;
         file.write_all(save.as_bytes())?;
         Ok(())
     }
+}
+
+pub(crate) trait Engine {
+    fn for_board(board: &Board) -> Self;
+    fn add_parsed_hint(&mut self, hint: &Hint);
+    fn updates(&mut self) -> Result<Vec<(Coord, Judgment)>>;
 }
 
 struct Solved {
@@ -220,7 +207,7 @@ impl Solved {
             };
 
             let path = Path::new(ARCHIVE_DIR).join(format!("{name}.ron"));
-            match File::create_new(&path) {
+            match fs::File::create_new(&path) {
                 Ok(file) => break (path, file),
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(e) => return Err(e).context("creating puzzle file"),
@@ -367,13 +354,13 @@ impl ParsedBoard {
         Self::new(board, title)
     }
 
-    pub(crate) fn solve(self) -> Result<()> {
-        let (solver, pending) = self.into_solver();
+    pub(crate) fn solve<E: Engine>(self) -> Result<()> {
+        let (solver, pending) = self.into_solver::<E>();
 
         solver.solve(pending)
     }
 
-    fn into_solver(self) -> (Solver, Vec<Suspect>) {
+    fn into_solver<E: Engine>(self) -> (Solver<E>, Vec<Suspect>) {
         let mut solver = Solver::new(self.board, self.title);
 
         for hint in self.hints {
@@ -382,15 +369,9 @@ impl ParsedBoard {
 
         (solver, self.pending_hints)
     }
-}
 
-fn print_inferences(new: &[Update]) {
-    if let Some((last, rest)) = new.split_last() {
-        if rest.is_empty() {
-            println!("Mark {last}");
-        } else {
-            println!("Mark {} and {last}", rest.iter().format(", "));
-        }
+    pub(crate) fn solve_brute_force(self) -> Result<()> {
+        self.solve::<BruteForceSolver>()
     }
 }
 
@@ -428,6 +409,16 @@ impl Update {
             name,
             coord,
             judgment,
+        }
+    }
+
+    fn print_all(list: &[Self]) {
+        if let Some((last, rest)) = list.split_last() {
+            if rest.is_empty() {
+                println!("Mark {last}");
+            } else {
+                println!("Mark {} and {last}", rest.iter().format(", "));
+            }
         }
     }
 }
@@ -485,16 +476,9 @@ impl From<Update> for Suspect {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, io};
-
-    use anyhow::Context as _;
-    use itertools::Itertools as _;
-
-    use crate::grid::Grid;
-    use crate::models::Name;
     use crate::solver::solution::Solution;
 
-    use super::{Judgment, ParsedBoard};
+    use super::*;
 
     #[test]
     fn sample_2026_02_08() {
@@ -578,14 +562,14 @@ mod tests {
             ],
         ];
 
-        let (mut solver, _pending) = parsed.into_solver();
+        let (mut solver, _pending) = parsed.into_solver::<BruteForceSolver>();
         for &changes in steps {
             let deductions = changes
                 .iter()
                 .map(|&(name, judgment, _)| (Name::from(name), judgment))
                 .collect_vec();
             let inferences = solver
-                .infer()
+                .updates()
                 .unwrap()
                 .into_iter()
                 .map(|update| (update.name, update.judgment))
@@ -599,7 +583,7 @@ mod tests {
             }
         }
 
-        assert_eq!(solver.solutions, [solution]);
+        solver.engine.verify_only_solution(solution);
     }
 
     #[test]
