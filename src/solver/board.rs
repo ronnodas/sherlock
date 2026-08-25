@@ -29,30 +29,32 @@ pub(crate) type SolvedBoard = Board<CardBack>;
 #[derive(Clone, Debug, Deserialize)]
 #[serde(from = "save::CardList", bound = "Self: From<save::CardList<'de>>")]
 pub(crate) struct Board<B = Option<CardBack>> {
-    fixed: BoardFixed,
+    fronts: Grid<CardFront>,
     backs: Grid<B>,
+    lookup: Lookup,
+    start: Option<Coord>,
 }
 
 impl<B> Board<B> {
     pub(crate) fn context(&self, speaker: Coord) -> Context<'_> {
-        self.fixed.context(speaker)
+        self.lookup.context(speaker)
     }
 
     #[cfg(test)]
     pub(crate) fn coord(&self, name: &Name) -> Result<Coord> {
-        self.fixed.coord(name)
+        self.lookup.coord(name)
     }
 
     pub(crate) fn front(&self, coord: Coord) -> &CardFront {
-        &self.fixed.fronts[coord]
+        &self.fronts[coord]
     }
 
     pub(crate) fn start(&self) -> Option<Coord> {
-        self.fixed.start
+        self.start
     }
 
     pub(crate) fn fronts(&self) -> impl Iterator<Item = (Coord, &CardFront)> {
-        self.fixed.fronts.iter()
+        self.fronts.iter()
     }
 }
 
@@ -62,8 +64,13 @@ impl Board {
         backs: Grid<Option<CardBack>>,
         start: Option<Coord>,
     ) -> Self {
-        let fixed = BoardFixed::new(fronts, start);
-        let mut board = Self { fixed, backs };
+        let lookup = Lookup::new(&fronts);
+        let mut board = Self {
+            fronts,
+            backs,
+            lookup,
+            start,
+        };
         board.set_start();
         board
     }
@@ -83,7 +90,9 @@ impl Board {
         let backs = Grid::from_flattened(backs);
         Some(Board {
             backs,
-            fixed: self.fixed,
+            fronts: self.fronts,
+            lookup: self.lookup,
+            start: self.start,
         })
     }
 
@@ -146,7 +155,7 @@ impl Board {
     }
 
     fn set_start(&mut self) {
-        self.fixed.start = self.fixed.start.or_else(|| {
+        self.start = self.start.or_else(|| {
             self.backs
                 .iter()
                 .filter(|(_, card)| card.as_ref().is_some_and(|card| card.hint().is_logical()))
@@ -214,22 +223,35 @@ impl Serialize for Board {
     }
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct BoardFixed {
-    fronts: Grid<CardFront>,
+// TODO consolidate with BoardFixed
+#[derive(Debug, Clone)]
+pub(crate) struct Lookup {
     coordinates: HashMap<Name, Coord>,
-    // TODO move to Board
-    start: Option<Coord>,
     // TODO maybe change this to `IndexMap` or `HashMap` once `mitsein` supports that
     by_profession: BTreeMap1<Profession, Set1>,
 }
 
-impl BoardFixed {
-    fn context(&self, speaker: Coord) -> Context<'_> {
-        Context {
-            coordinates: &self.coordinates,
-            by_profession: &self.by_profession,
-            speaker,
+impl Lookup {
+    pub(crate) fn new<F: AsRef<CardFront>>(fronts: &Grid<F>) -> Self {
+        let coordinates = fronts
+            .iter()
+            .map(|(coord, front)| (front.as_ref().name.clone(), coord))
+            .collect();
+        let by_profession = fronts
+            .iter()
+            .map(|(coord, front)| (&front.as_ref().profession, coord))
+            .into_grouping_map()
+            .aggregate(|set: Option<Set1>, _, coord| {
+                let set = set.map_or_else(|| Set1::from_one(coord), |set| set | coord);
+                Some(set)
+            })
+            .into_iter()
+            .map(|(profession, set)| (profession.clone(), set))
+            .try_collect1()
+            .expect("total len 20");
+        Self {
+            coordinates,
+            by_profession,
         }
     }
 
@@ -241,28 +263,11 @@ impl BoardFixed {
             .ok_or_else(|| anyhow!("{name} not in grid"))
     }
 
-    fn new(fronts: Grid<CardFront>, start: Option<Coord>) -> Self {
-        let coordinates = fronts
-            .iter()
-            .map(|(coord, card)| (card.name.clone(), coord))
-            .collect();
-        let by_profession = fronts
-            .iter()
-            .map(|(coord, card)| (&card.profession, coord))
-            .into_grouping_map()
-            .aggregate(|set: Option<Set1>, _, coord| {
-                let set = set.map_or_else(|| Set1::from_one(coord), |set| set | coord);
-                Some(set)
-            })
-            .into_iter()
-            .map(|(profession, set)| (profession.clone(), set))
-            .try_collect1()
-            .expect("total len 20");
-        Self {
-            fronts,
-            coordinates,
-            start,
-            by_profession,
+    pub(crate) fn context(&self, speaker: Coord) -> Context<'_> {
+        Context {
+            coordinates: &self.coordinates,
+            by_profession: &self.by_profession,
+            speaker,
         }
     }
 }

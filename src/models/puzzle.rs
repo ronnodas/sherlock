@@ -50,6 +50,12 @@ impl Card {
     }
 }
 
+impl AsRef<CardFront> for Card {
+    fn as_ref(&self) -> &CardFront {
+        &self.front
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) enum HintText {
     Flavor,

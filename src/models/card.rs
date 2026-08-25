@@ -88,6 +88,12 @@ impl fmt::Display for CardFront {
     }
 }
 
+impl AsRef<Self> for CardFront {
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub(crate) enum Judgment {
     Innocent,

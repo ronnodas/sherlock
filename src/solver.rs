@@ -486,59 +486,10 @@ impl From<Update> for Suspect {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
-    use mitsein::btree_map1::BTreeMap1;
-    use mitsein::iter1::IteratorExt as _;
-
-    use crate::models::Profession;
-    use crate::solver::board::coordinates::Set1;
-    use crate::solver::hint::recipes::Context;
+    use crate::solver::board::Lookup;
     use crate::solver::solution::Solution;
 
     use super::*;
-
-    // TODO consolidate with BoardFixed
-    #[derive(Debug)]
-    struct ContextStore {
-        coordinates: HashMap<Name, Coord>,
-        by_profession: BTreeMap1<Profession, Set1>,
-    }
-
-    impl ContextStore {
-        fn new(puzzle: &Puzzle) -> Self {
-            let coordinates = puzzle
-                .cards
-                .iter()
-                .map(|(coord, card)| (card.front.name.clone(), coord))
-                .collect();
-            let by_profession = puzzle
-                .cards
-                .iter()
-                .map(|(coord, card)| (&card.front.profession, coord))
-                .into_grouping_map()
-                .aggregate(|set: Option<Set1>, _, coord| {
-                    let set = set.map_or_else(|| Set1::from_one(coord), |set| set | coord);
-                    Some(set)
-                })
-                .into_iter()
-                .map(|(profession, set)| (profession.clone(), set))
-                .try_collect1()
-                .expect("total len 20");
-            Self {
-                coordinates,
-                by_profession,
-            }
-        }
-
-        fn context(&self, speaker: Coord) -> Context<'_> {
-            Context {
-                coordinates: &self.coordinates,
-                by_profession: &self.by_profession,
-                speaker,
-            }
-        }
-    }
 
     fn solve<E: Engine>(puzzle: &Puzzle) {
         let mut engine = E::new();
@@ -550,14 +501,14 @@ mod tests {
         let mut pending = vec![puzzle.start];
         let mut marked = Grid::filled(false);
 
-        let context = ContextStore::new(puzzle);
+        let lookup = Lookup::new(&puzzle.cards);
         while let Some(speaker) = pending.pop() {
             let Some(hint) = puzzle.cards[speaker].hint.as_logical() else {
                 continue;
             };
             Sentence::parse(hint)
                 .unwrap()
-                .add_context(context.context(speaker))
+                .add_context(lookup.context(speaker))
                 .unwrap()
                 .into_iter()
                 .for_each(|hint| engine.add_parsed_hint(&hint));
