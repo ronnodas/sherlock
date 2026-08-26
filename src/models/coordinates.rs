@@ -10,7 +10,7 @@ use linearize::Linearize;
 use mitsein::iter1::{IntoIterator1 as _, Iterator1};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, SerializeDisplay, DeserializeFromStr)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, SerializeDisplay, DeserializeFromStr)]
 pub(crate) struct Coord {
     pub row: Row,
     pub col: Column,
@@ -105,6 +105,12 @@ impl Coord {
 }
 
 impl fmt::Display for Coord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.col, self.row)
+    }
+}
+
+impl fmt::Debug for Coord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}{}", self.col, self.row)
     }

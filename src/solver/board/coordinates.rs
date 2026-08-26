@@ -1,3 +1,4 @@
+use std::fmt;
 use std::ops::{BitAnd, BitOr};
 
 use anyhow::{Result, anyhow};
@@ -93,6 +94,12 @@ impl IntoIterator for Set {
 impl From<Set1> for Set {
     fn from(set: Set1) -> Self {
         Self(set.0)
+    }
+}
+
+impl fmt::Debug for Set {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_set().entries(*self).finish()
     }
 }
 
