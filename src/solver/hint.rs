@@ -1,15 +1,17 @@
+use std::ops::Not;
+
 use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
 use crate::models::{Column, Coord, Judgment, Row};
-use crate::solver::board::coordinates::{ModifiedSet, Set};
+use crate::solver::board::coordinates::{ModifiedSet, ModifiedSet1, Set, Set1};
 use crate::solver::solution::Solution;
 
 mod parsers;
 pub(crate) mod recipes;
 
-type Number = u8;
+pub(crate) type Number = u8;
 pub(crate) use parsers::Sentence;
 
 #[derive(Clone, Debug)]
@@ -17,26 +19,26 @@ pub(crate) enum Hint {
     /// Given coordinate has given judgment
     Judgment(Coord, Judgment),
     /// Given set of coordinates has that many suspects
-    Count(ModifiedSet, Cardinal),
+    Count(ModifiedSet1, Cardinal),
     /// Given set of coordinates does not have that many suspects
-    NotCount(ModifiedSet, Cardinal),
+    NotCount(ModifiedSet1, Cardinal),
     /// Given set of coordinates in total have that many suspects
-    CountTotal([ModifiedSet; 2], Cardinal),
+    CountTotal([ModifiedSet1; 2], Cardinal),
     /// Given set of coordinates is connected
-    Connected(ModifiedSet),
+    Connected(ModifiedSet1),
     /// The first set compares with the second set
-    CompareSets([ModifiedSet; 2], Comparison),
+    CompareSets([ModifiedSet1; 2], Comparison),
     /// Among the given `sets`, `count` many have `each` suspects
     CountWithCount {
-        sets: Vec<ModifiedSet>,
+        sets: Vec1<ModifiedSet>,
         count: Cardinal,
         each: Cardinal,
     },
     /// Each member of the given set has a given number of neighbors with the given judgment
-    EachNeighbors(ModifiedSet, Cardinal, Judgment),
+    EachNeighbors(ModifiedSet1, Cardinal, Judgment),
     /// `count` many members of the given set has `each` neighbors with given judgment
     CountWithNeighbors {
-        set: ModifiedSet,
+        set: ModifiedSet1,
         each: Cardinal,
         count: Cardinal,
         judgment: Judgment,
@@ -47,21 +49,21 @@ impl Hint {
     pub(crate) fn evaluate(&self, solution: &Solution) -> bool {
         match self {
             &Self::Judgment(coord, judgment) => solution[coord] == judgment,
-            Self::Count(set, quantity) => quantity.matches(solution.select(set).len()),
-            Self::NotCount(set, quantity) => !quantity.matches(solution.select(set).len()),
+            Self::Count(set, quantity) => quantity.matches(solution.select1(set).len()),
+            Self::NotCount(set, quantity) => !quantity.matches(solution.select1(set).len()),
             Self::CountTotal(sets, quantity) => {
-                let total = sets.iter().map(|set| solution.select(set).len()).sum();
+                let total = sets.iter().map(|set| solution.select1(set).len()).sum();
                 quantity.matches(total)
             }
-            Self::Connected(set) => solution.select(set).connected(),
+            Self::Connected(set) => solution.select1(set).connected(),
             Self::CompareSets(sets, comparison) => {
-                let [lhs, rhs] = sets.each_ref().map(|set| solution.select(set).len());
+                let [lhs, rhs] = sets.each_ref().map(|set| solution.select1(set).len());
                 comparison.compare(lhs, rhs)
             }
             Self::CountWithCount { sets, count, each } => count.matches(
                 sets.iter()
                     .filter(|set| each.matches(solution.select(set).len()))
-                    .count(),
+                    .fold(0, |acc, _| acc + 1),
             ),
             Self::CountWithNeighbors {
                 set,
@@ -70,32 +72,30 @@ impl Hint {
                 judgment,
             } => {
                 let counted = solution
-                    .select(set)
+                    .select1(set)
                     .into_iter()
                     .filter(|coord| {
-                        let neighbors = solution
-                            .select(&coord.neighbors().collect::<ModifiedSet>().judged(*judgment))
-                            .len();
+                        let neighbors =
+                            solution.select1(&coord.neighbors().judged(*judgment)).len();
                         each.matches(neighbors)
                     })
-                    .count();
+                    .collect::<Set>()
+                    .len();
                 count.matches(counted)
             }
             Self::EachNeighbors(set, cardinal, judgment) => {
-                solution.select(set).into_iter().all(|coord| {
-                    let neighbors = solution
-                        .select(&coord.neighbors().collect::<ModifiedSet>().judged(*judgment))
-                        .len();
+                solution.select1(set).into_iter().all(|coord| {
+                    let neighbors = solution.select1(&coord.neighbors().judged(*judgment)).len();
                     cardinal.matches(neighbors)
                 })
             }
         }
     }
 
-    fn unique_with_count(sets: Vec1<ModifiedSet>, quantity: Cardinal) -> Self {
+    fn unique_with_count(sets: Vec1<ModifiedSet>, each: Cardinal) -> Self {
         Self::CountWithCount {
-            sets: sets.into_vec(),
-            each: quantity,
+            sets,
+            each,
             count: Cardinal::Exact(1),
         }
     }
@@ -103,17 +103,15 @@ impl Hint {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Comparison {
-    Equal,
-    MoreThan(Option<Number>),
+    ExactDifference(Number),
+    More,
 }
 
 impl Comparison {
-    fn compare(self, lhs: usize, rhs: usize) -> bool {
+    fn compare(self, lhs: Number, rhs: Number) -> bool {
         match self {
-            Self::Equal => lhs == rhs,
-            Self::MoreThan(excess) => {
-                excess.map_or(lhs > rhs, |excess| lhs == rhs + usize::from(excess))
-            }
+            Self::ExactDifference(excess) => lhs == rhs + excess,
+            Self::More => lhs > rhs,
         }
     }
 }
@@ -143,6 +141,15 @@ impl From<Row> for Line {
 impl From<Column> for Line {
     fn from(v: Column) -> Self {
         Self::Column(v)
+    }
+}
+
+impl From<Line> for Set1 {
+    fn from(line: Line) -> Self {
+        match line {
+            Line::Row(row) => row.all().into_iter1().collect1(),
+            Line::Column(column) => column.all().into_iter1().collect1(),
+        }
     }
 }
 
@@ -179,11 +186,11 @@ pub(crate) enum Cardinal {
 }
 
 impl Cardinal {
-    fn matches(self, len: usize) -> bool {
+    pub(crate) fn matches(self, len: Number) -> bool {
         match self {
-            Self::Exact(value) => len == usize::from(value),
-            Self::AtLeast(value) => len >= usize::from(value),
-            Self::AtMost(value) => len <= usize::from(value),
+            Self::Exact(value) => len == value,
+            Self::AtLeast(value) => len >= value,
+            Self::AtMost(value) => len <= value,
             Self::Parity(parity) => parity.matches(len),
         }
     }
@@ -202,10 +209,21 @@ pub(crate) enum Parity {
 }
 
 impl Parity {
-    fn matches(self, len: usize) -> bool {
+    pub(crate) fn matches(self, len: Number) -> bool {
         match self {
             Self::Even => len.is_multiple_of(2),
             Self::Odd => !len.is_multiple_of(2),
+        }
+    }
+}
+
+impl Not for Parity {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Self::Even => Self::Odd,
+            Self::Odd => Self::Even,
         }
     }
 }

@@ -10,6 +10,50 @@ use linearize::Linearize;
 use mitsein::iter1::{IntoIterator1 as _, Iterator1};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 
+use crate::solver::board::coordinates::{Set1, set1};
+
+macro_rules! coord {
+    ($c:ident $r:tt) => {
+        Coord {
+            row: row!($r),
+            col: col!($c),
+        }
+    };
+}
+
+macro_rules! row {
+    (1) => {
+        Row::One
+    };
+    (2) => {
+        Row::Two
+    };
+    (3) => {
+        Row::Three
+    };
+    (4) => {
+        Row::Four
+    };
+    (5) => {
+        Row::Five
+    };
+}
+
+macro_rules! col {
+    (A) => {
+        Column::A
+    };
+    (B) => {
+        Column::B
+    };
+    (C) => {
+        Column::C
+    };
+    (D) => {
+        Column::D
+    };
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, SerializeDisplay, DeserializeFromStr)]
 pub(crate) struct Coord {
     pub row: Row,
@@ -24,7 +68,7 @@ impl Coord {
         }
     }
 
-    pub(crate) fn to_index(self) -> usize {
+    pub(crate) const fn to_index(self) -> usize {
         4 * self.row.to_index() + self.col.to_index()
     }
 
@@ -54,15 +98,29 @@ impl Coord {
         iter::successors(start.step(direction), move |coord| coord.step(direction))
     }
 
-    // TODO return Iterator1
-    pub(crate) fn neighbors(self) -> impl Iterator<Item = Self> {
-        use Direction::{Above, Below, Left, Right};
-        [self.step(Above), self.step(Below)]
-            .into_iter()
-            .flatten()
-            .flat_map(|vert| [Some(vert), vert.step(Right), vert.step(Left)])
-            .chain([self.step(Left), self.step(Right)])
-            .flatten()
+    pub(crate) fn neighbors(self) -> Set1 {
+        match self {
+            coord!(A 1) => set1!(B 1 | A 2 | B 2),
+            coord!(B 1) => set1!(A 1 | C 1 | A 2 | B 2 | C 2),
+            coord!(C 1) => set1!(B 1 | D 1 | B 2 | C 2 | D 2),
+            coord!(D 1) => set1!(C 1 | C 2 | D 2),
+            coord!(A 2) => set1!(A 1 | B 1 | B 2 | A 3 | B 3),
+            coord!(B 2) => set1!(A 1 | B 1 | C 1 | A 2 | C 2 | A 3 | B 3 | C 3),
+            coord!(C 2) => set1!(B 1 | C 1 | D 1 | B 2 | D 2 | B 3 | C 3 | D 3),
+            coord!(D 2) => set1!(C 1 | D 1 | C 2 | C 3 | D 3),
+            coord!(A 3) => set1!(A 2 | B 2 | B 3 | A 4 | B 4),
+            coord!(B 3) => set1!(A 2 | B 2 | C 2 | A 3 | C 3 | A 4 | B 4 | C 4),
+            coord!(C 3) => set1!(B 2 | C 2 | D 2 | B 3 | D 3 | B 4 | C 4 | D 4),
+            coord!(D 3) => set1!(C 2 | D 2 | C 3 | C 4 | D 4),
+            coord!(A 4) => set1!(A 3 | B 3 | B 4 | A 5 | B 5),
+            coord!(B 4) => set1!(A 3 | B 3 | C 3 | A 4 | C 4 | A 5 | B 5 | C 5),
+            coord!(C 4) => set1!(B 3 | C 3 | D 3 | B 4 | D 4 | B 5 | C 5 | D 5),
+            coord!(D 4) => set1!(C 3 | D 3 | C 4 | C 5 | D 5),
+            coord!(A 5) => set1!(A 4 | B 4 | B 5),
+            coord!(B 5) => set1!(A 4 | B 4 | C 4 | A 5 | C 5),
+            coord!(C 5) => set1!(B 4 | C 4 | D 4 | B 5 | D 5),
+            coord!(D 5) => set1!(C 4 | D 4 | C 5),
+            }
     }
 
     pub(crate) fn edges() -> impl Iterator<Item = Self> {
@@ -170,7 +228,7 @@ impl Row {
         }
     }
 
-    pub(crate) fn to_index(self) -> usize {
+    pub(crate) const fn to_index(self) -> usize {
         match self {
             Self::One => 0,
             Self::Two => 1,
@@ -261,7 +319,7 @@ impl Column {
         }
     }
 
-    pub(crate) fn to_index(self) -> usize {
+    pub(crate) const fn to_index(self) -> usize {
         match self {
             Self::A => 0,
             Self::B => 1,
@@ -332,4 +390,15 @@ pub(crate) enum Direction {
     Below,
     Left,
     Right,
+}
+
+impl Direction {
+    pub(crate) fn flip(self) -> Self {
+        match self {
+            Self::Above => Self::Below,
+            Self::Below => Self::Above,
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+        }
+    }
 }

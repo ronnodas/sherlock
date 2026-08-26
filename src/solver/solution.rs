@@ -4,7 +4,7 @@ use mitsein::iter1::IntoIterator1 as _;
 
 use crate::grid::Grid;
 use crate::models::{Coord, Judgment};
-use crate::solver::board::coordinates::{ModifiedSet, Modifier, Set};
+use crate::solver::board::coordinates::{ModifiedSet, ModifiedSet1, Modifier, Set};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Clone, Debug)]
@@ -18,9 +18,15 @@ impl Solution {
     pub(crate) fn select(&self, set: &ModifiedSet) -> Set {
         match set {
             ModifiedSet::Empty => Set::empty(),
-            &ModifiedSet::Regular(set) => set,
-            ModifiedSet::Modified(inner, modifier) => {
-                let inner = self.select(inner);
+            ModifiedSet::NonEmpty(set) => self.select1(set),
+        }
+    }
+
+    pub(crate) fn select1(&self, set: &ModifiedSet1) -> Set {
+        match set {
+            &ModifiedSet1::Regular(set) => set.into(),
+            ModifiedSet1::Modified(inner, modifier) => {
+                let inner = self.select1(inner);
                 match *modifier {
                     Modifier::Shift(direction) => inner.shift(direction),
                     Modifier::Judgment(judgment) => inner
@@ -29,9 +35,9 @@ impl Solution {
                         .collect(),
                 }
             }
-            ModifiedSet::Intersection(sets) => sets
+            ModifiedSet1::Intersection(sets) => sets
                 .into_iter1()
-                .map(|set| self.select(set))
+                .map(|set| self.select1(set))
                 .reduce(|a, b| a & b),
         }
     }

@@ -2,8 +2,6 @@ use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
 use mitsein::btree_map1::BTreeMap1;
-use mitsein::iter1::IteratorExt as _;
-use mitsein::vec1::Vec1;
 
 use crate::models::{Column, Coord, Name, Profession, Row};
 use crate::solver::board::coordinates::Set1;
@@ -38,16 +36,6 @@ impl Context<'_> {
         self.by_profession
             .get(profession)
             .ok_or_else(|| anyhow!("{profession} not in puzzle"))
-    }
-
-    pub(crate) fn other_professions(&self, profession: &Profession) -> Result<Vec1<Set1>> {
-        self.by_profession
-            .as_btree_map()
-            .iter()
-            .filter(move |&(other, _)| other != profession)
-            .map(|(_, &set)| set)
-            .try_collect1()
-            .map_err(|_empty| anyhow!("only {profession}s in puzzle"))
     }
 }
 

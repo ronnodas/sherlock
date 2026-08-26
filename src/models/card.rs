@@ -94,7 +94,7 @@ impl AsRef<Self> for CardFront {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Hash)]
 pub(crate) enum Judgment {
     Innocent,
     Criminal,

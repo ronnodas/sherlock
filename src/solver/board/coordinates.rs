@@ -1,18 +1,21 @@
+use std::cmp::Ordering;
 use std::fmt;
+use std::num::NonZero;
 use std::ops::{BitAnd, BitOr};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context as _, Result, anyhow};
 use bitvec::order::Lsb0;
 use bitvec::view::BitView as _;
-use mitsein::iter1::{IntoIterator1, Iterator1};
+use itertools::Itertools as _;
+use mitsein::iter1::{FromIterator1, IntoIterator1, Iterator1};
 use mitsein::vec1::{Vec1, vec1};
 
 use crate::models::{Column, Coord, Direction, Row};
+pub(crate) use crate::set1;
 use crate::solver::Judgment;
-use crate::solver::hint::Line;
+use crate::solver::hint::{Hint, Line};
 
-//TODO custom Debug
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub(crate) struct Set(u32);
 
 impl Set {
@@ -37,11 +40,7 @@ impl Set {
         Self::CONNECTED.view_bits::<Lsb0>()[index]
     }
 
-    pub(crate) fn contains(self, coord: Coord) -> bool {
-        self.0 & (1 << coord.to_index()) != 0
-    }
-
-    pub(crate) fn len(self) -> usize {
+    pub(crate) fn len(self) -> u8 {
         self.0.count_ones().try_into().expect("at most 20")
     }
 
@@ -51,16 +50,42 @@ impl Set {
             .collect()
     }
 
-    pub(crate) fn judged(self, judgment: Judgment) -> ModifiedSet {
-        ModifiedSet::Modified(Box::new(self.into()), Modifier::Judgment(judgment))
-    }
-
     pub(crate) fn empty() -> Self {
         Self(0)
     }
 
     pub(crate) fn complement(self) -> Self {
         Self(((1 << 20) - 1) ^ self.0)
+    }
+
+    pub(crate) fn non_empty(self) -> Option<Set1> {
+        NonZero::new(self.0).map(Set1)
+    }
+}
+
+impl Default for Set {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+impl PartialOrd for Set {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let intersection = *self & *other;
+        match [&intersection == self, &intersection == other] {
+            [true, true] => Some(Ordering::Equal),
+            [true, false] => Some(Ordering::Less),
+            [false, true] => Some(Ordering::Greater),
+            [false, false] => None,
+        }
+    }
+
+    fn le(&self, other: &Self) -> bool {
+        self.0 & other.0 == self.0
+    }
+
+    fn ge(&self, other: &Self) -> bool {
+        self.0 & other.0 == other.0
     }
 }
 
@@ -72,12 +97,28 @@ impl BitAnd<Self> for Set {
     }
 }
 
+impl BitOr<Self> for Set {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
 impl FromIterator<Coord> for Set {
     fn from_iter<T: IntoIterator<Item = Coord>>(iter: T) -> Self {
+        let mut this = Self::empty();
+        this.extend(iter);
+        this
+    }
+}
+
+impl Extend<Coord> for Set {
+    fn extend<T: IntoIterator<Item = Coord>>(&mut self, iter: T) {
         let bits = iter
             .into_iter()
-            .fold(0, |set, coord| set | (1 << coord.to_index()));
-        Self(bits)
+            .fold(self.0, |set, coord| set | (1 << coord.to_index()));
+        *self = Self(bits);
     }
 }
 
@@ -93,7 +134,7 @@ impl IntoIterator for Set {
 
 impl From<Set1> for Set {
     fn from(set: Set1) -> Self {
-        Self(set.0)
+        Self(set.0.get())
     }
 }
 
@@ -128,12 +169,44 @@ impl Iterator for SetIntoIter {
 impl ExactSizeIterator for SetIntoIter {}
 
 //TODO custom Debug
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Set1(u32);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct Set1(NonZero<u32>);
 
 impl Set1 {
     pub(crate) fn from_one(coord: Coord) -> Self {
-        Self(1 << coord.to_index())
+        Self(NonZero::new(1 << coord.to_index()).expect("no overflow"))
+    }
+
+    pub(crate) fn len(self) -> NonZero<u8> {
+        self.0.count_ones().try_into().expect("at most 20")
+    }
+
+    pub(crate) fn contains(self, coord: Coord) -> bool {
+        self.0.get() & (1 << coord.to_index()) != 0
+    }
+
+    pub(crate) fn shift(self, direction: Direction) -> Set {
+        self.into_iter()
+            .filter_map(|coord| coord.step(direction))
+            .collect()
+    }
+
+    pub(crate) fn judged(self, judgment: Judgment) -> ModifiedSet1 {
+        ModifiedSet1::Modified(Box::new(ModifiedSet1::Regular(self)), judgment.into())
+    }
+}
+
+impl PartialOrd for Set1 {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Set::from(*self).partial_cmp(&Set::from(*other))
+    }
+
+    fn le(&self, other: &Self) -> bool {
+        self.0.get() & other.0.get() == self.0.get()
+    }
+
+    fn ge(&self, other: &Self) -> bool {
+        self.0.get() & other.0.get() == other.0.get()
     }
 }
 
@@ -145,15 +218,11 @@ impl BitOr<Coord> for Set1 {
     }
 }
 
-impl TryFrom<Set> for Set1 {
-    type Error = Set;
+impl BitOr<Set> for Set1 {
+    type Output = Self;
 
-    fn try_from(set: Set) -> Result<Self, Self::Error> {
-        if set.0 == 0 {
-            Err(set)
-        } else {
-            Ok(Self(set.0))
-        }
+    fn bitor(self, rhs: Set) -> Self::Output {
+        Self(self.0 | rhs.0)
     }
 }
 
@@ -163,7 +232,7 @@ impl IntoIterator for Set1 {
     type IntoIter = SetIntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        SetIntoIter { bits: self.0 }
+        SetIntoIter { bits: self.0.get() }
     }
 }
 
@@ -178,40 +247,113 @@ impl IntoIterator1 for Set1 {
     }
 }
 
+impl FromIterator1<Coord> for Set1 {
+    fn from_iter1<I>(items: I) -> Self
+    where
+        I: IntoIterator1<Item = Coord>,
+    {
+        let (head, tail) = items.into_iter1().into_head_and_tail();
+        Self::from_one(head) | Set::from_iter(tail)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum ModifiedSet {
     Empty,
-    Regular(Set),
-    Modified(Box<Self>, Modifier),
-    Intersection(Vec1<Self>),
+    NonEmpty(ModifiedSet1),
 }
 
 impl ModifiedSet {
-    #[must_use]
-    pub(crate) fn as_regular(&self) -> Option<Set> {
-        if let &Self::Regular(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
-
     pub(crate) fn judged(self, judgment: Judgment) -> Self {
-        match self {
-            Self::Modified(this, Modifier::Judgment(other)) if other == judgment => {
-                Self::Modified(this, judgment.into())
-            }
-            Self::Modified(_, Modifier::Judgment(_)) | Self::Empty => Self::Empty,
-            Self::Regular(_) | Self::Modified(_, Modifier::Shift(_)) | Self::Intersection(_) => {
-                Self::Modified(Box::new(self), judgment.into())
-            }
+        if let Self::NonEmpty(set) = self {
+            set.judged(judgment)
+        } else {
+            Self::Empty
         }
     }
 
     pub(crate) fn intersect(self, rhs: Self) -> Self {
-        match (self, rhs) {
-            (Self::Empty, _) | (_, Self::Empty) => Self::Empty,
+        if let Self::NonEmpty(rhs) = rhs {
+            self.intersect1(rhs)
+        } else {
+            Self::Empty
+        }
+    }
 
+    pub(crate) fn intersect1(self, rhs: ModifiedSet1) -> Self {
+        if let Self::NonEmpty(set) = self {
+            set.intersect(rhs)
+        } else {
+            Self::Empty
+        }
+    }
+
+    pub(crate) fn shift(self, direction: Direction) -> Self {
+        if let Self::NonEmpty(set) = self {
+            set.shift(direction)
+        } else {
+            Self::Empty
+        }
+    }
+
+    pub(crate) fn from_regular(set: Set) -> Self {
+        set.non_empty()
+            .map_or(Self::Empty, |set| Self::NonEmpty(set.into()))
+    }
+}
+
+impl From<ModifiedSet1> for ModifiedSet {
+    fn from(set: ModifiedSet1) -> Self {
+        Self::NonEmpty(set)
+    }
+}
+
+impl From<Set> for ModifiedSet {
+    fn from(v: Set) -> Self {
+        Self::from_regular(v)
+    }
+}
+
+impl From<Set1> for ModifiedSet {
+    fn from(set: Set1) -> Self {
+        Self::NonEmpty(set.into())
+    }
+}
+
+impl From<Line> for ModifiedSet {
+    fn from(line: Line) -> Self {
+        Self::from_regular(line.into())
+    }
+}
+
+impl FromIterator<Coord> for ModifiedSet {
+    fn from_iter<T: IntoIterator<Item = Coord>>(iter: T) -> Self {
+        Self::from_regular(iter.into_iter().collect())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum ModifiedSet1 {
+    Regular(Set1),
+    Modified(Box<Self>, Modifier),
+    Intersection(Vec1<Self>),
+}
+
+impl ModifiedSet1 {
+    pub(crate) fn judged(self, judgment: Judgment) -> ModifiedSet {
+        match self {
+            Self::Modified(this, Modifier::Judgment(other)) if other == judgment => {
+                Self::Modified(this, judgment.into()).into()
+            }
+            Self::Modified(_, Modifier::Judgment(_)) => ModifiedSet::Empty,
+            Self::Regular(_) | Self::Modified(_, Modifier::Shift(_)) | Self::Intersection(_) => {
+                Self::Modified(Box::new(self), judgment.into()).into()
+            }
+        }
+    }
+
+    pub(crate) fn intersect(self, rhs: Self) -> ModifiedSet {
+        match (self, rhs) {
             (Self::Regular(this), Self::Regular(rhs)) => this
                 .into_iter()
                 .filter(|&coord| rhs.contains(coord))
@@ -221,6 +363,11 @@ impl ModifiedSet {
                 this.intersect(*rhs).judged(judgment)
             }
 
+            // TODO only for some cases of this, otherwise not well-founded
+            // (this, ModifiedSet1::Modified(rhs, Modifier::Shift(dir)))
+            // | (ModifiedSet1::Modified(rhs, Modifier::Shift(dir)), this) => {
+            //     this.shift(dir.flip()).intersect1(*rhs).shift(dir)
+            // }
             (Self::Modified(this, Modifier::Shift(a)), Self::Modified(rhs, Modifier::Shift(b)))
                 if a == b =>
             {
@@ -229,53 +376,71 @@ impl ModifiedSet {
             (
                 this @ (Self::Regular(..) | Self::Modified(..)),
                 rhs @ (Self::Modified(..) | Self::Regular(..)),
-            ) => Self::Intersection(vec1![this, rhs]),
+            ) => Self::Intersection(vec1![this, rhs]).into(),
             (this @ (Self::Regular(..) | Self::Modified(..)), Self::Intersection(mut vec))
             | (Self::Intersection(mut vec), this @ (Self::Regular(..) | Self::Modified(..))) => {
                 vec.push(this);
-                Self::Intersection(vec)
+                Self::Intersection(vec).into()
             }
             (Self::Intersection(mut this), Self::Intersection(rhs)) => {
                 this.extend(rhs);
-                Self::Intersection(this)
+                Self::Intersection(this).into()
             }
         }
     }
 
-    pub(crate) fn shift(self, direction: Direction) -> Self {
+    pub(crate) fn shift(self, direction: Direction) -> ModifiedSet {
         match self {
-            Self::Empty => Self::Empty,
-            Self::Regular(set) => Self::Regular(set.shift(direction)),
-            set @ Self::Modified(..) => Self::Modified(Box::new(set), direction.into()),
+            Self::Regular(set) => ModifiedSet::from_regular(set.shift(direction)),
+            set @ Self::Modified(..) => Self::Modified(Box::new(set), direction.into()).into(),
             Self::Intersection(vec) => vec
                 .into_iter1()
                 .map(|set| set.shift(direction))
-                .reduce(Self::intersect),
+                .reduce(ModifiedSet::intersect),
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn as_regular(&self) -> Option<&Set1> {
+        if let Self::Regular(set) = self {
+            Some(set)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn conditions_to_contain(&self, coord: Coord) -> Result<Vec<Hint>> {
+        match self {
+            Self::Regular(set) => {
+                if set.contains(coord) {
+                    Ok(Vec::new())
+                } else {
+                    Err(anyhow!("{self:?} does not contain {coord}"))
+                }
+            }
+            Self::Modified(inner, Modifier::Judgment(judgment)) => {
+                let mut hints = inner.conditions_to_contain(coord)?;
+                hints.push(Hint::Judgment(coord, *judgment));
+                Ok(hints)
+            }
+            Self::Modified(inner, Modifier::Shift(direction)) => {
+                let coord = coord
+                    .step(direction.flip())
+                    .with_context(|| format!("{coord} is not {direction:?} of anything"))?;
+                inner.conditions_to_contain(coord)
+            }
+            Self::Intersection(sets) => sets
+                .into_iter()
+                .map(|set| set.conditions_to_contain(coord))
+                .flatten_ok()
+                .collect(),
         }
     }
 }
 
-impl From<Set> for ModifiedSet {
-    fn from(v: Set) -> Self {
-        Self::Regular(v)
-    }
-}
-
-impl From<Set1> for ModifiedSet {
+impl From<Set1> for ModifiedSet1 {
     fn from(set: Set1) -> Self {
-        Self::Regular(set.into())
-    }
-}
-
-impl From<Line> for ModifiedSet {
-    fn from(line: Line) -> Self {
-        Self::Regular(line.into())
-    }
-}
-
-impl FromIterator<Coord> for ModifiedSet {
-    fn from_iter<T: IntoIterator<Item = Coord>>(iter: T) -> Self {
-        Self::Regular(iter.into_iter().collect())
+        Self::Regular(set)
     }
 }
 
@@ -297,10 +462,20 @@ impl From<Judgment> for Modifier {
     }
 }
 
+#[macro_export]
+macro_rules! set1 {
+    ($c:tt $r:tt) => {
+        Set1::from_one(coord!($c $r))
+    };
+
+    // Recursive / iterative case:
+    // Matches the first pair, followed by `|`, and then a repetition of remaining pairs
+    ($c:tt $r:tt | $($rest_c:tt $rest_r:tt)|+) => {
+        Set1::from_one(coord!($c $r)) $(| coord!($rest_c $rest_r))+
+    };}
+
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools as _;
-
     use super::*;
 
     #[test]
