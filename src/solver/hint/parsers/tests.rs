@@ -6,6 +6,7 @@ use winnow::error::ParserError;
 use winnow::stream::{Stream, StreamIsPartial};
 
 use crate::models::{Column, Direction, Judgment, Row};
+use crate::solver::hint::parsers::phrases::Quantifier;
 use crate::solver::hint::recipes::{ColumnRecipe, NameRecipe as Name};
 use crate::solver::hint::{Cardinal, LineKind, Parity};
 
@@ -105,7 +106,7 @@ fn katie_2026_02_03() {
         "Ryan and I have no innocent neighbors in common",
         &Sentence::IntersectionSize(
             [Unit::neighbor("Ryan"), Unit::Neighbor(Name::Me)],
-            Cardinal::Exact(0),
+            Cardinal::Exact(0).into(),
             Judgment::Innocent,
         ),
     );
@@ -180,7 +181,7 @@ fn gary_2026_02_05() {
         "exactly 1 innocent in row\u{a0}4 is neighboring Xavi",
         &Sentence::IntersectionSize(
             [Row::Four.into(), Unit::neighbor("Xavi")],
-            Cardinal::Exact(1),
+            Cardinal::Exact(1).into(),
             Judgment::Innocent,
         ),
     );
@@ -268,7 +269,7 @@ fn jason_2026_02_06() {
         "Ellie and Noah have only one innocent neighbor in common",
         &Sentence::IntersectionSize(
             ["Ellie", "Noah"].map(Name::from).map(Unit::Neighbor),
-            Cardinal::Exact(1),
+            Cardinal::Exact(1).into(),
             Judgment::Innocent,
         ),
     );
@@ -352,7 +353,7 @@ fn xena_2026_02_08() {
         "There are no innocents in row 1 who neighbor Donna",
         &Sentence::IntersectionSize(
             [Row::One.into(), Unit::neighbor("Donna")],
-            Cardinal::Exact(0),
+            Cardinal::Exact(0).into(),
             Judgment::Innocent,
         ),
     );
@@ -377,7 +378,7 @@ fn tina_2026_02_09() {
         "exactly 2 innocents in column C are neighboring me",
         &Sentence::IntersectionSize(
             [Column::C.into(), Unit::Neighbor(Name::Me)],
-            Cardinal::Exact(2),
+            Cardinal::Exact(2).into(),
             Judgment::Innocent,
         ),
     );
@@ -450,7 +451,7 @@ fn lisa_2026_02_10() {
         "exactly 1 innocent on the edges is a farmer",
         &Sentence::IntersectionSize(
             [Unit::Edges, Unit::profession("farmer")],
-            Cardinal::Exact(1),
+            Cardinal::Exact(1).into(),
             Judgment::Innocent,
         ),
     );
@@ -507,7 +508,7 @@ fn olive_2026_02_13() {
         "2 of my neighbors on the edges are innocent",
         &Sentence::IntersectionSize(
             [Unit::Neighbor(Name::Me), Unit::Edges],
-            Cardinal::Exact(2),
+            Cardinal::Exact(2).into(),
             Judgment::Innocent,
         ),
     );
@@ -763,6 +764,18 @@ fn bunty_2026_08_25() {
 }
 
 #[test]
+fn bobby_2026_08_26() {
+    sentence(
+        "1 of the 2 coders neighboring Xola is innocent",
+        &Sentence::IntersectionSize(
+            [Unit::profession("coder"), Unit::neighbor("Xola")],
+            Quantifier::Subset(Cardinal::Exact(1), 2),
+            Judgment::Innocent,
+        ),
+    );
+}
+
+#[test]
 fn diane_0cf47() {
     sentence(
         "Xavi has more criminal neighbors than Ben",
@@ -838,7 +851,7 @@ fn gary_dd0a4616a658() {
         "Nancy has only one innocent neighbor on the edges",
         &Sentence::IntersectionSize(
             [Unit::neighbor("Nancy"), (Unit::Edges)],
-            Cardinal::Exact(1),
+            Cardinal::Exact(1).into(),
             Judgment::Innocent,
         ),
     );
@@ -850,7 +863,7 @@ fn olga_d9b7f6418e96() {
         "2 of Gus' neighbors on the edges are innocent",
         &Sentence::IntersectionSize(
             [Unit::neighbor("Gus"), Unit::Edges],
-            Cardinal::Exact(2),
+            Cardinal::Exact(2).into(),
             Judgment::Innocent,
         ),
     );
@@ -1032,7 +1045,7 @@ fn cheryl_puzzle_pack_1_27() {
         "2 of Isaac's innocent neighbors are in row&nbsp;3",
         &Sentence::IntersectionSize(
             [Unit::neighbor("Isaac"), Row::Three.into()],
-            Cardinal::Exact(2),
+            Cardinal::Exact(2).into(),
             Judgment::Innocent,
         ),
     );
@@ -1044,7 +1057,7 @@ fn freya_puzzle_pack_1_45() {
         "exactly 1 innocent neighboring Wally is builder",
         &Sentence::IntersectionSize(
             [Unit::neighbor("Wally"), Unit::profession("builder")],
-            Cardinal::Exact(1),
+            Cardinal::Exact(1).into(),
             Judgment::Innocent,
         ),
     );

@@ -7,7 +7,7 @@ use crate::solver::board::coordinates::{ModifiedSet, Set, Set1};
 use crate::solver::hint::recipes::{
     AddContext, ColumnRecipe, Context, LineRecipe, NameRecipe, RowRecipe,
 };
-use crate::solver::hint::{Cardinal, Comparison, Hint, LineKind, Number};
+use crate::solver::hint::{Cardinal, Comparison, Hint, LineKind, Number, Parity};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug)]
@@ -43,7 +43,8 @@ pub(crate) enum Sentence {
         intersection: Cardinal,
         judgment: Judgment,
     },
-    IntersectionSize([Unit; 2], Cardinal, Judgment),
+    // TODO replace with UnitSize?
+    IntersectionSize([Unit; 2], Quantifier, Judgment),
     EachInUnitHasAtMostNNeighbors(Unit, Number, Judgment),
     TotalUnitsSize([Unit; 2], Cardinal, Judgment),
 }
@@ -100,20 +101,16 @@ impl AddContext for Sentence {
                 unit.only_one_with_n_traits(quantity, judgment, context)?
             }
             Self::UnitAndIntersectionSize {
-                total: quantity,
+                total,
                 quantified,
                 other,
                 intersection,
                 judgment,
-            } => quantified.intersects_with(
-                &other,
-                intersection,
-                Some(quantity),
-                judgment,
-                context,
-            )?,
+            } => {
+                quantified.this_and_intersection(total, &other, intersection, judgment, context)?
+            }
             Self::IntersectionSize([a, b], quantity, judgment) => {
-                a.intersects_with(&b, quantity, None, judgment, context)?
+                a.intersection(&b, quantity, judgment, context)?
             }
             Self::EqualNumberOfTraitsInUnits(units, judgment) => {
                 let (sets, mut hints) = units.add_context(context)?;
@@ -224,21 +221,40 @@ impl Unit {
         Ok(hints)
     }
 
-    fn intersects_with(
+    fn this_and_intersection(
         &self,
+        total: Number,
         other: &Self,
         intersection: Cardinal,
-        quantity: Option<Number>,
         judgment: Judgment,
         context: Context<'_>,
     ) -> anyhow::Result<Vec<Hint>> {
         let ([self_, other], mut hints) = [self, other].add_context(context)?;
         let other = other.intersect(self_.clone()).judged(judgment);
         let self_ = self_.judged(judgment);
+        hints.push(Hint::Count(self_, Cardinal::Exact(total)));
         hints.push(Hint::Count(other, intersection));
-        if let Some(quantity) = quantity {
-            hints.push(Hint::Count(self_, Cardinal::Exact(quantity)));
-        }
+        Ok(hints)
+    }
+
+    fn intersection(
+        &self,
+        other: &Self,
+        intersection: Quantifier,
+        judgment: Judgment,
+        context: Context<'_>,
+    ) -> anyhow::Result<Vec<Hint>> {
+        let ([self_, other], mut hints) = [self, other].add_context(context)?;
+        let set = other.intersect(self_);
+        let intersection = match intersection {
+            Quantifier::Simple(intersection) => intersection,
+            Quantifier::Subset(intersection, total) => {
+                hints.push(Hint::Count(set.clone(), Cardinal::Exact(total)));
+                intersection
+            }
+        };
+        hints.push(Hint::Count(set.judged(judgment), intersection));
+
         Ok(hints)
     }
 
@@ -599,7 +615,6 @@ impl From<LineKind> for Series {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Quantifier {
     Simple(Cardinal),
-    // Maybe this needs to be Quantity, Quantity?
     Subset(Cardinal, Number),
 }
 
@@ -611,5 +626,17 @@ impl Quantifier {
             Self::Simple(Cardinal::AtLeast(_) | Cardinal::AtMost(_) | Cardinal::Parity(_))
             | Self::Subset(_, _) => None,
         }
+    }
+}
+
+impl From<Cardinal> for Quantifier {
+    fn from(v: Cardinal) -> Self {
+        Self::Simple(v)
+    }
+}
+
+impl From<Parity> for Quantifier {
+    fn from(v: Parity) -> Self {
+        Self::Simple(v.into())
     }
 }

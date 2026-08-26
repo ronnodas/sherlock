@@ -379,8 +379,8 @@ impl Sentence {
         ))
         .map(
             |(quantifier, quantified, other, judgment)| match quantifier {
-                Quantifier::Simple(cardinal) => {
-                    Self::IntersectionSize([quantified, other], cardinal, judgment)
+                quantifier @ Quantifier::Simple(_) => {
+                    Self::IntersectionSize([quantified, other], quantifier, judgment)
                 }
                 Quantifier::Subset(intersection, total) => Self::UnitAndIntersectionSize {
                     total,
@@ -400,10 +400,16 @@ impl Sentence {
                 separated_pair(pair(name, "and"), word("have"), cardinal_judgment),
                 words((neighbor_any, "in", "common")),
             )
-            .map(|(names, (count, judgment))| (names.map(Unit::Neighbor), judgment, count)),
+            .map(|(names, (count, judgment))| {
+                (
+                    names.map(Unit::Neighbor),
+                    judgment,
+                    Quantifier::Simple(count),
+                )
+            }),
             separated_pair(
                 (
-                    cardinal,
+                    quantifier,
                     separated_pair(word(name_possessive), word("neighbors"), unit),
                 ),
                 word(be_verb),
@@ -418,11 +424,27 @@ impl Sentence {
                 separated_pair(cardinal_judgment, word(neighbor_any), unit),
             )
             .map(|(name, ((quantity, judgment), unit))| {
-                ([Unit::Neighbor(name), unit], judgment, quantity)
+                (
+                    [Unit::Neighbor(name), unit],
+                    judgment,
+                    Quantifier::Simple(quantity),
+                )
             }),
             separated_pair(pair(name, "and"), word("share"), cardinal_judged_neighbors).map(
-                |(names, (quantity, judgment))| (names.map(Unit::Neighbor), judgment, quantity),
+                |(names, (quantity, judgment))| {
+                    (
+                        names.map(Unit::Neighbor),
+                        judgment,
+                        Quantifier::Simple(quantity),
+                    )
+                },
             ),
+            separated_pair(
+                separated_pair(quantified_unit, neighboring_verb, word(name)),
+                word(be_verb),
+                word(judgment_any),
+            )
+            .map(|(((quantifier, a), b), judgment)| ([a, Unit::Neighbor(b)], judgment, quantifier)),
         ))
         .map(|(units, judgment, cardinal)| Self::IntersectionSize(units, cardinal, judgment))
         .parse_next(input)
