@@ -34,3 +34,23 @@ impl Engine for InferenceSolver {
 enum Theorem {
     Is(Coord, Judgment),
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::Path;
+
+    use crate::ARCHIVE_DIR;
+    use crate::solver::tests::solve;
+
+    use super::*;
+
+    #[test]
+    fn sample() {
+        let path = Path::new(ARCHIVE_DIR).join("2026-08-03.ron");
+        println!("Trying to solve: {}", path.display());
+        let contents = fs::read_to_string(path).unwrap();
+        let puzzle = ron::from_str(&contents).unwrap();
+        solve::<InferenceSolver>(&puzzle);
+    }
+}
