@@ -72,23 +72,7 @@ impl AddContext for Sentence {
                 hints
             }
             Self::TotalUnitsSize(units, quantity, judgment) => {
-                let (sets, mut hints) = units.add_context(context)?;
-                let sets = sets.map(|set| set.judged(judgment));
-                match sets {
-                    [ModifiedSet::Empty, ModifiedSet::Empty] => {
-                        if !quantity.matches(0) {
-                            bail!("{units:?} are both empty so cannot total to {quantity:?}")
-                        }
-                    }
-                    [ModifiedSet::Empty, ModifiedSet::NonEmpty(set)]
-                    | [ModifiedSet::NonEmpty(set), ModifiedSet::Empty] => {
-                        hints.push(Hint::Count(set, quantity));
-                    }
-                    [ModifiedSet::NonEmpty(a), ModifiedSet::NonEmpty(b)] => {
-                        hints.push(Hint::CountTotal([a, b], quantity));
-                    }
-                }
-                hints
+                Unit::total_size(&units, quantity, judgment, context)?
             }
             Self::UniqueInUnitHasNNeighbors(unit, quantity, name, judgment) => {
                 unit.unique_member_has_n_neighbors(quantity, judgment, name.as_ref(), context)?
@@ -356,7 +340,32 @@ impl Unit {
         Ok(hints)
     }
 
-    fn members_are_connected(self, context: Context<'_>) -> Result<Vec<Hint>> {
+    fn total_size(
+        units: &[Self; 2],
+        quantity: Cardinal,
+        judgment: Judgment,
+        context: Context<'_>,
+    ) -> Result<Vec<Hint>> {
+        let (sets, mut hints) = units.add_context(context)?;
+        let sets = sets.map(|set| set.judged(judgment));
+        match sets {
+            [ModifiedSet::Empty, ModifiedSet::Empty] => {
+                if !quantity.matches(0) {
+                    bail!("{units:?} are both empty so cannot total to {quantity:?}")
+                }
+            }
+            [ModifiedSet::Empty, ModifiedSet::NonEmpty(set)]
+            | [ModifiedSet::NonEmpty(set), ModifiedSet::Empty] => {
+                hints.push(Hint::Count(set, quantity));
+            }
+            [ModifiedSet::NonEmpty(a), ModifiedSet::NonEmpty(b)] => {
+                hints.push(Hint::CountTotal([a, b], quantity));
+            }
+        }
+        Ok(hints)
+    }
+
+    fn members_are_connected(&self, context: Context<'_>) -> Result<Vec<Hint>> {
         let (set, mut hints) = self.add_context(context)?;
         if let ModifiedSet::NonEmpty(set) = set {
             hints.push(Hint::Connected(set));
