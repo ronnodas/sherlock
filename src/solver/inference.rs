@@ -640,20 +640,16 @@ struct Contradiction;
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-    use std::path::Path;
+    use test_each_file::test_each_file;
 
-    use crate::ARCHIVE_DIR;
     use crate::solver::tests::solve;
 
     use super::*;
 
-    #[test]
-    fn sample() {
-        let path = Path::new(ARCHIVE_DIR).join("2026-08-03.ron");
-        println!("Trying to solve: {}", path.display());
-        let contents = fs::read_to_string(path).unwrap();
-        let puzzle = ron::from_str(&contents).unwrap();
+    test_each_file! { in "./archive" as puzzle => inference}
+
+    fn inference(puzzle: &str) {
+        let puzzle = ron::from_str(puzzle).unwrap();
         solve::<InferenceSolver>(&puzzle);
     }
 }
