@@ -13,6 +13,7 @@ bpaf = { version = "0.9.28", default-features = false, features = [
     "autocomplete",
 ] }
 colored = "3.1.1"
+indexmap = "2.14.2"
 inquire = { version = "0.9.4", default-features = false, features = [
     "crossterm",
     "fuzzy",
@@ -131,7 +132,6 @@ mutex_integer = "warn"
 needless_raw_strings = "warn"
 non_zero_suggestions = "warn"
 panic = "warn"
-panic_in_result_fn = "warn"
 partial_pub_fields = "warn"
 pathbuf_init_then_push = "warn"
 precedence_bits = "warn"

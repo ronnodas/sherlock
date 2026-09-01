@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::fmt;
 use std::num::NonZero;
-use std::ops::{BitAnd, BitOr, BitXor};
+use std::ops::{BitAnd, BitOr, BitOrAssign, BitXor};
 
 use anyhow::{Result, anyhow};
 use bitvec::order::Lsb0;
@@ -60,6 +60,16 @@ impl Set {
     pub(crate) fn non_empty(self) -> Option<Set1> {
         NonZero::new(self.0).map(Set1)
     }
+
+    // TODO could be Iterator1
+    pub(crate) fn power_set(self) -> impl Iterator<Item = Self> {
+        (0..=self.0).map(Self).filter(move |sub| sub <= &self)
+    }
+
+    /// elements that are in self but not in rhs
+    pub(crate) fn difference(self, rhs: impl Into<Self>) -> Self {
+        Self(self.0 & !(rhs.into().0))
+    }
 }
 
 impl Default for Set {
@@ -101,6 +111,12 @@ impl BitOr<Self> for Set {
 
     fn bitor(self, rhs: Self) -> Self::Output {
         Self(self.0 | rhs.0)
+    }
+}
+
+impl BitOrAssign<Coord> for Set {
+    fn bitor_assign(&mut self, rhs: Coord) {
+        self.0 |= 1 << rhs.to_index();
     }
 }
 
@@ -232,6 +248,20 @@ impl Set1 {
         } else {
             Err(anyhow!("{self:?} does not contain {coord}"))
         }
+    }
+
+    // TODO could be Iterator1
+    pub(crate) fn power_set(self) -> impl Iterator<Item = Set> {
+        Set::from(self).power_set()
+    }
+
+    /// elements that are in self but not in rhs
+    pub(crate) fn difference(self, rhs: impl Into<Set>) -> Set {
+        Set::from(self).difference(rhs)
+    }
+
+    pub(crate) fn total_cmp(self, b: Self) -> Ordering {
+        self.0.cmp(&b.0)
     }
 }
 
@@ -513,7 +543,7 @@ impl SetOp1 {
             .map_or(SetOp::Empty, |rhs| self.intersect_set1(rhs))
     }
 
-    fn intersect_set1(self, rhs: Set1) -> SetOp {
+    pub(crate) fn intersect_set1(self, rhs: Set1) -> SetOp {
         match self {
             Self::Judged(this, judgment) => (*this).intersect(rhs.into()).judged(judgment),
             Self::Shift(this, direction) => {

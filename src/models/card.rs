@@ -1,9 +1,12 @@
+#![expect(unsafe_code, reason = "Linearize impl")]
+
 use std::borrow::Borrow;
 use std::fmt;
 use std::ops::Not;
 use std::rc::Rc;
 
 use colored::Color;
+use linearize::Linearize;
 use serde::{Deserialize, Serialize};
 
 use crate::models::HintText;
@@ -117,7 +120,7 @@ impl AsRef<Self> for CardFront {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Hash, Linearize)]
 pub(crate) enum Judgment {
     Innocent,
     Criminal,

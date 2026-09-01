@@ -273,6 +273,14 @@ impl BoundOrNot {
             Self::Parity(parity) => parity.matches(len),
         }
     }
+
+    pub(crate) fn minimum(self) -> Number {
+        match self {
+            Self::Exact(value) | Self::AtLeast(value) => value,
+            Self::Parity(Parity::Odd) | Self::NotExact(0) => 1,
+            Self::AtMost(_) | Self::Parity(Parity::Even) | Self::NotExact(_) => 0,
+        }
+    }
 }
 
 impl From<Bound> for BoundOrNot {
