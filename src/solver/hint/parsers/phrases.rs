@@ -3,7 +3,7 @@ use mitsein::iter1::IntoIterator1 as _;
 use mitsein::vec1::Vec1;
 
 use crate::models::{Column, Coord, Direction, Judgment, Profession, Row};
-use crate::solver::board::coordinates::{ModifiedSet, Set, Set1};
+use crate::solver::board::coordinates::{SetExpr, Set, Set1};
 use crate::solver::hint::recipes::{
     AddContext, ColumnRecipe, Context, LineRecipe, NameRecipe, RowRecipe,
 };
@@ -64,7 +64,7 @@ impl AddContext for Sentence {
             }
             Self::UnitSize(unit, quantity) => {
                 let (set, mut hints) = unit.add_context(context)?;
-                if let ModifiedSet::NonEmpty(set) = set {
+                if let SetExpr::NonEmpty(set) = set {
                     hints.push(Hint::Count(set, quantity));
                 } else if !quantity.matches(0) {
                     bail!("{set:?} is empty");
@@ -110,12 +110,12 @@ impl AddContext for Sentence {
                 let (sets, mut hints) = units.add_context(context)?;
                 let sets = sets.map(|set| set.judged(judgment));
                 match sets {
-                    [ModifiedSet::Empty, ModifiedSet::Empty] => {}
-                    [ModifiedSet::Empty, ModifiedSet::NonEmpty(set)]
-                    | [ModifiedSet::NonEmpty(set), ModifiedSet::Empty] => {
+                    [SetExpr::Empty, SetExpr::Empty] => {}
+                    [SetExpr::Empty, SetExpr::NonEmpty(set)]
+                    | [SetExpr::NonEmpty(set), SetExpr::Empty] => {
                         hints.push(Hint::Count(set, Cardinal::Exact(0)));
                     }
-                    [ModifiedSet::NonEmpty(a), ModifiedSet::NonEmpty(b)] => {
+                    [SetExpr::NonEmpty(a), SetExpr::NonEmpty(b)] => {
                         hints.push(Hint::CompareSets([a, b], Comparison::ExactDifference(0)));
                     }
                 }
@@ -125,11 +125,11 @@ impl AddContext for Sentence {
             Self::MoreTraitsInUnit(unit, judgment) => {
                 let (set, mut hints) = unit.add_context(context)?;
                 let hint = match [set.clone().judged(judgment), set.judged(!judgment)] {
-                    [ModifiedSet::Empty, _] => bail!("no {judgment} in {unit:?}"),
-                    [ModifiedSet::NonEmpty(big), ModifiedSet::Empty] => {
+                    [SetExpr::Empty, _] => bail!("no {judgment} in {unit:?}"),
+                    [SetExpr::NonEmpty(big), SetExpr::Empty] => {
                         Hint::Count(big, Cardinal::AtLeast(1))
                     }
-                    [ModifiedSet::NonEmpty(big), ModifiedSet::NonEmpty(small)] => {
+                    [SetExpr::NonEmpty(big), SetExpr::NonEmpty(small)] => {
                         Hint::CompareSets([big, small], Comparison::More)
                     }
                 };
@@ -183,7 +183,7 @@ impl Unit {
             .as_ref()
             .map(|name| name.add_context(context))
             .transpose()?;
-        let ModifiedSet::NonEmpty(set) = set else {
+        let SetExpr::NonEmpty(set) = set else {
             bail!("empty unit {self:?} cannnot have unique member")
         };
         if let Some(set) = set.as_regular() {
@@ -229,21 +229,21 @@ impl Unit {
     ) -> Result<Vec<Hint>> {
         let ([self_, other], mut hints) = [self, other].add_context(context)?;
         match self_.judged(judgment) {
-            ModifiedSet::Empty => {
+            SetExpr::Empty => {
                 if total != 0 || !intersection.matches(0) {
                     bail!("{self:?} is empty");
                 }
             }
-            ModifiedSet::NonEmpty(self_) => {
+            SetExpr::NonEmpty(self_) => {
                 hints.push(Hint::Count(self_.clone(), Cardinal::Exact(total)));
                 let other = other.intersect1(self_).judged(judgment);
                 match other {
-                    ModifiedSet::Empty => {
+                    SetExpr::Empty => {
                         if !intersection.matches(0) {
                             bail!("intersection of {self:?} and {other:?} is empty")
                         }
                     }
-                    ModifiedSet::NonEmpty(other) => {
+                    SetExpr::NonEmpty(other) => {
                         hints.push(Hint::Count(other, intersection));
                     }
                 }
@@ -262,7 +262,7 @@ impl Unit {
         let ([self_, other], mut hints) = [self, other_unit].add_context(context)?;
         let set = other.intersect(self_);
         match set {
-            ModifiedSet::Empty => {
+            SetExpr::Empty => {
                 let forced_non_empty = match intersection {
                     Quantifier::Simple(cardinal) => !cardinal.matches(0),
                     Quantifier::Subset(_, total) => total != 0,
@@ -271,7 +271,7 @@ impl Unit {
                     bail!("{self:?} is empty");
                 }
             }
-            ModifiedSet::NonEmpty(set) => {
+            SetExpr::NonEmpty(set) => {
                 let intersection = match intersection {
                     Quantifier::Simple(intersection) => intersection,
                     Quantifier::Subset(intersection, total) => {
@@ -280,12 +280,12 @@ impl Unit {
                     }
                 };
                 match set.judged(judgment) {
-                    ModifiedSet::Empty => {
+                    SetExpr::Empty => {
                         if !intersection.matches(0) {
                             bail!("intersection of {self:?} and {other_unit:?} is empty")
                         }
                     }
-                    ModifiedSet::NonEmpty(set) => {
+                    SetExpr::NonEmpty(set) => {
                         hints.push(Hint::Count(set, intersection));
                     }
                 }
@@ -302,7 +302,7 @@ impl Unit {
         context: Context<'_>,
     ) -> Result<Vec<Hint>> {
         let (set, mut hints) = self.add_context(context)?;
-        if let ModifiedSet::NonEmpty(set) = set {
+        if let SetExpr::NonEmpty(set) = set {
             hints.push(Hint::EachNeighbors(set, Cardinal::AtMost(number), judgment));
         }
         Ok(hints)
@@ -319,21 +319,21 @@ impl Unit {
         hints.extend(small_hints);
         let compare = excess.map_or(Comparison::More, Comparison::ExactDifference);
         match [big, small] {
-            [ModifiedSet::Empty, _] if !matches!(compare, Comparison::ExactDifference(0)) => {
+            [SetExpr::Empty, _] if !matches!(compare, Comparison::ExactDifference(0)) => {
                 bail!("{self:?} is empty so cannot be > {small_unit:?}")
             }
-            [ModifiedSet::Empty, ModifiedSet::Empty] => {}
-            [ModifiedSet::Empty, ModifiedSet::NonEmpty(small)] => {
+            [SetExpr::Empty, SetExpr::Empty] => {}
+            [SetExpr::Empty, SetExpr::NonEmpty(small)] => {
                 hints.push(Hint::Count(small, Cardinal::Exact(0)));
             }
-            [ModifiedSet::NonEmpty(big), ModifiedSet::Empty] => {
+            [SetExpr::NonEmpty(big), SetExpr::Empty] => {
                 let count = match compare {
                     Comparison::ExactDifference(exact) => Cardinal::Exact(exact),
                     Comparison::More => Cardinal::AtLeast(1),
                 };
                 hints.push(Hint::Count(big, count));
             }
-            [ModifiedSet::NonEmpty(big), ModifiedSet::NonEmpty(small)] => {
+            [SetExpr::NonEmpty(big), SetExpr::NonEmpty(small)] => {
                 hints.push(Hint::CompareSets([big, small], compare));
             }
         }
@@ -349,16 +349,16 @@ impl Unit {
         let (sets, mut hints) = units.add_context(context)?;
         let sets = sets.map(|set| set.judged(judgment));
         match sets {
-            [ModifiedSet::Empty, ModifiedSet::Empty] => {
+            [SetExpr::Empty, SetExpr::Empty] => {
                 if !quantity.matches(0) {
                     bail!("{units:?} are both empty so cannot total to {quantity:?}")
                 }
             }
-            [ModifiedSet::Empty, ModifiedSet::NonEmpty(set)]
-            | [ModifiedSet::NonEmpty(set), ModifiedSet::Empty] => {
+            [SetExpr::Empty, SetExpr::NonEmpty(set)]
+            | [SetExpr::NonEmpty(set), SetExpr::Empty] => {
                 hints.push(Hint::Count(set, quantity));
             }
-            [ModifiedSet::NonEmpty(a), ModifiedSet::NonEmpty(b)] => {
+            [SetExpr::NonEmpty(a), SetExpr::NonEmpty(b)] => {
                 hints.push(Hint::CountTotal([a, b], quantity));
             }
         }
@@ -367,7 +367,7 @@ impl Unit {
 
     fn members_are_connected(&self, context: Context<'_>) -> Result<Vec<Hint>> {
         let (set, mut hints) = self.add_context(context)?;
-        if let ModifiedSet::NonEmpty(set) = set {
+        if let SetExpr::NonEmpty(set) = set {
             hints.push(Hint::Connected(set));
         }
         Ok(hints)
@@ -405,7 +405,7 @@ impl Unit {
         context: Context<'_>,
     ) -> Result<Vec<Hint>> {
         let (set, mut hints) = self.add_context(context)?;
-        if let ModifiedSet::NonEmpty(set) = set {
+        if let SetExpr::NonEmpty(set) = set {
             hints.push(Hint::CountWithNeighbors {
                 set,
                 count,
@@ -428,7 +428,7 @@ impl Unit {
 
     fn equal_traits(&self, context: Context<'_>) -> Result<Vec<Hint>> {
         let (set, mut hints) = self.add_context(context)?;
-        if let ModifiedSet::NonEmpty(set) = set {
+        if let SetExpr::NonEmpty(set) = set {
             let extra = if let Some(set) = set.as_regular() {
                 if !set.len().get().is_multiple_of(2) {
                     bail!("{self:?} cannot be split equally")
@@ -443,12 +443,12 @@ impl Unit {
                     set.clone().judged(Judgment::Innocent),
                     set.judged(Judgment::Criminal),
                 ] {
-                    [ModifiedSet::Empty, ModifiedSet::Empty] => None,
-                    [ModifiedSet::Empty, ModifiedSet::NonEmpty(set)]
-                    | [ModifiedSet::NonEmpty(set), ModifiedSet::Empty] => {
+                    [SetExpr::Empty, SetExpr::Empty] => None,
+                    [SetExpr::Empty, SetExpr::NonEmpty(set)]
+                    | [SetExpr::NonEmpty(set), SetExpr::Empty] => {
                         Some(Hint::Count(set, Cardinal::Exact(0)))
                     }
-                    [ModifiedSet::NonEmpty(a), ModifiedSet::NonEmpty(b)] => {
+                    [SetExpr::NonEmpty(a), SetExpr::NonEmpty(b)] => {
                         Some(Hint::CompareSets([a, b], Comparison::ExactDifference(0)))
                     }
                 }
@@ -469,29 +469,29 @@ impl Unit {
     ) -> Result<Vec<Hint>> {
         let (set, mut hints) = self.add_context(context)?;
         let coord = name.add_context(context)?;
-        let ModifiedSet::NonEmpty(set) = set else {
+        let SetExpr::NonEmpty(set) = set else {
             bail!("{self:?} is empty")
         };
         hints.extend(set.conditions_to_contain(coord)?);
         hints.push(Hint::Judgment(coord, judgment));
         match set.judged(judgment) {
-            ModifiedSet::Empty => {
+            SetExpr::Empty => {
                 if !quantity.matches(0) {
                     bail!("{self:?} has no {judgment}")
                 }
             }
-            ModifiedSet::NonEmpty(set) => hints.push(Hint::Count(set, quantity)),
+            SetExpr::NonEmpty(set) => hints.push(Hint::Count(set, quantity)),
         }
         Ok(hints)
     }
 }
 
 impl AddContext for &Unit {
-    type Output = (ModifiedSet, Vec<Hint>);
+    type Output = (SetExpr, Vec<Hint>);
 
     fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
         let mut hints = Vec::new();
-        let set: ModifiedSet = match self {
+        let set: SetExpr = match self {
             &Unit::Line(line) => line.add_context(context)?.into(),
             Unit::Direction(direction, name) => {
                 let start = name.add_context(context)?;
@@ -512,7 +512,7 @@ impl AddContext for &Unit {
             Unit::Quantified(inner, quantity) => {
                 let set;
                 (set, hints) = inner.add_context(context)?;
-                if let ModifiedSet::NonEmpty(set) = &set {
+                if let SetExpr::NonEmpty(set) = &set {
                     hints.push(Hint::Count(set.clone(), Cardinal::Exact(*quantity)));
                 } else if quantity != &0 {
                     bail!("{inner:?} is empty")
@@ -565,7 +565,7 @@ impl From<Column> for Unit {
 }
 
 impl AddContext for &[Unit; 2] {
-    type Output = ([ModifiedSet; 2], Vec<Hint>);
+    type Output = ([SetExpr; 2], Vec<Hint>);
 
     fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
         self.each_ref().add_context(context)
@@ -573,7 +573,7 @@ impl AddContext for &[Unit; 2] {
 }
 
 impl AddContext for [&Unit; 2] {
-    type Output = ([ModifiedSet; 2], Vec<Hint>);
+    type Output = ([SetExpr; 2], Vec<Hint>);
 
     fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
         // TODO use `try_map()` https://github.com/rust-lang/rust/issues/79711

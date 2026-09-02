@@ -191,8 +191,8 @@ impl Set1 {
             .collect()
     }
 
-    pub(crate) fn judged(self, judgment: Judgment) -> ModifiedSet1 {
-        ModifiedSet1::Modified(Box::new(ModifiedSet1::Regular(self)), judgment.into())
+    pub(crate) fn judged(self, judgment: Judgment) -> Set1Expr {
+        Set1Expr::Modified(Box::new(Set1Expr::Regular(self)), judgment.into())
     }
 }
 
@@ -258,12 +258,12 @@ impl FromIterator1<Coord> for Set1 {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum ModifiedSet {
+pub(crate) enum SetExpr {
     Empty,
-    NonEmpty(ModifiedSet1),
+    NonEmpty(Set1Expr),
 }
 
-impl ModifiedSet {
+impl SetExpr {
     pub(crate) fn judged(self, judgment: Judgment) -> Self {
         if let Self::NonEmpty(set) = self {
             set.judged(judgment)
@@ -280,7 +280,7 @@ impl ModifiedSet {
         }
     }
 
-    pub(crate) fn intersect1(self, rhs: ModifiedSet1) -> Self {
+    pub(crate) fn intersect1(self, rhs: Set1Expr) -> Self {
         if let Self::NonEmpty(set) = self {
             set.intersect(rhs)
         } else {
@@ -302,57 +302,57 @@ impl ModifiedSet {
     }
 }
 
-impl From<ModifiedSet1> for ModifiedSet {
-    fn from(set: ModifiedSet1) -> Self {
+impl From<Set1Expr> for SetExpr {
+    fn from(set: Set1Expr) -> Self {
         Self::NonEmpty(set)
     }
 }
 
-impl From<Set> for ModifiedSet {
+impl From<Set> for SetExpr {
     fn from(v: Set) -> Self {
         Self::from_regular(v)
     }
 }
 
-impl From<Set1> for ModifiedSet {
+impl From<Set1> for SetExpr {
     fn from(set: Set1) -> Self {
         Self::NonEmpty(set.into())
     }
 }
 
-impl From<Line> for ModifiedSet {
+impl From<Line> for SetExpr {
     fn from(line: Line) -> Self {
         Self::from_regular(line.into())
     }
 }
 
-impl FromIterator<Coord> for ModifiedSet {
+impl FromIterator<Coord> for SetExpr {
     fn from_iter<T: IntoIterator<Item = Coord>>(iter: T) -> Self {
         Self::from_regular(iter.into_iter().collect())
     }
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum ModifiedSet1 {
+pub(crate) enum Set1Expr {
     Regular(Set1),
     Modified(Box<Self>, Modifier),
     Intersection(Vec1<Self>),
 }
 
-impl ModifiedSet1 {
-    pub(crate) fn judged(self, judgment: Judgment) -> ModifiedSet {
+impl Set1Expr {
+    pub(crate) fn judged(self, judgment: Judgment) -> SetExpr {
         match self {
             Self::Modified(this, Modifier::Judgment(other)) if other == judgment => {
                 Self::Modified(this, judgment.into()).into()
             }
-            Self::Modified(_, Modifier::Judgment(_)) => ModifiedSet::Empty,
+            Self::Modified(_, Modifier::Judgment(_)) => SetExpr::Empty,
             Self::Regular(_) | Self::Modified(_, Modifier::Shift(_)) | Self::Intersection(_) => {
                 Self::Modified(Box::new(self), judgment.into()).into()
             }
         }
     }
 
-    pub(crate) fn intersect(self, rhs: Self) -> ModifiedSet {
+    pub(crate) fn intersect(self, rhs: Self) -> SetExpr {
         match (self, rhs) {
             (Self::Regular(this), Self::Regular(rhs)) => this
                 .into_iter()
@@ -389,14 +389,14 @@ impl ModifiedSet1 {
         }
     }
 
-    pub(crate) fn shift(self, direction: Direction) -> ModifiedSet {
+    pub(crate) fn shift(self, direction: Direction) -> SetExpr {
         match self {
-            Self::Regular(set) => ModifiedSet::from_regular(set.shift(direction)),
+            Self::Regular(set) => SetExpr::from_regular(set.shift(direction)),
             set @ Self::Modified(..) => Self::Modified(Box::new(set), direction.into()).into(),
             Self::Intersection(vec) => vec
                 .into_iter1()
                 .map(|set| set.shift(direction))
-                .reduce(ModifiedSet::intersect),
+                .reduce(SetExpr::intersect),
         }
     }
 
@@ -438,7 +438,7 @@ impl ModifiedSet1 {
     }
 }
 
-impl From<Set1> for ModifiedSet1 {
+impl From<Set1> for Set1Expr {
     fn from(set: Set1) -> Self {
         Self::Regular(set)
     }

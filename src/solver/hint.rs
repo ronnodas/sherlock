@@ -5,7 +5,7 @@ use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
 use crate::models::{Column, Coord, Judgment, Row};
-use crate::solver::board::coordinates::{ModifiedSet, ModifiedSet1, Set, Set1};
+use crate::solver::board::coordinates::{Set, Set1, Set1Expr, SetExpr};
 use crate::solver::solution::Solution;
 
 mod parsers;
@@ -19,25 +19,25 @@ pub(crate) enum Hint {
     /// Given coordinate has given judgment
     Judgment(Coord, Judgment),
     /// Given set of coordinates has that many suspects
-    Count(ModifiedSet1, Cardinal),
+    Count(Set1Expr, Cardinal),
     /// Given set of coordinates does not have that many suspects
-    NotCount(ModifiedSet1, Cardinal),
+    NotCount(Set1Expr, Cardinal),
     /// Given set of coordinates in total have that many suspects
-    CountTotal([ModifiedSet1; 2], Cardinal),
+    CountTotal([Set1Expr; 2], Cardinal),
     /// Given set of coordinates is connected
-    Connected(ModifiedSet1),
+    Connected(Set1Expr),
     /// The first set compares with the second set
-    CompareSets([ModifiedSet1; 2], Comparison),
+    CompareSets([Set1Expr; 2], Comparison),
     /// Among the given `sets`, `count` many have `each` suspects
     UniqueWithCount {
-        sets: Vec1<ModifiedSet>,
+        sets: Vec1<SetExpr>,
         count: Cardinal,
     },
     /// Each member of the given set has a given number of neighbors with the given judgment
-    EachNeighbors(ModifiedSet1, Cardinal, Judgment),
+    EachNeighbors(Set1Expr, Cardinal, Judgment),
     /// `count` many members of the given set has `each` neighbors with given judgment
     CountWithNeighbors {
-        set: ModifiedSet1,
+        set: Set1Expr,
         each: Cardinal,
         count: Cardinal,
         judgment: Judgment,

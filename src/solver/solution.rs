@@ -4,7 +4,7 @@ use mitsein::iter1::IntoIterator1 as _;
 
 use crate::grid::Grid;
 use crate::models::{Coord, Judgment};
-use crate::solver::board::coordinates::{ModifiedSet, ModifiedSet1, Modifier, Set};
+use crate::solver::board::coordinates::{SetExpr, Set1Expr, Modifier, Set};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Clone, Debug)]
@@ -15,17 +15,17 @@ impl Solution {
         &self.0
     }
 
-    pub(crate) fn select(&self, set: &ModifiedSet) -> Set {
+    pub(crate) fn select(&self, set: &SetExpr) -> Set {
         match set {
-            ModifiedSet::Empty => Set::empty(),
-            ModifiedSet::NonEmpty(set) => self.select1(set),
+            SetExpr::Empty => Set::empty(),
+            SetExpr::NonEmpty(set) => self.select1(set),
         }
     }
 
-    pub(crate) fn select1(&self, set: &ModifiedSet1) -> Set {
+    pub(crate) fn select1(&self, set: &Set1Expr) -> Set {
         match set {
-            &ModifiedSet1::Regular(set) => set.into(),
-            ModifiedSet1::Modified(inner, modifier) => {
+            &Set1Expr::Regular(set) => set.into(),
+            Set1Expr::Modified(inner, modifier) => {
                 let inner = self.select1(inner);
                 match *modifier {
                     Modifier::Shift(direction) => inner.shift(direction),
@@ -35,7 +35,7 @@ impl Solution {
                         .collect(),
                 }
             }
-            ModifiedSet1::Intersection(sets) => sets
+            Set1Expr::Intersection(sets) => sets
                 .into_iter1()
                 .map(|set| self.select1(set))
                 .reduce(|a, b| a & b),
