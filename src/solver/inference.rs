@@ -8,12 +8,13 @@ use anyhow::Result;
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools as _;
 use mitsein::slice1::Slice1;
+use mitsein::vec1::Vec1;
 
 use crate::grid::Grid;
 use crate::models::{Coord, Judgment};
 use crate::solver::Engine;
 use crate::solver::board::coordinates::{Set, Set1, SetExpr1, SetOp, SetOp1};
-use crate::solver::hint::{BoundOrNot, Comparison, Hint, Number};
+use crate::solver::hint::{Bound, BoundOrNot, Comparison, Hint, Number};
 use crate::solver::inference::count::{CountSet, EndPoint, Interval};
 use crate::solver::inference::split::{ByJudgment, SetSimplify};
 
@@ -58,10 +59,6 @@ impl InferenceSolver {
                 self.counts_from_differences()?
             }
             || {
-                // eprintln!("simplifying count hints");
-                self.simplify_count_hints()?
-            }
-            || {
                 // eprintln!("comparing count pairs");
                 self.combine_criminal_counts()?
                 // }
@@ -85,7 +82,7 @@ impl InferenceSolver {
                 SetExpr1::Op(inner) => {
                     let minimum = count.minimum();
                     let updated = (minimum > 0)
-                        && self.try_add_hint(&Hint::Count(
+                        && self.try_add_hint(Hint::Count(
                             inner.clone(),
                             BoundOrNot::AtLeast(minimum),
                         ))?;
@@ -102,7 +99,7 @@ impl InferenceSolver {
                     let SetOp::NonEmpty(pre_shift) = inner.clone().intersect_set1(pre_shift) else {
                         return Err(Contradiction);
                     };
-                    self.try_add_hint(&Hint::Count(pre_shift, BoundOrNot::AtLeast(minimum)))?
+                    self.try_add_hint(Hint::Count(pre_shift, BoundOrNot::AtLeast(minimum)))?
                 };
                 self.generic.push(Hint::Count(set, count));
                 updated
@@ -117,7 +114,7 @@ impl InferenceSolver {
                     }
                     vec.into_iter().try_fold(false, |updated, inner| {
                         Ok(updated
-                            | self.try_add_hint(&Hint::Count(
+                            | self.try_add_hint(Hint::Count(
                                 inner.clone(),
                                 BoundOrNot::AtLeast(minimum),
                             ))?)
@@ -152,14 +149,16 @@ impl InferenceSolver {
             },
             Theorem::All(set, judgment) => {
                 set.into_iter().try_fold(false, move |updated, coord| {
-                    Ok(updated | self.try_add_hint(&Hint::Judgment(coord, judgment))?)
+                    Ok(updated | self.try_add_hint(Hint::Judgment(coord, judgment))?)
                 })?
             }
             Theorem::Difference(sets, compare) => self.add_complex_diff(sets, compare)?,
             Theorem::CriminalDifference(sets, difference) => {
                 self.add_difference(sets, difference)?
             }
-            Theorem::Generic(hint) => self.try_add_hint(&hint)?,
+            Theorem::Generic(hint) => self.try_add_hint(hint)?,
+            Theorem::True => false,
+            Theorem::False => return Err(Contradiction),
         };
         Ok(updated)
     }
@@ -250,9 +249,10 @@ impl InferenceSolver {
 
     fn process_generic_hints(&mut self) -> Result<bool, Contradiction> {
         let hints = mem::take(&mut self.generic);
-        hints.into_iter().try_fold(false, |updated, hint| {
-            Ok(updated | self.try_add_hint(&hint)?)
-        })
+        hints.into_iter().try_fold(
+            false,
+            |updated, hint| Ok(updated | self.try_add_hint(hint)?),
+        )
     }
 
     fn simplify_criminal_counts(&mut self) -> Result<bool, Contradiction> {
@@ -626,38 +626,82 @@ impl InferenceSolver {
         self.add_theorems(new)
     }
 
-    fn simplify_count_hints(&mut self) -> Result<bool, Contradiction> {
-        let mut discard = BTreeSet::new();
-        let new: Vec<Hint> = self
-            .generic
-            .iter()
-            .enumerate()
-            .map(|(index, hint)| {
-                let Hint::Count(set, count) = hint else {
-                    return Ok(None);
-                };
-                let Some(split) = SetSimplify::split(set, &self.known) else {
-                    return Ok(None);
-                };
-                assert!(discard.insert(index), "index monotonic");
-                match split {
-                    SetSimplify::Fixed(fixed) if count.matches(fixed.len().get()) => Ok(None),
-                    SetSimplify::Empty if count.matches(0) => Ok(None),
-                    SetSimplify::Fixed(_) | SetSimplify::Empty => Err(Contradiction),
-                    SetSimplify::Variable(variable) => Ok(Some(Hint::Count(variable, *count))),
-                    SetSimplify::Split(variable, fixed) => {
-                        let count = count::reduce_cardinal(*count, fixed.len().get())
-                            .ok_or(Contradiction)?;
-                        Ok(Some(Hint::Count(variable, count)))
-                    }
+    fn simplify_and_add_count(
+        &mut self,
+        set: &SetOp1,
+        count: BoundOrNot,
+    ) -> Result<bool, Contradiction> {
+        let (set, count) = match SetSimplify::split(set, &self.known) {
+            Some(split) => match split {
+                SetSimplify::Fixed(fixed) if count.matches(fixed.len().get()) => return Ok(false),
+                SetSimplify::Empty if count.matches(0) => return Ok(false),
+                SetSimplify::Fixed(_) | SetSimplify::Empty => return Err(Contradiction),
+                SetSimplify::Variable(variable) => (variable, count),
+                SetSimplify::Split(variable, fixed) => {
+                    let count =
+                        count::reduce_cardinal(count, fixed.len().get()).ok_or(Contradiction)?;
+                    (variable, count)
                 }
-            })
-            .flatten_ok()
-            .try_collect()?;
-        for index in discard.into_iter().rev() {
-            assert_matches!(self.generic.swap_remove(index), Hint::Count(..));
-        }
-        self.add_theorems(new.into_iter().map(Theorem::Generic))
+            },
+            None => (set.clone(), count),
+        };
+        self.add_count_and_implied_inner_counts(set, count)
+    }
+
+    fn add_count_and_implied_inner_counts(
+        &mut self,
+        set: SetOp1,
+        count: BoundOrNot,
+    ) -> Result<bool, Contradiction> {
+        let updated = match &set {
+            SetOp1::Judged(inner, judgment) => match inner.as_ref() {
+                &SetExpr1::Regular(set) => {
+                    return self.add_criminal_count(set, *judgment, count);
+                }
+                SetExpr1::Op(inner) => {
+                    let minimum = count.minimum();
+                    let updated = (minimum > 0)
+                        && self.simplify_and_add_count(inner, BoundOrNot::AtLeast(minimum))?;
+                    self.generic.push(Hint::Count(set, count));
+                    updated
+                }
+            },
+            SetOp1::Shift(inner, direction) => {
+                let minimum = count.minimum();
+                let updated = (minimum > 0) && {
+                    match SetExpr1::Regular(Set1::all())
+                        .shift(direction.flip())
+                        .intersect1(inner.as_ref().clone())
+                        .regular()
+                    {
+                        Err(pre_shift) => {
+                            self.simplify_and_add_count(&pre_shift, BoundOrNot::AtLeast(minimum))?
+                        }
+                        Ok(pre_shift) if pre_shift.len() >= minimum => false,
+                        Ok(_) => return Err(Contradiction),
+                    }
+                };
+                self.generic.push(Hint::Count(set, count));
+                updated
+            }
+            SetOp1::Intersection(sets, fixed) => {
+                let minimum = count.minimum();
+                if let Some(fixed) = fixed
+                    && fixed.len().get() < minimum
+                {
+                    return Err(Contradiction);
+                }
+                let updated = (minimum > 0)
+                    && sets.into_iter().try_fold(false, |updated, set| {
+                        Ok(updated
+                            | self.simplify_and_add_count(set, BoundOrNot::AtLeast(minimum))?)
+                    })?;
+                self.generic.push(Hint::Count(set, count));
+                updated
+            }
+        };
+
+        Ok(updated)
     }
 
     fn add_theorems(
@@ -669,9 +713,9 @@ impl InferenceSolver {
         })
     }
 
-    fn try_add_hint(&mut self, hint: &Hint) -> Result<bool, Contradiction> {
+    fn try_add_hint(&mut self, hint: Hint) -> Result<bool, Contradiction> {
         let updated = match hint {
-            &Hint::Judgment(coord, judgment) => match self.known[coord] {
+            Hint::Judgment(coord, judgment) => match self.known[coord] {
                 Some(known) if known != judgment => return Err(Contradiction),
                 Some(_) => false,
                 None => {
@@ -680,12 +724,12 @@ impl InferenceSolver {
                     true
                 }
             },
-            Hint::Count(set, count) => self.add_count(set.clone(), *count)?,
+            Hint::Count(set, count) => self.simplify_and_add_count(&set, count)?,
             Hint::CountTotal(_, _) => todo!(),
             Hint::Connected(set) => match set {
                 SetOp1::Judged(inner, judgment) => {
                     if let &SetExpr1::Regular(set) = inner.as_ref() {
-                        self.connected.insert((set, *judgment))
+                        self.connected.insert((set, judgment))
                     } else {
                         todo!()
                     }
@@ -693,14 +737,44 @@ impl InferenceSolver {
                 SetOp1::Shift(_, _) => todo!(),
                 SetOp1::Intersection(_, _) => todo!(),
             },
-            Hint::CompareSets(sets, compare) => self.add_complex_diff(sets.clone(), *compare)?,
-            Hint::UniqueWithCount { .. } => todo!(),
+            Hint::CompareSets(sets, compare) => self.add_complex_diff(sets, compare)?,
+            Hint::UniqueWithCount { sets, bound } => {
+                let mut yes = None;
+                let mut maybe = Vec::new();
+                for set in sets {
+                    match TriState::has_size_1_op(&set, bound, &self.known) {
+                        TriState::No => {}
+                        TriState::Maybe => maybe.push(set),
+                        TriState::Yes => {
+                            if yes.replace(set).is_some() {
+                                return Err(Contradiction);
+                            }
+                        }
+                    }
+                }
+                if yes.is_some() {
+                    !maybe.is_empty() && {
+                        let count = bound.not().ok_or(Contradiction)?;
+                        self.add_theorems(
+                            maybe.into_iter().map(|set| Hint::Count(set, count).into()),
+                        )?
+                    }
+                } else {
+                    let Ok(sets) = Vec1::try_from(maybe) else {
+                        return Err(Contradiction);
+                    };
+                    self.generic.push(Hint::UniqueWithCount { sets, bound });
+                    false
+                }
+            }
             Hint::EachNeighbors(set, count, judgment) => {
-                if let &SetExpr1::Regular(set) = set {
+                if let SetExpr1::Regular(set) = set {
                     set.into_iter().try_fold(false, |updated, coord| {
                         Ok(updated
-                            | self
-                                .add_count(coord.neighbors().judged(*judgment), (*count).into())?)
+                            | self.simplify_and_add_count(
+                                &coord.neighbors().judged(judgment),
+                                count.into(),
+                            )?)
                     })?
                 } else {
                     todo!();
@@ -746,11 +820,19 @@ enum Theorem {
     Difference([SetOp1; 2], Comparison),
     CriminalDifference([Set1; 2], Interval<i8>),
     Generic(Hint),
+    True,
+    False,
 }
 
 impl From<Hint> for Theorem {
     fn from(v: Hint) -> Self {
         Self::Generic(v)
+    }
+}
+
+impl From<bool> for Theorem {
+    fn from(value: bool) -> Self {
+        if value { Self::True } else { Self::False }
     }
 }
 
@@ -798,6 +880,30 @@ impl TheoremState {
     #[must_use]
     fn is_active(self) -> bool {
         matches!(self, Self::Active)
+    }
+}
+
+enum TriState {
+    No,
+    Maybe,
+    Yes,
+}
+
+impl TriState {
+    fn has_size_1_op(set: &SetOp1, bound: Bound, known: &Grid<Option<Judgment>>) -> Self {
+        match SetSimplify::split(set, known) {
+            None => todo!(),
+            Some(SetSimplify::Fixed(set)) => bound.matches(set.len().get()).into(),
+            Some(SetSimplify::Variable(..)) => todo!(),
+            Some(SetSimplify::Split(..)) => todo!(),
+            Some(SetSimplify::Empty) => bound.matches(0).into(),
+        }
+    }
+}
+
+impl From<bool> for TriState {
+    fn from(value: bool) -> Self {
+        if value { Self::Yes } else { Self::No }
     }
 }
 

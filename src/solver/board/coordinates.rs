@@ -387,6 +387,14 @@ impl SetExpr {
         }
     }
 
+    pub(crate) fn intersect1(self, rhs: impl Into<SetExpr1>) -> Self {
+        if let Self::NonEmpty(set) = self {
+            set.intersect(rhs.into())
+        } else {
+            Self::Empty
+        }
+    }
+
     pub(crate) fn regular(self) -> Result<Set, SetOp1> {
         match self {
             Self::Empty => Ok(Set::empty()),
