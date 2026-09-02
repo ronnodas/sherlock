@@ -78,13 +78,13 @@ impl AddContext for Sentence {
                 unit.unique_member_has_n_neighbors(quantity, judgment, name.as_ref(), context)?
             }
 
-            Self::UniqueUnitInSeriesHasSize(series, quantity, judgment) => {
+            Self::UniqueUnitInSeriesHasSize(series, count, judgment) => {
                 let sets = series
                     .all(context)
                     .into_iter1()
                     .map(|set| set.judged(judgment).into())
                     .collect1();
-                vec![Hint::unique_with_count(sets, quantity)]
+                vec![Hint::UniqueWithCount { sets, count }]
             }
             Self::EachUnitInSeriesHasSize(kind, quantity, judgment) => kind
                 .all(context)
@@ -173,7 +173,7 @@ pub(crate) enum Unit {
 impl Unit {
     fn unique_member_has_n_neighbors(
         &self,
-        quantity: Cardinal,
+        count: Cardinal,
         judgment: Judgment,
         name: Option<&NameRecipe>,
         context: Context<'_>,
@@ -191,29 +191,29 @@ impl Unit {
                 if !set.contains(coord) {
                     bail!("{name:?} does not belong to {self:?}")
                 }
-                hints.push(Hint::Count(coord.neighbors().judged(judgment), quantity));
+                hints.push(Hint::Count(coord.neighbors().judged(judgment), count));
                 hints.extend(
                     set.into_iter()
                         .filter(|&other| other != coord)
-                        .map(|other| Hint::NotCount(other.neighbors().judged(judgment), quantity)),
+                        .map(|other| Hint::NotCount(other.neighbors().judged(judgment), count)),
                 );
             } else {
                 let sets = set
                     .into_iter1()
                     .map(|coord| coord.neighbors().judged(judgment).into())
                     .collect1();
-                hints.push(Hint::unique_with_count(sets, quantity));
+                hints.push(Hint::UniqueWithCount { sets, count });
             }
         } else {
             let unique = Hint::CountWithNeighbors {
                 set,
-                each: quantity,
+                each: count,
                 count: Cardinal::Exact(1),
                 judgment,
             };
             hints.push(unique);
             if let Some(coord) = coord {
-                hints.push(Hint::Count(coord.neighbors().judged(judgment), quantity));
+                hints.push(Hint::Count(coord.neighbors().judged(judgment), count));
             }
         }
         Ok(hints)

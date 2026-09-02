@@ -29,10 +29,9 @@ pub(crate) enum Hint {
     /// The first set compares with the second set
     CompareSets([ModifiedSet1; 2], Comparison),
     /// Among the given `sets`, `count` many have `each` suspects
-    CountWithCount {
+    UniqueWithCount {
         sets: Vec1<ModifiedSet>,
         count: Cardinal,
-        each: Cardinal,
     },
     /// Each member of the given set has a given number of neighbors with the given judgment
     EachNeighbors(ModifiedSet1, Cardinal, Judgment),
@@ -60,11 +59,12 @@ impl Hint {
                 let [lhs, rhs] = sets.each_ref().map(|set| solution.select1(set).len());
                 comparison.compare(lhs, rhs)
             }
-            Self::CountWithCount { sets, count, each } => count.matches(
+            Self::UniqueWithCount { sets, count } => {
                 sets.iter()
-                    .filter(|set| each.matches(solution.select(set).len()))
-                    .fold(0, |acc, _| acc + 1),
-            ),
+                    .filter(|set| count.matches(solution.select(set).len()))
+                    .count()
+                    == 1
+            }
             Self::CountWithNeighbors {
                 set,
                 each,
@@ -89,14 +89,6 @@ impl Hint {
                     cardinal.matches(neighbors)
                 })
             }
-        }
-    }
-
-    fn unique_with_count(sets: Vec1<ModifiedSet>, each: Cardinal) -> Self {
-        Self::CountWithCount {
-            sets,
-            each,
-            count: Cardinal::Exact(1),
         }
     }
 }
