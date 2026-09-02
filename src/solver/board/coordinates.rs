@@ -14,6 +14,7 @@ use crate::models::{Column, Coord, Direction, Row};
 pub(crate) use crate::set1;
 use crate::solver::Judgment;
 use crate::solver::hint::{Hint, Line};
+use crate::solver::solution::{SetEval, Solution};
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub(crate) struct Set(u32);
@@ -191,8 +192,8 @@ impl Set1 {
             .collect()
     }
 
-    pub(crate) fn judged(self, judgment: Judgment) -> Set1Expr {
-        Set1Expr::Modified(Box::new(Set1Expr::Regular(self)), judgment.into())
+    pub(crate) fn judged(self, judgment: Judgment) -> Set1Op {
+        Set1Op::Modified(Box::new(Set1Expr::Regular(self)), judgment.into())
     }
 }
 
@@ -264,11 +265,11 @@ pub(crate) enum SetExpr {
 }
 
 impl SetExpr {
-    pub(crate) fn judged(self, judgment: Judgment) -> Self {
+    pub(crate) fn judged(self, judgment: Judgment) -> SetOp {
         if let Self::NonEmpty(set) = self {
             set.judged(judgment)
         } else {
-            Self::Empty
+            SetOp::Empty
         }
     }
 
@@ -300,6 +301,14 @@ impl SetExpr {
         set.non_empty()
             .map_or(Self::Empty, |set| Self::NonEmpty(set.into()))
     }
+
+    pub(crate) fn regular(self) -> Result<Set, Set1Op> {
+        match self {
+            Self::Empty => Ok(Set::empty()),
+            Self::NonEmpty(Set1Expr::Regular(set)) => Ok(set.into()),
+            Self::NonEmpty(Set1Expr::Op(set)) => Err(set),
+        }
+    }
 }
 
 impl From<Set1Expr> for SetExpr {
@@ -326,6 +335,15 @@ impl From<Line> for SetExpr {
     }
 }
 
+impl SetEval for SetExpr {
+    fn eval(&self, solution: &Solution) -> Set {
+        match self {
+            Self::Empty => Set::empty(),
+            Self::NonEmpty(set) => set.eval(solution),
+        }
+    }
+}
+
 impl FromIterator<Coord> for SetExpr {
     fn from_iter<T: IntoIterator<Item = Coord>>(iter: T) -> Self {
         Self::from_regular(iter.into_iter().collect())
@@ -335,20 +353,14 @@ impl FromIterator<Coord> for SetExpr {
 #[derive(Clone, Debug)]
 pub(crate) enum Set1Expr {
     Regular(Set1),
-    Modified(Box<Self>, Modifier),
-    Intersection(Vec1<Self>),
+    Op(Set1Op),
 }
 
 impl Set1Expr {
-    pub(crate) fn judged(self, judgment: Judgment) -> SetExpr {
+    pub(crate) fn judged(self, judgment: Judgment) -> SetOp {
         match self {
-            Self::Modified(this, Modifier::Judgment(other)) if other == judgment => {
-                Self::Modified(this, judgment.into()).into()
-            }
-            Self::Modified(_, Modifier::Judgment(_)) => SetExpr::Empty,
-            Self::Regular(_) | Self::Modified(_, Modifier::Shift(_)) | Self::Intersection(_) => {
-                Self::Modified(Box::new(self), judgment.into()).into()
-            }
+            Self::Op(set) => set.judged(judgment),
+            Self::Regular(_) => Set1Op::Modified(Box::new(self), judgment.into()).into(),
         }
     }
 
@@ -358,33 +370,33 @@ impl Set1Expr {
                 .into_iter()
                 .filter(|&coord| rhs.contains(coord))
                 .collect(),
-            (this, Self::Modified(rhs, Modifier::Judgment(judgment)))
-            | (Self::Modified(rhs, Modifier::Judgment(judgment)), this) => {
-                this.intersect(*rhs).judged(judgment)
+            (this, Self::Op(Set1Op::Modified(rhs, Modifier::Judgment(judgment))))
+            | (Self::Op(Set1Op::Modified(rhs, Modifier::Judgment(judgment))), this) => {
+                this.intersect(*rhs).judged(judgment).into()
             }
 
-            // TODO only for some cases of this, otherwise not well-founded
-            // (this, ModifiedSet1::Modified(rhs, Modifier::Shift(dir)))
-            // | (ModifiedSet1::Modified(rhs, Modifier::Shift(dir)), this) => {
-            //     this.shift(dir.flip()).intersect1(*rhs).shift(dir)
-            // }
-            (Self::Modified(this, Modifier::Shift(a)), Self::Modified(rhs, Modifier::Shift(b)))
-                if a == b =>
-            {
-                this.intersect(*rhs).shift(a)
-            }
             (
-                this @ (Self::Regular(..) | Self::Modified(..)),
-                rhs @ (Self::Modified(..) | Self::Regular(..)),
-            ) => Self::Intersection(vec1![this, rhs]).into(),
-            (this @ (Self::Regular(..) | Self::Modified(..)), Self::Intersection(mut vec))
-            | (Self::Intersection(mut vec), this @ (Self::Regular(..) | Self::Modified(..))) => {
+                Self::Op(Set1Op::Modified(this, Modifier::Shift(a))),
+                Self::Op(Set1Op::Modified(rhs, Modifier::Shift(b))),
+            ) if a == b => this.intersect(*rhs).shift(a),
+            (
+                this @ (Self::Regular(..) | Self::Op(Set1Op::Modified(..))),
+                rhs @ (Self::Op(Set1Op::Modified(..)) | Self::Regular(..)),
+            ) => Set1Op::Intersection(vec1![this, rhs]).into(),
+            (
+                this @ (Self::Regular(..) | Self::Op(Set1Op::Modified(..))),
+                Self::Op(Set1Op::Intersection(mut vec)),
+            )
+            | (
+                Self::Op(Set1Op::Intersection(mut vec)),
+                this @ (Self::Regular(..) | Self::Op(Set1Op::Modified(..))),
+            ) => {
                 vec.push(this);
-                Self::Intersection(vec).into()
+                Set1Op::Intersection(vec).into()
             }
-            (Self::Intersection(mut this), Self::Intersection(rhs)) => {
+            (Self::Op(Set1Op::Intersection(mut this)), Self::Op(Set1Op::Intersection(rhs))) => {
                 this.extend(rhs);
-                Self::Intersection(this).into()
+                Set1Op::Intersection(this).into()
             }
         }
     }
@@ -392,8 +404,10 @@ impl Set1Expr {
     pub(crate) fn shift(self, direction: Direction) -> SetExpr {
         match self {
             Self::Regular(set) => SetExpr::from_regular(set.shift(direction)),
-            set @ Self::Modified(..) => Self::Modified(Box::new(set), direction.into()).into(),
-            Self::Intersection(vec) => vec
+            set @ Self::Op(Set1Op::Modified(..)) => {
+                Self::Op(Set1Op::Modified(Box::new(set), direction.into())).into()
+            }
+            Self::Op(Set1Op::Intersection(vec)) => vec
                 .into_iter1()
                 .map(|set| set.shift(direction))
                 .reduce(SetExpr::intersect),
@@ -418,18 +432,18 @@ impl Set1Expr {
                     Err(anyhow!("{self:?} does not contain {coord}"))
                 }
             }
-            Self::Modified(inner, Modifier::Judgment(judgment)) => {
+            Self::Op(Set1Op::Modified(inner, Modifier::Judgment(judgment))) => {
                 let mut hints = inner.conditions_to_contain(coord)?;
                 hints.push(Hint::Judgment(coord, *judgment));
                 Ok(hints)
             }
-            Self::Modified(inner, Modifier::Shift(direction)) => {
+            Self::Op(Set1Op::Modified(inner, Modifier::Shift(direction))) => {
                 let coord = coord
                     .step(direction.flip())
                     .with_context(|| format!("{coord} is not {direction:?} of anything"))?;
                 inner.conditions_to_contain(coord)
             }
-            Self::Intersection(sets) => sets
+            Self::Op(Set1Op::Intersection(sets)) => sets
                 .into_iter()
                 .map(|set| set.conditions_to_contain(coord))
                 .flatten_ok()
@@ -441,6 +455,89 @@ impl Set1Expr {
 impl From<Set1> for Set1Expr {
     fn from(set: Set1) -> Self {
         Self::Regular(set)
+    }
+}
+
+impl From<Set1Op> for Set1Expr {
+    fn from(v: Set1Op) -> Self {
+        Self::Op(v)
+    }
+}
+
+impl SetEval for Set1Expr {
+    fn eval(&self, solution: &Solution) -> Set {
+        match self {
+            &Self::Regular(set) => set.into(),
+            Self::Op(set1_op) => set1_op.eval(solution),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum Set1Op {
+    Modified(Box<Set1Expr>, Modifier),
+    Intersection(Vec1<Set1Expr>),
+}
+
+impl Set1Op {
+    pub(crate) fn judged(self, judgment: Judgment) -> SetOp {
+        match self {
+            Self::Modified(this, Modifier::Judgment(other)) if other == judgment => {
+                Self::Modified(this, Modifier::Judgment(other)).into()
+            }
+            Self::Modified(_, Modifier::Judgment(_)) => SetOp::Empty,
+            Self::Modified(_, Modifier::Shift(_)) | Self::Intersection(_) => {
+                Self::Modified(Box::new(self.into()), judgment.into()).into()
+            }
+        }
+    }
+}
+
+impl From<Set1Op> for SetExpr {
+    fn from(set: Set1Op) -> Self {
+        Self::NonEmpty(set.into())
+    }
+}
+
+impl SetEval for Set1Op {
+    fn eval(&self, solution: &Solution) -> Set {
+        match self {
+            Self::Modified(inner, modifier) => {
+                let inner = inner.eval(solution);
+                match *modifier {
+                    Modifier::Shift(direction) => inner.shift(direction),
+                    Modifier::Judgment(judgment) => inner
+                        .into_iter()
+                        .filter(move |&coord| solution[coord] == judgment)
+                        .collect(),
+                }
+            }
+            Self::Intersection(sets) => sets
+                .into_iter1()
+                .map(|set| set.eval(solution))
+                .reduce(|a, b| a & b),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum SetOp {
+    Empty,
+    NonEmpty(Set1Op),
+}
+
+impl From<Set1Op> for SetOp {
+    fn from(v: Set1Op) -> Self {
+        Self::NonEmpty(v)
+    }
+}
+
+impl From<SetOp> for SetExpr {
+    fn from(set: SetOp) -> Self {
+        match set {
+            SetOp::Empty => Self::Empty,
+            SetOp::NonEmpty(set) => set.into(),
+        }
     }
 }
 

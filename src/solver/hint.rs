@@ -5,7 +5,7 @@ use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
 use crate::models::{Column, Coord, Judgment, Row};
-use crate::solver::board::coordinates::{Set, Set1, Set1Expr, SetExpr};
+use crate::solver::board::coordinates::{Set, Set1, Set1Expr, Set1Op};
 use crate::solver::solution::Solution;
 
 mod parsers;
@@ -19,20 +19,17 @@ pub(crate) enum Hint {
     /// Given coordinate has given judgment
     Judgment(Coord, Judgment),
     /// Given set of coordinates has that many suspects
-    Count(Set1Expr, Cardinal),
+    Count(Set1Op, Cardinal),
     /// Given set of coordinates does not have that many suspects
-    NotCount(Set1Expr, Cardinal),
+    NotCount(Set1Op, Cardinal),
     /// Given set of coordinates in total have that many suspects
-    CountTotal([Set1Expr; 2], Cardinal),
+    CountTotal([Set1Op; 2], Cardinal),
     /// Given set of coordinates is connected
-    Connected(Set1Expr),
+    Connected(Set1Op),
     /// The first set compares with the second set
-    CompareSets([Set1Expr; 2], Comparison),
+    CompareSets([Set1Op; 2], Comparison),
     /// Among the given `sets`, `count` many have `each` suspects
-    UniqueWithCount {
-        sets: Vec1<SetExpr>,
-        count: Cardinal,
-    },
+    UniqueWithCount { sets: Vec1<Set1Op>, count: Cardinal },
     /// Each member of the given set has a given number of neighbors with the given judgment
     EachNeighbors(Set1Expr, Cardinal, Judgment),
     /// `count` many members of the given set has `each` neighbors with given judgment
@@ -48,20 +45,20 @@ impl Hint {
     pub(crate) fn evaluate(&self, solution: &Solution) -> bool {
         match self {
             &Self::Judgment(coord, judgment) => solution[coord] == judgment,
-            Self::Count(set, quantity) => quantity.matches(solution.select1(set).len()),
-            Self::NotCount(set, quantity) => !quantity.matches(solution.select1(set).len()),
+            Self::Count(set, quantity) => quantity.matches(solution.select(set).len()),
+            Self::NotCount(set, quantity) => !quantity.matches(solution.select(set).len()),
             Self::CountTotal(sets, quantity) => {
-                let total = sets.iter().map(|set| solution.select1(set).len()).sum();
+                let total = sets.iter().map(|set| solution.select(set).len()).sum();
                 quantity.matches(total)
             }
-            Self::Connected(set) => solution.select1(set).connected(),
+            Self::Connected(set) => solution.select(set).connected(),
             Self::CompareSets(sets, comparison) => {
-                let [lhs, rhs] = sets.each_ref().map(|set| solution.select1(set).len());
+                let [lhs, rhs] = sets.each_ref().map(|set| solution.select(set).len());
                 comparison.compare(lhs, rhs)
             }
             Self::UniqueWithCount { sets, count } => {
                 sets.iter()
-                    .filter(|set| count.matches(solution.select(set).len()))
+                    .filter(|&set| count.matches(solution.select(set).len()))
                     .count()
                     == 1
             }
@@ -72,11 +69,10 @@ impl Hint {
                 judgment,
             } => {
                 let counted = solution
-                    .select1(set)
+                    .select(set)
                     .into_iter()
                     .filter(|coord| {
-                        let neighbors =
-                            solution.select1(&coord.neighbors().judged(*judgment)).len();
+                        let neighbors = solution.select(&coord.neighbors().judged(*judgment)).len();
                         each.matches(neighbors)
                     })
                     .collect::<Set>()
@@ -84,8 +80,8 @@ impl Hint {
                 count.matches(counted)
             }
             Self::EachNeighbors(set, cardinal, judgment) => {
-                solution.select1(set).into_iter().all(|coord| {
-                    let neighbors = solution.select1(&coord.neighbors().judged(*judgment)).len();
+                solution.select(set).into_iter().all(|coord| {
+                    let neighbors = solution.select(&coord.neighbors().judged(*judgment)).len();
                     cardinal.matches(neighbors)
                 })
             }

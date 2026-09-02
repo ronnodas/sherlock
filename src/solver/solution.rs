@@ -1,10 +1,8 @@
 use std::ops::Index;
 
-use mitsein::iter1::IntoIterator1 as _;
-
 use crate::grid::Grid;
 use crate::models::{Coord, Judgment};
-use crate::solver::board::coordinates::{SetExpr, Set1Expr, Modifier, Set};
+use crate::solver::board::coordinates::Set;
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Clone, Debug)]
@@ -15,31 +13,8 @@ impl Solution {
         &self.0
     }
 
-    pub(crate) fn select(&self, set: &SetExpr) -> Set {
-        match set {
-            SetExpr::Empty => Set::empty(),
-            SetExpr::NonEmpty(set) => self.select1(set),
-        }
-    }
-
-    pub(crate) fn select1(&self, set: &Set1Expr) -> Set {
-        match set {
-            &Set1Expr::Regular(set) => set.into(),
-            Set1Expr::Modified(inner, modifier) => {
-                let inner = self.select1(inner);
-                match *modifier {
-                    Modifier::Shift(direction) => inner.shift(direction),
-                    Modifier::Judgment(judgment) => inner
-                        .into_iter()
-                        .filter(move |&coord| self[coord] == judgment)
-                        .collect(),
-                }
-            }
-            Set1Expr::Intersection(sets) => sets
-                .into_iter1()
-                .map(|set| self.select1(set))
-                .reduce(|a, b| a & b),
-        }
+    pub(crate) fn select<E: SetEval>(&self, set: &E) -> Set {
+        set.eval(self)
     }
 
     pub(crate) fn all(fixed_values: impl IntoIterator<Item = (Coord, Judgment)>) -> Vec<Self> {
@@ -122,4 +97,8 @@ impl Iterator for Generator {
             .try_into()
             .map_or((usize::MAX, None), |remaining| (remaining, Some(remaining)))
     }
+}
+
+pub(crate) trait SetEval {
+    fn eval(&self, solution: &Solution) -> Set;
 }
