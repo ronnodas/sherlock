@@ -11,7 +11,6 @@ use mitsein::iter1::{FromIterator1, IntoIterator1, Iterator1};
 use mitsein::vec1::{Vec1, vec1};
 
 use crate::models::{Column, Coord, Direction, Row};
-pub(crate) use crate::set1;
 use crate::solver::Judgment;
 use crate::solver::hint::{Hint, Line};
 use crate::solver::solution::{SetEval, Solution};
@@ -653,18 +652,6 @@ impl From<SetOp> for SetExpr {
         }
     }
 }
-
-#[macro_export]
-macro_rules! set1 {
-    ($c:tt $r:tt) => {
-        Set1::from_one(coord!($c $r))
-    };
-
-    // Recursive / iterative case:
-    // Matches the first pair, followed by `|`, and then a repetition of remaining pairs
-    ($c:tt $r:tt | $($rest_c:tt $rest_r:tt)|+) => {
-        Set1::from_one(coord!($c $r)) $(| coord!($rest_c $rest_r))+
-    };}
 
 #[cfg(test)]
 mod tests {

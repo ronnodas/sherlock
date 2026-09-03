@@ -10,49 +10,8 @@ use linearize::Linearize;
 use mitsein::iter1::{IntoIterator1 as _, Iterator1};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 
-use crate::solver::board::coordinates::{Set1, set1};
-
-macro_rules! coord {
-    ($c:ident $r:tt) => {
-        Coord {
-            row: row!($r),
-            col: col!($c),
-        }
-    };
-}
-
-macro_rules! row {
-    (1) => {
-        Row::One
-    };
-    (2) => {
-        Row::Two
-    };
-    (3) => {
-        Row::Three
-    };
-    (4) => {
-        Row::Four
-    };
-    (5) => {
-        Row::Five
-    };
-}
-
-macro_rules! col {
-    (A) => {
-        Column::A
-    };
-    (B) => {
-        Column::B
-    };
-    (C) => {
-        Column::C
-    };
-    (D) => {
-        Column::D
-    };
-}
+use crate::macros::{coord, set1};
+use crate::solver::board::coordinates::Set1;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, SerializeDisplay, DeserializeFromStr)]
 pub(crate) struct Coord {
@@ -120,7 +79,7 @@ impl Coord {
             coord!(B 5) => set1!(A 4 | B 4 | C 4 | A 5 | C 5),
             coord!(C 5) => set1!(B 4 | C 4 | D 4 | B 5 | D 5),
             coord!(D 5) => set1!(C 4 | D 4 | C 5),
-            }
+        }
     }
 
     pub(crate) fn edges() -> impl Iterator<Item = Self> {

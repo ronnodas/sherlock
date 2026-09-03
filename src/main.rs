@@ -22,6 +22,7 @@ mod grid;
 mod models;
 mod player;
 mod solver;
+mod macros;
 
 const API_KEY_FILE: &str = "browserless_api_key";
 const SAVE_DIR: &str = "saved/";
