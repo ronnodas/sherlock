@@ -61,7 +61,7 @@ impl CountSet {
         }
     }
 
-    fn simplify(self) -> Option<Self> {
+    pub(crate) fn simplify(self) -> Option<Self> {
         match self {
             Self::Exact(value) => Some(Self::Exact(value)),
             Self::Complex { mut range, parity } => {
@@ -308,6 +308,10 @@ impl Interval<Number> {
     pub(crate) fn zero_to(max: Number) -> Self {
         let range = (0..=max).into();
         Self { range }
+    }
+
+    pub(crate) fn checked_div_2(self) -> Option<Self> {
+        Self::range(self.range.start.div_ceil(2), self.range.last / 2)
     }
 }
 

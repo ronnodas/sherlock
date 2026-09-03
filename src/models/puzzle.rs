@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use strum::{Display, EnumDiscriminants, EnumString, VariantArray};
 
 use crate::grid::Grid;
+#[cfg(test)]
+use crate::models::Solution;
 use crate::models::{CardFront, Coord, Judgment, Name, Profession};
 
 #[derive(Serialize, Deserialize)]
@@ -34,6 +36,11 @@ impl Puzzle {
             .hint
             .as_logical()
             .expect("checked at construction")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn solution(&self) -> Solution {
+        self.cards.each_ref().map(|card| card.judgment).into()
     }
 }
 

@@ -70,6 +70,11 @@ impl Set {
     pub(crate) fn difference(self, rhs: impl Into<Self>) -> Self {
         Self(self.0 & !(rhs.into().0))
     }
+
+    pub(crate) fn judged(self, judgment: Judgment) -> SetOp {
+        self.non_empty()
+            .map_or(SetOp::Empty, |set| set.judged(judgment).into())
+    }
 }
 
 impl Default for Set {
@@ -635,8 +640,9 @@ impl SetEval for SetOp1 {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(crate) enum SetOp {
+    #[default]
     Empty,
     NonEmpty(SetOp1),
 }
@@ -650,14 +656,14 @@ impl SetOp {
         }
     }
 
-    fn intersect_set(self, rhs: Set1) -> Self {
+    pub(crate) fn intersect_set(self, rhs: Set1) -> Self {
         match self {
             Self::Empty => Self::Empty,
             Self::NonEmpty(set) => set.intersect_set1(rhs),
         }
     }
 
-    fn shift(self, direction: Direction) -> Self {
+    pub(crate) fn shift(self, direction: Direction) -> Self {
         match self {
             Self::Empty => Self::Empty,
             Self::NonEmpty(set) => set.shift(direction),
