@@ -10,10 +10,9 @@ use itertools::Itertools as _;
 use mitsein::iter1::{FromIterator1, IntoIterator1, Iterator1};
 use mitsein::vec1::{Vec1, vec1};
 
-use crate::models::{Column, Coord, Direction, Row};
+use crate::models::{Column, Coord, Direction, Row, SetEval, Solution};
 use crate::solver::Judgment;
 use crate::solver::hint::{Hint, Line};
-use crate::solver::solution::{SetEval, Solution};
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub(crate) struct Set(u32);

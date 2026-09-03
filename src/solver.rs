@@ -23,7 +23,6 @@ use crate::{ARCHIVE_DIR, SAVE_DIR};
 pub(crate) mod board;
 mod brute_force;
 pub(crate) mod hint;
-mod solution;
 
 pub(crate) struct Solver<E> {
     board: Board,
@@ -486,8 +485,8 @@ impl From<Update> for Suspect {
 
 #[cfg(test)]
 mod tests {
+    use crate::models::Solution;
     use crate::solver::board::Lookup;
-    use crate::solver::solution::Solution;
 
     use super::*;
 

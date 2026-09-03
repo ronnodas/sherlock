@@ -2,11 +2,10 @@ use std::iter;
 
 use anyhow::{Result, bail};
 
-use crate::models::{Coord, Judgment};
+use crate::models::{Coord, Judgment, Solution};
 use crate::solver::Engine;
 use crate::solver::board::Board;
 use crate::solver::hint::Hint;
-use crate::solver::solution::Solution;
 
 #[derive(Clone, Debug)]
 pub(crate) struct BruteForceSolver {

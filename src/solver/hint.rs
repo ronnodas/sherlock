@@ -4,9 +4,8 @@ use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 
-use crate::models::{Column, Coord, Judgment, Row};
+use crate::models::{Column, Coord, Judgment, Row, Solution};
 use crate::solver::board::coordinates::{Set, Set1, Set1Expr, Set1Op};
-use crate::solver::solution::Solution;
 
 mod parsers;
 pub(crate) mod recipes;
