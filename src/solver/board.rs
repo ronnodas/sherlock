@@ -113,11 +113,21 @@ impl Board {
         }
     }
 
-    pub(crate) fn add_hint(&mut self, hint: String, coord: Coord) -> Result<()> {
-        self.card_back_mut(coord)
-            .with_context(|| format!("{coord} is not flipped"))?
-            .set_hint(hint);
-        Ok(())
+    pub(crate) fn add_hint(
+        &mut self,
+        hint: String,
+        coord: Coord,
+    ) -> Result<(), (String, anyhow::Error)> {
+        match self
+            .card_back_mut(coord)
+            .with_context(|| format!("{coord} is not flipped"))
+        {
+            Ok(back) => {
+                back.set_hint(hint);
+                Ok(())
+            }
+            Err(err) => Err((hint, err)),
+        }
     }
 
     pub(crate) fn mark_as_flavor(&mut self, coord: Coord) -> Result<()> {

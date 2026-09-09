@@ -1,7 +1,5 @@
 # TODOs
 
-- [ ] When failing to parse a hint and reentering the same suspect's hint (usually because of a
-  typo), fill in the previously entered text (that we failed to parse)
 - [ ] Add more metadata to puzzles (difficulty, (date, id or both), save_file)
 - [ ] Implement editing an existing board from file (loading into `BoardEditor`)
 - [ ] Save partially created board to file

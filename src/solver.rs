@@ -59,6 +59,7 @@ impl<E: Engine> Solver<E> {
             pending_hints.extend(new.into_iter().map_into());
             pending_hints.sort_unstable_by_key(Suspect::coord);
 
+            let mut failed_hint: Option<(Coord, String)> = None;
             loop {
                 let selected = Select::new(
                     "Add a logical hint:",
@@ -71,16 +72,25 @@ impl<E: Engine> Solver<E> {
                 .prompt()?;
                 match selected {
                     HintOption::Suspect(suspect) => {
+                        let coord = suspect.coord();
+                        let message = if let Some((coord_f, hint)) = failed_hint.as_ref()
+                            && coord_f == &coord
+                        {
+                            hint.as_str()
+                        } else {
+                            ""
+                        };
                         if let Some(hint) = Text::new(&format!("Enter {}'s hint:", suspect.name()))
+                            .with_initial_value(message)
                             .prompt_skippable()?
                         {
                             match self.add_hint(hint, suspect.coord()) {
                                 Ok(()) => {
-                                    let coord = suspect.coord();
                                     pending_hints.retain(|pending| pending.coord() != coord);
                                     break;
                                 }
-                                Err(e) => {
+                                Err((hint, e)) => {
+                                    failed_hint = Some((coord, hint));
                                     println!("I didn't understand that hint :(\n{e}");
                                 }
                             }
@@ -118,12 +128,18 @@ impl<E: Engine> Solver<E> {
             .collect())
     }
 
-    fn add_hint(&mut self, hint: String, speaker: Coord) -> Result<()> {
-        Sentence::parse(&hint)?
-            .add_context(self.board.context(speaker))?
-            .into_iter()
-            .for_each(|hint| self.engine.add_parsed_hint(&hint));
-        self.board.add_hint(hint, speaker)
+    fn add_hint(&mut self, hint: String, speaker: Coord) -> Result<(), (String, anyhow::Error)> {
+        match Sentence::parse(&hint)
+            .and_then(|sentence| sentence.add_context(self.board.context(speaker)))
+        {
+            Ok(hints) => {
+                for hint in hints {
+                    self.engine.add_parsed_hint(&hint);
+                }
+                self.board.add_hint(hint, speaker)
+            }
+            Err(err) => Err((hint, err)),
+        }
     }
 
     fn add_parsed_hint(&mut self, hint: &Hint) {
@@ -309,7 +325,6 @@ impl Solved {
         Puzzle::new(cards, start)
     }
 }
-
 fn ron_config() -> PrettyConfig {
     PrettyConfig::new().extensions(
         Extensions::IMPLICIT_SOME
