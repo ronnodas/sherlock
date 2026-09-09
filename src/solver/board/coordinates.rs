@@ -10,6 +10,7 @@ use itertools::Itertools as _;
 use mitsein::iter1::{FromIterator1, IntoIterator1, Iterator1};
 use mitsein::vec1::{Vec1, vec1};
 
+use crate::macros::set1;
 use crate::models::{Column, Coord, Direction, Row, SetEval, Solution};
 use crate::solver::Judgment;
 use crate::solver::hint::{Hint, Line};
@@ -54,7 +55,7 @@ impl Set {
     }
 
     pub(crate) fn complement(self) -> Self {
-        Self(((1 << 20) - 1) ^ self.0)
+        Self(Set1::ALL_BITS.get() ^ self.0)
     }
 
     pub(crate) fn non_empty(self) -> Option<Set1> {
@@ -172,8 +173,29 @@ impl ExactSizeIterator for SetIntoIter {}
 pub(crate) struct Set1(NonZero<u32>);
 
 impl Set1 {
+    const ALL_BITS: NonZero<u32> = const { NonZero::new((1 << 20_u32) - 1).unwrap() };
+
     pub(crate) fn from_one(coord: Coord) -> Self {
         Self(NonZero::new(1 << coord.to_index()).expect("no overflow"))
+    }
+
+    pub(crate) fn all() -> Self {
+        Self(Self::ALL_BITS)
+    }
+
+    pub(crate) fn edges() -> Self {
+        set1!(A 1 | B 1 | C 1 | D 1 | A 2 | D 2 | A 3 | D 3 | A 4 | D 4 | A 5 | B 5 | C 5 | D 5)
+    }
+
+    pub(crate) fn corners() -> Self {
+        set1!(A 1 | D 1 | A 5 | D 5)
+    }
+
+    pub(crate) fn shift_preimage(direction: Direction) -> Self {
+        Self::all()
+            .shift(direction.flip())
+            .non_empty()
+            .expect("each shift is non-trivial")
     }
 
     pub(crate) fn len(self) -> NonZero<u8> {
@@ -471,7 +493,14 @@ impl Set1Op {
 
     pub(crate) fn shift(self, direction: Direction) -> SetOp {
         match self {
-            Self::Judged(..) | Self::Shift(..) => Self::Shift(Box::new(self), direction).into(),
+            Self::Judged(..) | Self::Shift(..) => {
+                let inner = self.intersect_set(Set1::shift_preimage(direction));
+                if let SetOp::NonEmpty(inner) = inner {
+                    Self::Shift(Box::new(inner), direction).into()
+                } else {
+                    SetOp::Empty
+                }
+            }
             Self::Intersection(vec, fixed) => {
                 let intersection = vec
                     .into_iter1()

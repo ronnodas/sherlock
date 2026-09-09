@@ -524,13 +524,13 @@ impl AddContext for &Unit {
                 .complement()
                 .into(),
             Unit::Profession(profession) => (*context.profession_as_set(profession)?).into(),
-            Unit::Edges => Coord::edges().collect(),
-            Unit::Corners => Coord::corners().collect(),
+            Unit::Edges => Set1::edges().into(),
+            Unit::Corners => Set1::corners().into(),
             Unit::Between(names) => {
                 let [a, b] = names.each_ref().map(|name| name.add_context(context));
                 Set::between([a?, b?])?.into()
             }
-            Unit::All => Coord::all().into_iter().collect(),
+            Unit::All => Coord::all().into(),
             Unit::Quantified(inner, quantity) => {
                 let set;
                 (set, hints) = inner.add_context(context)?;
@@ -752,7 +752,7 @@ impl Series {
         match self {
             Self::Line(line_kind) => line_kind.all().into_iter1().map(Set1::from).collect1(),
             Self::Profession => context.by_profession.values1().copied().collect1(),
-            Self::Neighbor => Coord::all().map(Coord::neighbors).collect1(),
+            Self::Neighbor => Coord::all().into_iter1().map(Coord::neighbors).collect1(),
         }
     }
 }

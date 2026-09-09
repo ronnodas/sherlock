@@ -7,7 +7,6 @@ use std::{fmt, iter};
 
 use itertools::Itertools as _;
 use linearize::Linearize;
-use mitsein::iter1::{IntoIterator1 as _, Iterator1};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 use crate::macros::{coord, set1};
@@ -82,25 +81,6 @@ impl Coord {
         }
     }
 
-    pub(crate) fn edges() -> impl Iterator<Item = Self> {
-        [Column::A, Column::D]
-            .into_iter()
-            .cartesian_product(Row::ALL)
-            .chain(
-                [Column::B, Column::C]
-                    .into_iter()
-                    .cartesian_product([Row::One, Row::Five]),
-            )
-            .map(|(col, row)| Self { row, col })
-    }
-
-    pub(crate) fn corners() -> impl Iterator<Item = Self> {
-        [Row::One, Row::Five]
-            .into_iter()
-            .cartesian_product([Column::A, Column::D])
-            .map(|(row, col)| Self { row, col })
-    }
-
     pub(crate) fn parse(string: &str) -> Option<Self> {
         let [col, row] = string.chars().collect_array()?;
         Some({
@@ -111,9 +91,8 @@ impl Coord {
         })
     }
 
-    pub(crate) fn all() -> Iterator1<impl Iterator<Item = Self>> {
-        // TODO replace with `cartesian_product()`
-        Row::ALL.into_iter1().flat_map(Row::all)
+    pub(crate) fn all() -> Set1 {
+        Set1::all()
     }
 
     pub(crate) fn as_tuple(self) -> (usize, usize) {
