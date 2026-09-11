@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use anyhow::{Result, bail};
 use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
@@ -121,6 +123,16 @@ pub(crate) enum PuzzleId {
     Archive(String),
     PuzzlePack { pack: u8, puzzle: u8 },
     Custom,
+}
+impl PuzzleId {
+    pub(crate) fn save_name(&self) -> Cow<'_, str> {
+        match self {
+            Self::Date(date) => Cow::Owned(date.to_string()),
+            Self::Archive(id) => Cow::Borrowed(id.as_str()),
+            Self::PuzzlePack { pack, puzzle } => Cow::Owned(format!("puzzle-pack-{pack}-{puzzle}")),
+            Self::Custom => Cow::Owned(String::new()),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, VariantArray, Display, Clone, Copy, Debug)]

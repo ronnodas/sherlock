@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::{fmt, fs, mem};
@@ -179,16 +180,15 @@ impl<E: Engine> Solver<E> {
 
     fn save(&mut self) -> Result<()> {
         let save = self.save_board()?;
-        let path = self.save_name.as_ref().map_or_else(
-            || SAVE_DIR.to_owned(),
-            |title| {
-                Path::new(SAVE_DIR)
-                    .join(title.as_str())
-                    .with_added_extension("ron")
-                    .display()
-                    .to_string()
-            },
-        );
+        let save_name = self
+            .save_name
+            .as_deref()
+            .map_or_else(|| self.metadata.id.save_name(), Cow::Borrowed);
+        let path = Path::new(SAVE_DIR)
+            .join(save_name.as_ref())
+            .with_added_extension("ron")
+            .display()
+            .to_string();
         let path = Text::new("Save file:").with_initial_value(&path).prompt()?;
         let path = PathBuf::from(path);
         if let Some(file_stem) = path.file_stem().and_then(|name| name.to_str()) {
@@ -227,20 +227,25 @@ struct Solved {
 
 impl Solved {
     fn save_puzzle(self) -> Result<()> {
-        let name = self.save_name.as_ref().map_or("", |name| name.as_str());
+        let name = self
+            .save_name
+            .as_deref()
+            .map_or_else(|| self.metadata.id.save_name(), Cow::Borrowed);
 
         fs::create_dir_all(ARCHIVE_DIR)?;
 
         let (path, mut file) = loop {
             let name = Text::new("Save puzzle as (empty to cancel):")
-                .with_initial_value(name)
+                .with_initial_value(&name)
                 .with_placeholder("do not save")
                 .prompt()?;
             let Ok(name) = String1::try_from(name) else {
                 return Ok(());
             };
 
-            let path = Path::new(ARCHIVE_DIR).join(format!("{name}.ron"));
+            let path = Path::new(ARCHIVE_DIR)
+                .join(name.as_str())
+                .with_added_extension("ron");
             match fs::File::create_new(&path) {
                 Ok(file) => break (path, file),
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
