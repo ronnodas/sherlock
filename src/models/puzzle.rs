@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use anyhow::{Result, bail};
 use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
-use strum::{Display, VariantArray};
+use strum::{Display, EnumDiscriminants, VariantArray};
 
 use crate::grid::Grid;
 use crate::models::{CardFront, Coord, Judgment, Name, Profession};
@@ -117,13 +117,16 @@ pub(crate) struct Metadata {
     pub difficulty: Difficulty,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, EnumDiscriminants)]
+#[strum_discriminants(derive(VariantArray, Display))]
+#[strum(serialize_all = "title_case")]
 pub(crate) enum PuzzleId {
     Date(Date),
     Archive(String),
     PuzzlePack { pack: u8, puzzle: u8 },
     Custom,
 }
+
 impl PuzzleId {
     pub(crate) fn save_name(&self) -> Cow<'_, str> {
         match self {

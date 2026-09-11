@@ -6,7 +6,7 @@ use std::{fmt, fs, mem};
 use anyhow::{Context as _, Result};
 use colored::Colorize as _;
 use inquire::list_option::ListOption;
-use inquire::{Confirm, MultiSelect, Select, Text};
+use inquire::{Confirm, CustomType, MultiSelect, Select, Text};
 use itertools::Itertools as _;
 use mitsein::string1::String1;
 use ron::extensions::Extensions;
@@ -17,6 +17,7 @@ use strum::VariantArray as _;
 use crate::grid::Grid;
 use crate::models::{
     Card, CardFront, Coord, Difficulty, Judgment, Metadata, Name, Puzzle, PuzzleId,
+    PuzzleIdDiscriminants,
 };
 use crate::solver::board::{Board, Format, HtmlBoard, SolvedBoard};
 use crate::solver::brute_force::BruteForceSolver;
@@ -394,10 +395,31 @@ impl ParsedBoard {
         let HtmlBoard {
             board,
             format,
-            id: html_id,
+            id,
             difficulty,
         } = HtmlBoard::parse(html)?;
-        let id = html_id.unwrap_or_else(|| todo!());
+        let id = if let Some(id) = id {
+            id
+        } else {
+            let kind = Select::new("enter puzzle id", PuzzleIdDiscriminants::VARIANTS.to_vec())
+                .prompt()?;
+            match kind {
+                PuzzleIdDiscriminants::Date => {
+                    let date = CustomType::new("enter a date as YYYY-MM-DD").prompt()?;
+                    PuzzleId::Date(date)
+                }
+                PuzzleIdDiscriminants::Archive => {
+                    let id = Text::new("enter puzzle id").prompt()?;
+                    PuzzleId::Archive(id)
+                }
+                PuzzleIdDiscriminants::PuzzlePack => {
+                    let pack = CustomType::new("enter pack number").prompt()?;
+                    let puzzle = CustomType::new("enter puzzle number").prompt()?;
+                    PuzzleId::PuzzlePack { pack, puzzle }
+                }
+                PuzzleIdDiscriminants::Custom => PuzzleId::Custom,
+            }
+        };
 
         let metadata = PartialMetadata { id, difficulty };
         Self::from_html_common(board, format, metadata, save_name)
