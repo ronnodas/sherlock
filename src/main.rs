@@ -1,28 +1,24 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::{fmt, fs};
 
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Result, bail};
 use bpaf::{Bpaf, Parser as _};
-use inquire::{Confirm, CustomType, Editor, Select, Text};
+use inquire::{Confirm, Editor, Select, Text};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
-use mitsein::EmptyError;
-use mitsein::str1::Str1;
-use mitsein::string1::String1;
 
 use crate::editor::BoardEditor;
-use crate::models::Puzzle;
+use crate::models::{Puzzle, PuzzleId};
 use crate::player::App;
-use crate::solver::ParsedBoard;
+use crate::solver::{ParsedBoard, PartialMetadata};
 
 mod editor;
 mod grid;
+mod macros;
 mod models;
 mod player;
 mod solver;
-mod macros;
 
 const API_KEY_FILE: &str = "browserless_api_key";
 const SAVE_DIR: &str = "saved/";
@@ -36,9 +32,7 @@ fn main() -> Result<()> {
         Args::Html { path } => MainMenu::Solve(read_from_file(path, FileType::Html)?),
         Args::Load { path } => MainMenu::Solve(read_from_file(path, FileType::Ron)?),
         Args::Today => MainMenu::Solve(fetch_today()?),
-        Args::Archive { id_or_url } => MainMenu::Solve(archive(
-            id_or_url.try_into().context("id or url cannot be empty")?,
-        )?),
+        Args::Archive { id_or_url } => MainMenu::Solve(archive(&id_or_url)?),
     };
     match result {
         MainMenu::Solve(board) => board.solve_brute_force()?,
@@ -58,11 +52,10 @@ fn main_menu() -> Result<MainMenu> {
         let result = match mode {
             InputMode::Today => MainMenu::Solve(fetch_today()?),
             InputMode::Fetch => {
-                let archive_id = CustomType::<NonEmptyText>::new("Enter puzzle archive id or url")
+                let archive_id = Text::new("Enter puzzle archive id or url")
                     .with_placeholder("s/a0b1c2d3e4f5")
-                    .prompt()?
-                    .into();
-                MainMenu::Solve(archive(archive_id)?)
+                    .prompt()?;
+                MainMenu::Solve(archive(&archive_id)?)
             }
             InputMode::Load => {
                 let path = Text::new("Enter path to ron:")
@@ -83,7 +76,7 @@ fn main_menu() -> Result<MainMenu> {
             }
             InputMode::Paste => {
                 let html = Editor::new("Enter HTML in your editor:").prompt()?;
-                MainMenu::Solve(ParsedBoard::from_html(&html, None)?)
+                MainMenu::Solve(ParsedBoard::from_html_interactive(&html, None)?)
             }
             InputMode::Manual => {
                 if let Some(board) = manual_mode()? {
@@ -119,34 +112,30 @@ enum MainMenu {
     Play(Puzzle),
 }
 
-fn archive(id_or_url: String1) -> Result<ParsedBoard> {
+fn archive(id_or_url: &str) -> Result<ParsedBoard> {
     let (url, id) = if let Some(url) = id_or_url.strip_prefix("https://") {
         if let Some(id) = extract_id(url) {
-            (Cow::Borrowed(id_or_url.as_str()), Cow::Borrowed(id))
+            (Cow::Borrowed(id_or_url), Cow::Borrowed(id))
         } else {
             bail!("did not recognize url")
         }
-    } else if let Some(id) = extract_id(&id_or_url) {
+    } else if let Some(id) = extract_id(id_or_url) {
         (
             Cow::Owned(format!("https://{id_or_url}")),
             Cow::Borrowed(id),
         )
-    } else if let Some(id) = id_or_url.strip_prefix("s/")
-        && let Ok(id) = Str1::try_from_str(id)
-    {
-        (
-            Cow::Owned(archive_url(id.as_str(), true)),
-            Cow::Borrowed(id),
-        )
+    } else if let Some(id) = id_or_url.strip_prefix("s/") {
+        (Cow::Owned(archive_url(id, true)), Cow::Borrowed(id))
     } else {
-        let url_with_s = archive_url(&id_or_url, true);
-        return fetch_from_url(&url_with_s, None).or_else(|_e| {
-            let url_without_s = archive_url(&id_or_url, false);
-            fetch_from_url(&url_without_s, Some(id_or_url))
+        let id = || PuzzleId::Archive(id_or_url.to_owned());
+        let url_with_s = archive_url(id_or_url, true);
+        return fetch_from_url(&url_with_s, id()).or_else(|_e| {
+            let url_without_s = archive_url(id_or_url, false);
+            fetch_from_url(&url_without_s, id())
         });
     };
-
-    fetch_from_url(url.as_ref(), Some(id.into_owned()))
+    let id = PuzzleId::Archive(id.into_owned());
+    fetch_from_url(url.as_ref(), id)
 }
 
 fn archive_url(input: &str, with_s: bool) -> String {
@@ -157,7 +146,7 @@ fn archive_url(input: &str, with_s: bool) -> String {
     }
 }
 
-fn extract_id(url: &str) -> Option<&Str1> {
+fn extract_id(url: &str) -> Option<&str> {
     // TODO use trim_suffix('/') https://github.com/rust-lang/rust/issues/142312
     let url = url.trim().trim_end_matches('/');
     let prefixes = [
@@ -168,23 +157,16 @@ fn extract_id(url: &str) -> Option<&Str1> {
     prefixes
         .into_iter()
         .find_map(|prefix| url.strip_prefix(prefix))
-        .and_then(|id| id.try_into().ok())
 }
 
 fn fetch_today() -> Result<ParsedBoard> {
-    fetch_from_url("https://cluesbysam.com/", Some(date_string()))
-}
-
-fn date_string() -> String1 {
-    Timestamp::now()
+    let today = Timestamp::now()
         .to_zoned(TimeZone::get("America/New_York").expect("valid identifier"))
-        .date()
-        .to_string()
-        .try_into()
-        .expect("YYYY-MM-DD")
+        .date();
+    fetch_from_url("https://cluesbysam.com/", PuzzleId::Date(today))
 }
 
-fn fetch_from_url(target_url: &str, title: Option<String1>) -> Result<ParsedBoard> {
+fn fetch_from_url(target_url: &str, id: PuzzleId) -> Result<ParsedBoard> {
     let api_key = read_api_key()?;
     let json = format!(r#"{{"url": "{target_url}"}}"#);
     let html = ureq::post(format!(
@@ -194,7 +176,7 @@ fn fetch_from_url(target_url: &str, title: Option<String1>) -> Result<ParsedBoar
     .send(&json)?
     .body_mut()
     .read_to_string()?;
-    ParsedBoard::from_html(&html, title)
+    ParsedBoard::from_html(&html, None, id)
 }
 
 fn read_api_key() -> Result<String> {
@@ -219,13 +201,12 @@ fn read_api_key() -> Result<String> {
 fn read_from_file(path: impl AsRef<Path>, file_type: FileType) -> Result<ParsedBoard> {
     let path = path.as_ref();
     let contents = fs::read_to_string(path)?;
-    let title = path
+    let file_name = path
         .file_stem()
-        .and_then(|name| Str1::try_from_str(name.to_str()?).ok())
-        .map(Str1::to_owned);
+        .map(|name| name.to_string_lossy().into_owned());
     let parsed = match file_type {
-        FileType::Ron => ParsedBoard::load(&contents, title)?,
-        FileType::Html => ParsedBoard::from_html(&contents, title)?,
+        FileType::Ron => ParsedBoard::load(&contents, file_name)?,
+        FileType::Html => ParsedBoard::from_html_interactive(&contents, None)?,
     };
     Ok(parsed)
 }
@@ -308,50 +289,27 @@ impl fmt::Display for InputMode {
 }
 
 fn manual_mode() -> Result<Option<ParsedBoard>> {
+    let metadata = PartialMetadata {
+        id: PuzzleId::Custom,
+        difficulty: None,
+    };
     BoardEditor::new()
         .interact()?
-        .map(|board| ParsedBoard::new(board, None))
+        .map(|board| ParsedBoard::new(board, metadata, None))
         .transpose()
-}
-
-#[derive(Clone, Debug)]
-struct NonEmptyText(String1);
-
-impl FromStr for NonEmptyText {
-    type Err = EmptyError<String>;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.to_owned().try_into().map(Self)
-    }
-}
-
-impl fmt::Display for NonEmptyText {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<NonEmptyText> for String1 {
-    fn from(value: NonEmptyText) -> Self {
-        value.0
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use mitsein::str1::str1;
 
     use super::extract_id;
 
     #[test]
     fn recognizes_archive_urls() {
-        assert_eq!(
-            extract_id("cluesbysam.com/archive/abc123/"),
-            Some(str1!("abc123"))
-        );
+        assert_eq!(extract_id("cluesbysam.com/archive/abc123/"), Some("abc123"));
         assert_eq!(
             extract_id("cluesbysam.com/s/archive/abc123/"),
-            Some(str1!("abc123"))
+            Some("abc123")
         );
     }
 
@@ -359,7 +317,7 @@ mod tests {
     fn recognizes_play_page_urls() {
         assert_eq!(
             extract_id("cluesbysam.com/s/play/?puzzleId=abc123"),
-            Some(str1!("abc123"))
+            Some("abc123")
         );
     }
 }

@@ -7,13 +7,16 @@ use colored::Colorize as _;
 use inquire::list_option::ListOption;
 use inquire::{Confirm, MultiSelect, Select, Text};
 use itertools::Itertools as _;
-use mitsein::str1::Str1;
 use mitsein::string1::String1;
 use ron::extensions::Extensions;
 use ron::ser::{PrettyConfig, to_string_pretty};
+use serde::{Deserialize, Serialize};
+use strum::VariantArray as _;
 
 use crate::grid::Grid;
-use crate::models::{Card, CardFront, Coord, Judgment, Name, Puzzle};
+use crate::models::{
+    Card, CardFront, Coord, Difficulty, Judgment, Metadata, Name, Puzzle, PuzzleId,
+};
 use crate::solver::board::{Board, Format, HtmlBoard, SolvedBoard};
 use crate::solver::brute_force::BruteForceSolver;
 use crate::solver::hint::recipes::AddContext as _;
@@ -26,20 +29,27 @@ pub(crate) mod hint;
 
 pub(crate) struct Solver<E> {
     board: Board,
-    title: Option<String1>,
+    metadata: PartialMetadata,
+    save_name: Option<String>,
     engine: E,
 }
 
 impl<E: Engine> Solver<E> {
-    fn new(board: Board, title: Option<String1>) -> Self {
+    fn new(board: Board, save_name: Option<String>, metadata: PartialMetadata) -> Self {
         let engine = E::for_board(&board);
-        Self::with_engine(board, title, engine)
+        Self::with_engine(board, save_name, metadata, engine)
     }
 
-    fn with_engine(board: Board, title: Option<String1>, engine: E) -> Self {
+    fn with_engine(
+        board: Board,
+        save_name: Option<String>,
+        metadata: PartialMetadata,
+        engine: E,
+    ) -> Self {
         Self {
             board,
-            title,
+            metadata,
+            save_name,
             engine,
         }
     }
@@ -106,7 +116,8 @@ impl<E: Engine> Solver<E> {
     fn into_solved(self) -> Option<Solved> {
         Some(Solved {
             board: self.board.into_solved()?,
-            title: self.title,
+            save_name: self.save_name,
+            metadata: self.metadata,
         })
     }
 
@@ -146,8 +157,8 @@ impl<E: Engine> Solver<E> {
         self.engine.add_parsed_hint(hint);
     }
 
-    pub(crate) fn set_title(&mut self, title: String1) {
-        self.title = Some(title);
+    pub(crate) fn set_save_name(&mut self, save_name: String) {
+        self.save_name = Some(save_name);
     }
 
     fn save_board(&self) -> Result<String> {
@@ -168,7 +179,7 @@ impl<E: Engine> Solver<E> {
 
     fn save(&mut self) -> Result<()> {
         let save = self.save_board()?;
-        let path = self.title.as_ref().map_or_else(
+        let path = self.save_name.as_ref().map_or_else(
             || SAVE_DIR.to_owned(),
             |title| {
                 Path::new(SAVE_DIR)
@@ -180,11 +191,8 @@ impl<E: Engine> Solver<E> {
         );
         let path = Text::new("Save file:").with_initial_value(&path).prompt()?;
         let path = PathBuf::from(path);
-        if let Some(file_stem) = path
-            .file_stem()
-            .and_then(|name| Str1::try_from_str(name.to_str()?).ok())
-        {
-            self.set_title(file_stem.to_owned());
+        if let Some(file_stem) = path.file_stem().and_then(|name| name.to_str()) {
+            self.set_save_name(file_stem.to_owned());
         }
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -213,12 +221,13 @@ pub(crate) trait Engine: Sized {
 
 struct Solved {
     board: SolvedBoard,
-    title: Option<String1>,
+    metadata: PartialMetadata,
+    save_name: Option<String>,
 }
 
 impl Solved {
     fn save_puzzle(self) -> Result<()> {
-        let name = self.title.as_ref().map_or("", |name| name.as_str());
+        let name = self.save_name.as_ref().map_or("", |name| name.as_str());
 
         fs::create_dir_all(ARCHIVE_DIR)?;
 
@@ -313,6 +322,8 @@ impl Solved {
             }
         }
 
+        let metadata = self.metadata.complete()?;
+
         let cards = Grid::from_fn(|coord| {
             // TODO should deconstruct here rather than clone
             let CardFront { name, profession } = self.board.front(coord).clone();
@@ -322,7 +333,7 @@ impl Solved {
             Card::new(name, profession, judgment, hint)
         });
 
-        Puzzle::new(cards, start)
+        Puzzle::new(cards, start, metadata)
     }
 }
 fn ron_config() -> PrettyConfig {
@@ -335,29 +346,64 @@ fn ron_config() -> PrettyConfig {
 
 #[derive(Debug)]
 pub(crate) struct ParsedBoard {
-    pub title: Option<String1>,
     pub board: Board,
     pub hints: Vec<Hint>,
     pub pending_hints: Vec<Suspect>,
+
+    pub metadata: PartialMetadata,
+    pub save_name: Option<String>,
 }
 
 impl ParsedBoard {
-    pub(crate) fn new(board: Board, title: Option<String1>) -> Result<Self> {
+    pub(crate) fn new(
+        board: Board,
+        metadata: PartialMetadata,
+        save_name: Option<String>,
+    ) -> Result<Self> {
         let pending_hints = board.pending_hints();
 
         let hints = board.parse_all_hints()?;
 
         Ok(Self {
-            title,
             board,
             hints,
             pending_hints,
+            metadata,
+            save_name,
         })
     }
 
-    pub(crate) fn from_html(html: &str, title: Option<String1>) -> Result<Self> {
-        let HtmlBoard { mut board, format } = HtmlBoard::parse(html)?;
+    pub(crate) fn from_html(html: &str, save_name: Option<String>, id: PuzzleId) -> Result<Self> {
+        let HtmlBoard {
+            board,
+            format,
+            id: html_id,
+            difficulty,
+        } = HtmlBoard::parse(html)?;
+        let id = html_id.unwrap_or(id);
+        let metadata = PartialMetadata { id, difficulty };
+        Self::from_html_common(board, format, metadata, save_name)
+    }
 
+    pub(crate) fn from_html_interactive(html: &str, save_name: Option<String>) -> Result<Self> {
+        let HtmlBoard {
+            board,
+            format,
+            id: html_id,
+            difficulty,
+        } = HtmlBoard::parse(html)?;
+        let id = html_id.unwrap_or_else(|| todo!());
+
+        let metadata = PartialMetadata { id, difficulty };
+        Self::from_html_common(board, format, metadata, save_name)
+    }
+
+    fn from_html_common(
+        mut board: Board,
+        format: Format,
+        metadata: PartialMetadata,
+        save_name: Option<String>,
+    ) -> Result<Self> {
         let pending_hints = board.pending_hints();
 
         let hints = match format {
@@ -366,16 +412,17 @@ impl ParsedBoard {
         };
 
         Ok(Self {
-            title,
             board,
             hints,
             pending_hints,
+            metadata,
+            save_name,
         })
     }
 
-    pub(crate) fn load(contents: &str, title: Option<String1>) -> Result<Self> {
-        let board = ron::from_str(contents)?;
-        Self::new(board, title)
+    pub(crate) fn load(contents: &str, save_name: Option<String>) -> Result<Self> {
+        let Save { board, metadata } = ron::from_str(contents)?;
+        Self::new(board, metadata, save_name)
     }
 
     pub(crate) fn solve<E: Engine>(self) -> Result<()> {
@@ -385,7 +432,7 @@ impl ParsedBoard {
     }
 
     fn into_solver<E: Engine>(self) -> (Solver<E>, Vec<Suspect>) {
-        let mut solver = Solver::new(self.board, self.title);
+        let mut solver = Solver::new(self.board, self.save_name, self.metadata);
 
         for hint in self.hints {
             solver.add_parsed_hint(&hint);
@@ -560,7 +607,12 @@ mod tests {
             Err(e) if e.kind() == io::ErrorKind::NotFound => return,
             Err(e) => panic!("Failed to read sample: {e}"),
         };
-        let parsed = ParsedBoard::from_html(&contents, None).unwrap();
+        let parsed = ParsedBoard::from_html(
+            &contents,
+            None,
+            PuzzleId::Archive("6f3e400c1d18".to_owned()),
+        )
+        .unwrap();
         assert!(parsed.pending_hints.is_empty());
         let solution = Solution::from(Grid::from([
             [I, C, C, C],
@@ -682,10 +734,41 @@ mod tests {
             let path = entry.path();
             let contents = fs::read_to_string(&path).unwrap();
             drop(
-                ParsedBoard::from_html(&contents, None)
+                ParsedBoard::from_html(&contents, None, PuzzleId::Custom)
                     .with_context(|| format!("parsing {}", path.to_string_lossy()))
                     .unwrap(),
             );
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct PartialMetadata {
+    pub id: PuzzleId,
+    pub difficulty: Option<Difficulty>,
+}
+
+impl PartialMetadata {
+    fn complete(self) -> Result<Metadata> {
+        let difficulty = {
+            match self.difficulty {
+                Some(difficulty) => difficulty,
+                None => Select::new(
+                    "what difficulty was this puzzle rated at?",
+                    Difficulty::VARIANTS.to_vec(),
+                )
+                .prompt()?,
+            }
+        };
+        Ok(Metadata {
+            id: self.id,
+            difficulty,
+        })
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct Save {
+    board: Board,
+    metadata: PartialMetadata,
 }

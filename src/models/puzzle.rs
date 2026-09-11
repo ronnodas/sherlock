@@ -1,5 +1,7 @@
 use anyhow::{Result, bail};
+use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
+use strum::{Display, VariantArray};
 
 use crate::grid::Grid;
 use crate::models::{CardFront, Coord, Judgment, Name, Profession};
@@ -8,14 +10,19 @@ use crate::models::{CardFront, Coord, Judgment, Name, Profession};
 pub(crate) struct Puzzle {
     pub cards: Grid<Card>,
     pub start: Coord,
+    pub metadata: Metadata,
 }
 
 impl Puzzle {
-    pub(crate) fn new(cards: Grid<Card>, start: Coord) -> Result<Self> {
+    pub(crate) fn new(cards: Grid<Card>, start: Coord, metadata: Metadata) -> Result<Self> {
         if cards[start].hint.is_flavor() {
             bail!("Starting hint is flavor text")
         }
-        Ok(Self { cards, start })
+        Ok(Self {
+            cards,
+            start,
+            metadata,
+        })
     }
 
     pub(crate) fn starting_hint(&self) -> &str {
@@ -100,4 +107,25 @@ impl From<Flattened> for Card {
     fn from(flat: Flattened) -> Self {
         Self::new(flat.name, flat.profession, flat.judgment, flat.hint)
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct Metadata {
+    pub id: PuzzleId,
+    pub difficulty: Difficulty,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub(crate) enum PuzzleId {
+    Date(Date),
+    Archive(String),
+    PuzzlePack { pack: u8, puzzle: u8 },
+    Custom,
+}
+
+#[derive(Serialize, Deserialize, VariantArray, Display, Clone, Copy, Debug)]
+#[strum(serialize_all = "title_case")]
+pub(crate) enum Difficulty {
+    Tricky,
+    SuperEvil,
 }

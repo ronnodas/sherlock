@@ -2049,6 +2049,7 @@ dependencies = [
  "select",
  "serde",
  "serde_with",
+ "strum",
  "tabled",
  "ureq",
  "winnow",

@@ -12,7 +12,7 @@ use select::predicate::{Any, Attr, Predicate as _};
 use serde::{Deserialize, Serialize};
 
 use crate::grid::Grid;
-use crate::models::{CardBack, CardFront, Coord, Judgment, Name, Profession};
+use crate::models::{CardBack, CardFront, Coord, Difficulty, Judgment, Name, Profession, PuzzleId};
 use crate::solver::Suspect;
 use crate::solver::board::coordinates::Set1;
 use crate::solver::board::parsers::{Class, ClassName, Div, NodeExt as _, parse_card};
@@ -285,6 +285,8 @@ impl Lookup {
 pub(crate) struct HtmlBoard {
     pub board: Board,
     pub format: Format,
+    pub id: Option<PuzzleId>,
+    pub difficulty: Option<Difficulty>,
 }
 
 impl HtmlBoard {
@@ -319,11 +321,18 @@ impl HtmlBoard {
             Format::Original
         };
 
-        // TODO also parse a title and/or date
         let backs = Grid::from_flattened(cards.each_mut().map(|(_, back, _)| back.take()));
         let fronts = Grid::from_flattened(cards.map(|(front, _, _)| front));
         let board = Board::new(fronts, backs, None);
-        Ok(Self { board, format })
+
+        // TODO parse metadata
+
+        Ok(Self {
+            board,
+            format,
+            id: None,
+            difficulty: None,
+        })
     }
 }
 
