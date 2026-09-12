@@ -574,6 +574,8 @@ impl From<Update> for Suspect {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use crate::models::Solution;
     use crate::solver::board::Lookup;
 
@@ -649,75 +651,63 @@ mod tests {
             [C, I, C, I],
         ]));
 
-        let steps: &[&[(&str, Judgment, Option<&str>)]] = &[
+        let steps: &[&[(&str, Judgment)]] = &[
+            &[("Betsy", C), ("Emma", C)],
+            &[("Floyd", C)],
+            &[("Isaac", C)],
+            &[("Gabe", C), ("Hank", I), ("Nick", C)],
+            &[("Kyle", C), ("Oscar", C), ("Sarah", C), ("Uma", C)],
+            &[("Vera", I), ("Wally", C)],
             &[
-                (
-                    "Betsy",
-                    C,
-                    Some("Only 1 of the 3 innocents neighboring Kyle is my neighbor"),
-                ),
-                (
-                    "Emma",
-                    C,
-                    Some("Only 1 of the 2 innocents neighboring Betsy is Donna's neighbor"),
-                ),
-            ],
-            &[(
-                "Floyd",
-                C,
-                Some("Row&nbsp;5 is the only row with exactly 2 criminals"),
-            )],
-            &[(
-                "Isaac",
-                C,
-                Some("Only 1 of the 3 innocents neighboring Gabe is Donna's neighbor"),
-            )],
-            &[
-                (
-                    "Gabe",
-                    C,
-                    Some("Kyle and Wally have only one innocent neighbor in common"),
-                ),
-                (
-                    "Hank",
-                    I,
-                    Some("Only one person in a corner has exactly 2 innocent neighbors"),
-                ),
-                (
-                    "Nick",
-                    C,
-                    Some("Exactly 2 of the 3 innocents neighboring Ruth are in row&nbsp;5"),
-                ),
-            ],
-            &[
-                ("Kyle", C, None),
-                (
-                    "Oscar",
-                    C,
-                    Some("There's an odd number of innocents neighboring Vera"),
-                ),
-                ("Sarah", C, None),
-                ("Uma", C, None),
-            ],
-            &[
-                ("Vera", I, Some("Paul has exactly 2 innocent neighbors")),
-                ("Wally", C, None),
-            ],
-            &[
-                ("Alice", I, None),
-                ("Donna", C, None),
-                ("Jane", I, None),
-                ("Mary", C, None),
-                ("Paul", I, None),
-                ("Ruth", C, None),
+                ("Alice", I),
+                ("Donna", C),
+                ("Jane", I),
+                ("Mary", C),
+                ("Paul", I),
+                ("Ruth", C),
             ],
         ];
+        let hints = HashMap::from([
+            (
+                "Betsy",
+                "Only 1 of the 3 innocents neighboring Kyle is my neighbor",
+            ),
+            (
+                "Emma",
+                "Only 1 of the 2 innocents neighboring Betsy is Donna's neighbor",
+            ),
+            (
+                "Floyd",
+                "Row&nbsp;5 is the only row with exactly 2 criminals",
+            ),
+            (
+                "Isaac",
+                "Only 1 of the 3 innocents neighboring Gabe is Donna's neighbor",
+            ),
+            (
+                "Gabe",
+                "Kyle and Wally have only one innocent neighbor in common",
+            ),
+            (
+                "Hank",
+                "Only one person in a corner has exactly 2 innocent neighbors",
+            ),
+            (
+                "Nick",
+                "Exactly 2 of the 3 innocents neighboring Ruth are in row&nbsp;5",
+            ),
+            (
+                "Oscar",
+                "There's an odd number of innocents neighboring Vera",
+            ),
+            ("Vera", "Paul has exactly 2 innocent neighbors"),
+        ]);
 
         let (mut solver, _pending) = parsed.into_solver::<BruteForceSolver>();
         for &changes in steps {
             let deductions = changes
                 .iter()
-                .map(|&(name, judgment, _)| (Name::from(name), judgment))
+                .map(|&(name, judgment)| (Name::from(name), judgment))
                 .collect_vec();
             let inferences = solver
                 .updates()
@@ -726,8 +716,8 @@ mod tests {
                 .map(|update| (update.name, update.judgment))
                 .collect_vec();
             assert_eq!(inferences, deductions);
-            for &(speaker, _, hint) in changes {
-                if let Some(hint) = hint {
+            for &(speaker, _) in changes {
+                if let Some(&hint) = hints.get(speaker) {
                     let coord = solver.board.coord(&Name::from(speaker)).unwrap();
                     solver.add_hint(hint.to_owned(), coord).unwrap();
                 }
