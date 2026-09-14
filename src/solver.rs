@@ -379,15 +379,23 @@ impl ParsedBoard {
         })
     }
 
-    pub(crate) fn from_html(html: &str, save_name: Option<String>, id: PuzzleId) -> Result<Self> {
+    pub(crate) fn from_html(
+        html: &str,
+        save_name: Option<String>,
+        default_id: PuzzleId,
+    ) -> Result<Self> {
         let HtmlBoard {
             board,
             format,
-            id: html_id,
-            difficulty,
+            metadata,
         } = HtmlBoard::parse(html)?;
-        let id = html_id.unwrap_or(id);
-        let metadata = PartialMetadata { id, difficulty };
+        let metadata = metadata.map_or(
+            PartialMetadata {
+                id: default_id,
+                difficulty: None,
+            },
+            PartialMetadata::from,
+        );
         Self::from_html_common(board, format, metadata, save_name)
     }
 
@@ -395,15 +403,14 @@ impl ParsedBoard {
         let HtmlBoard {
             board,
             format,
-            id,
-            difficulty,
+            metadata,
         } = HtmlBoard::parse(html)?;
-        let id = if let Some(id) = id {
-            id
+        let metadata = if let Some(metadata) = metadata {
+            metadata.into()
         } else {
             let kind = Select::new("enter puzzle id", PuzzleIdDiscriminants::VARIANTS.to_vec())
                 .prompt()?;
-            match kind {
+            let id = match kind {
                 PuzzleIdDiscriminants::Date => {
                     let date = CustomType::new("enter a date as YYYY-MM-DD").prompt()?;
                     PuzzleId::Date(date)
@@ -418,10 +425,13 @@ impl ParsedBoard {
                     PuzzleId::PuzzlePack { pack, puzzle }
                 }
                 PuzzleIdDiscriminants::Custom => PuzzleId::Custom,
+            };
+            PartialMetadata {
+                id,
+                difficulty: None,
             }
         };
 
-        let metadata = PartialMetadata { id, difficulty };
         Self::from_html_common(board, format, metadata, save_name)
     }
 
@@ -570,6 +580,46 @@ impl From<Update> for Suspect {
     fn from(update: Update) -> Self {
         Self::new(update.coord, update.name, update.judgment)
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct PartialMetadata {
+    pub id: PuzzleId,
+    pub difficulty: Option<Difficulty>,
+}
+
+impl PartialMetadata {
+    fn complete(self) -> Result<Metadata> {
+        let difficulty = {
+            match self.difficulty {
+                Some(difficulty) => difficulty,
+                None => Select::new(
+                    "what difficulty was this puzzle rated at?",
+                    Difficulty::VARIANTS.to_vec(),
+                )
+                .prompt()?,
+            }
+        };
+        Ok(Metadata {
+            id: self.id,
+            difficulty,
+        })
+    }
+}
+
+impl From<Metadata> for PartialMetadata {
+    fn from(metadata: Metadata) -> Self {
+        Self {
+            id: metadata.id,
+            difficulty: Some(metadata.difficulty),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct Save {
+    board: Board,
+    metadata: PartialMetadata,
 }
 
 #[cfg(test)]
@@ -750,42 +800,13 @@ mod tests {
             }
             let path = entry.path();
             let contents = fs::read_to_string(&path).unwrap();
-            drop(
-                ParsedBoard::from_html(&contents, None, PuzzleId::Custom)
-                    .with_context(|| format!("parsing {}", path.to_string_lossy()))
-                    .unwrap(),
-            );
+            let board = ParsedBoard::from_html(&contents, None, PuzzleId::Custom)
+                .with_context(|| format!("parsing {}", path.to_string_lossy()))
+                .unwrap();
+            if matches!(board.metadata.id, PuzzleId::Custom) && board.metadata.difficulty.is_none()
+            {
+                eprintln!("no metadata parsed in {}", path.display());
+            }
         }
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct PartialMetadata {
-    pub id: PuzzleId,
-    pub difficulty: Option<Difficulty>,
-}
-
-impl PartialMetadata {
-    fn complete(self) -> Result<Metadata> {
-        let difficulty = {
-            match self.difficulty {
-                Some(difficulty) => difficulty,
-                None => Select::new(
-                    "what difficulty was this puzzle rated at?",
-                    Difficulty::VARIANTS.to_vec(),
-                )
-                .prompt()?,
-            }
-        };
-        Ok(Metadata {
-            id: self.id,
-            difficulty,
-        })
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-struct Save {
-    board: Board,
-    metadata: PartialMetadata,
 }

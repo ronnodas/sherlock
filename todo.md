@@ -1,6 +1,5 @@
 # TODOs
 
-- [ ] Add more metadata to puzzles (difficulty, (date, id or both), save_file)
 - [ ] Implement editing an existing board from file (loading into `BoardEditor`)
 - [ ] Save partially created board to file
 - [ ] Test CLI interaction

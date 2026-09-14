@@ -12,10 +12,12 @@ use select::predicate::{Any, Attr, Predicate as _};
 use serde::{Deserialize, Serialize};
 
 use crate::grid::Grid;
-use crate::models::{CardBack, CardFront, Coord, Difficulty, Judgment, Name, Profession, PuzzleId};
+use crate::models::{CardBack, CardFront, Coord, Judgment, Metadata, Name, Profession};
 use crate::solver::Suspect;
 use crate::solver::board::coordinates::Set1;
-use crate::solver::board::parsers::{Class, ClassName, Div, NodeExt as _, parse_card};
+use crate::solver::board::parsers::{
+    Class, ClassName, Div, NodeExt as _, parse_card, parse_metadata,
+};
 use crate::solver::hint::recipes::{AddContext as _, Context};
 use crate::solver::hint::{Hint, Sentence};
 
@@ -285,8 +287,7 @@ impl Lookup {
 pub(crate) struct HtmlBoard {
     pub board: Board,
     pub format: Format,
-    pub id: Option<PuzzleId>,
-    pub difficulty: Option<Difficulty>,
+    pub metadata: Option<Metadata>,
 }
 
 impl HtmlBoard {
@@ -296,7 +297,7 @@ impl HtmlBoard {
             .find(Div.and(Class(ClassName::CardGrid)).and(Attr("id", "grid")))
             .exactly_one()
         else {
-            bail!("expecting unique element in {html}");
+            bail!("expecting unique element with id `grid`");
         };
 
         let mut cards: [(CardFront, Option<CardBack>, bool); 20] = cards
@@ -325,13 +326,12 @@ impl HtmlBoard {
         let fronts = Grid::from_flattened(cards.map(|(front, _, _)| front));
         let board = Board::new(fronts, backs, None);
 
-        // TODO parse metadata
+        let metadata = parse_metadata(&document)?;
 
         Ok(Self {
             board,
             format,
-            id: None,
-            difficulty: None,
+            metadata,
         })
     }
 }

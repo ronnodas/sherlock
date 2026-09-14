@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use anyhow::{Result, bail};
 use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
-use strum::{Display, EnumDiscriminants, VariantArray};
+use strum::{Display, EnumDiscriminants, EnumString, VariantArray};
 
 use crate::grid::Grid;
 use crate::models::{CardFront, Coord, Judgment, Name, Profession};
@@ -117,7 +117,7 @@ pub(crate) struct Metadata {
     pub difficulty: Difficulty,
 }
 
-#[derive(Serialize, Deserialize, Debug, EnumDiscriminants)]
+#[derive(Serialize, Deserialize, Debug, EnumDiscriminants, PartialEq, Eq)]
 #[strum_discriminants(derive(VariantArray, Display))]
 #[strum(serialize_all = "title_case")]
 pub(crate) enum PuzzleId {
@@ -136,9 +136,30 @@ impl PuzzleId {
             Self::Custom => Cow::Owned(String::new()),
         }
     }
+
+    pub(crate) fn date_from_month_b(year: &str, month: &str, day: &str) -> Option<Self> {
+        let month = match month {
+            "Jan" => 1,
+            "Feb" => 2,
+            "Mar" => 3,
+            "Apr" => 4,
+            "May" => 5,
+            "Jun" => 6,
+            "Jul" => 7,
+            "Aug" => 8,
+            "Sep" => 9,
+            "Oct" => 10,
+            "Nov" => 11,
+            "Dec" => 12,
+            _ => return None,
+        };
+        Date::new(year.parse().ok()?, month, day.parse().ok()?)
+            .ok()
+            .map(Self::Date)
+    }
 }
 
-#[derive(Serialize, Deserialize, VariantArray, Display, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, VariantArray, Display, Clone, Copy, Debug, EnumString)]
 #[strum(serialize_all = "title_case")]
 pub(crate) enum Difficulty {
     Easy,
@@ -146,5 +167,6 @@ pub(crate) enum Difficulty {
     Tricky,
     Hard,
     Brutal,
+    Evil,
     SuperEvil,
 }

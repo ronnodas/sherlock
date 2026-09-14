@@ -1,11 +1,13 @@
 use std::fmt;
 
-use anyhow::{Context as _, Ok, Result, anyhow, bail};
+use anyhow::{Context as _, Result, anyhow, bail};
 use itertools::Itertools as _;
+use lazy_regex::regex_captures;
+use select::document::Document;
 use select::node::Node;
 use select::predicate::{self, Name, Predicate};
 
-use crate::models::{CardBack, CardFront, Judgment, MaybeHint};
+use crate::models::{CardBack, CardFront, Difficulty, Judgment, MaybeHint, Metadata, PuzzleId};
 
 pub(crate) fn parse_card(node: &Node<'_>) -> Result<(CardFront, Option<CardBack>, bool)> {
     let node = node
@@ -37,6 +39,60 @@ pub(crate) fn parse_card(node: &Node<'_>) -> Result<(CardFront, Option<CardBack>
     let has_hint = node.is(Class(ClassName::HasHint));
     let front = CardFront { name, profession };
     Ok((front, back, has_hint))
+}
+
+pub(crate) fn parse_metadata(document: &Document) -> Result<Option<Metadata>> {
+    document
+        .find(Name("p"))
+        .find_map(|node| {
+            let text = node.text();
+            if let Some((_, prefix, month, day, year, difficulty)) = regex_captures!(
+                r"(.*)\b([A-Z][a-z]{2})\s+(\d{1,2})(?:st|nd|rd|th)?\s+(\d{4})\b \((.+)\)",
+                &text
+            ) {
+                Some(metadata_with_date(prefix, month, day, year, difficulty))
+            } else if let Some((_, pack, puzzle, difficulty)) =
+                regex_captures!(r"Puzzle Pack #(\d+) - #(\d+) \((.+)\)", &text)
+            {
+                Some(puzzle_pack_metadata(pack, puzzle, difficulty).map(Some))
+            } else {
+                None
+            }
+        })
+        .unwrap_or(Ok(None))
+}
+
+fn metadata_with_date(
+    prefix: &str,
+    month: &str,
+    day: &str,
+    year: &str,
+    difficulty: &str,
+) -> Result<Option<Metadata>> {
+    if ["Daily Clues by Sam:", "Archive:"].contains(&prefix.trim()) {
+        let id = PuzzleId::date_from_month_b(year, month, day)
+            .with_context(|| format!("invalid date: {month} {day} {year}"))?;
+        let difficulty = parse_difficulty(difficulty)?;
+        Ok(Some(Metadata { id, difficulty }))
+    } else {
+        Ok(None)
+    }
+}
+
+fn puzzle_pack_metadata(pack: &str, puzzle: &str, difficulty: &str) -> Result<Metadata> {
+    let [pack, puzzle] = [pack, puzzle].map(str::parse);
+    let difficulty = parse_difficulty(difficulty)?;
+    let id = PuzzleId::PuzzlePack {
+        pack: pack?,
+        puzzle: puzzle?,
+    };
+    Ok(Metadata { id, difficulty })
+}
+
+fn parse_difficulty(difficulty: &str) -> Result<Difficulty> {
+    difficulty
+        .parse()
+        .with_context(|| format!("unknown difficulty: {difficulty}"))
 }
 
 fn parse_back(card: Node<'_>, judgment: Judgment) -> Result<CardBack> {
