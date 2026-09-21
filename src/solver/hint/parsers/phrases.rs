@@ -183,34 +183,45 @@ impl Unit {
         let SetExpr::NonEmpty(set) = set else {
             bail!("empty unit {self:?} cannnot have unique member")
         };
-        if let Some(set) = set.as_regular() {
-            if let Some(coord) = coord {
-                if !set.contains(coord) {
-                    bail!("{name:?} does not belong to {self:?}")
+        match set {
+            Set1Expr::Regular(set) => {
+                if let Some(coord) = coord {
+                    if !set.contains(coord) {
+                        bail!("{name:?} does not belong to {self:?}")
+                    }
+                    hints.push(Hint::Count(coord.neighbors().judged(judgment), count));
+                    if set.len().get() > 1 {
+                        let count = count
+                            .not()
+                            .with_context(|| format!("impossible to not have {count:?}"))?;
+                        hints.extend(
+                            set.into_iter()
+                                .filter(|&other| other != coord)
+                                .map(|other| {
+                                    Hint::Count(other.neighbors().judged(judgment), count)
+                                }),
+                        );
+                    }
+                } else {
+                    let sets = set
+                        .into_iter1()
+                        .map(|coord| coord.neighbors().judged(judgment))
+                        .collect1();
+                    hints.push(Hint::UniqueWithCount { sets, count });
                 }
-                hints.push(Hint::Count(coord.neighbors().judged(judgment), count));
-                hints.extend(
-                    set.into_iter()
-                        .filter(|&other| other != coord)
-                        .map(|other| Hint::NotCount(other.neighbors().judged(judgment), count)),
-                );
-            } else {
-                let sets = set
-                    .into_iter1()
-                    .map(|coord| coord.neighbors().judged(judgment))
-                    .collect1();
-                hints.push(Hint::UniqueWithCount { sets, count });
             }
-        } else {
-            let unique = Hint::CountWithNeighbors {
-                set,
-                each: count,
-                count: Cardinal::Exact(1),
-                judgment,
-            };
-            hints.push(unique);
-            if let Some(coord) = coord {
-                hints.push(Hint::Count(coord.neighbors().judged(judgment), count));
+            Set1Expr::Op(set) => {
+                if let Some(coord) = coord {
+                    hints.extend(Hint::contains(&set, coord)?);
+                    hints.push(Hint::Count(coord.neighbors().judged(judgment), count));
+                }
+                let unique = Hint::CountWithNeighbors {
+                    set: set.into(),
+                    each: count,
+                    count: Cardinal::Exact(1),
+                    judgment,
+                };
+                hints.push(unique);
             }
         }
         Ok(hints)
@@ -452,7 +463,7 @@ impl Unit {
     fn equal_traits(&self, context: Context<'_>) -> Result<Vec<Hint>> {
         let (set, mut hints) = self.add_context(context)?;
         if let SetExpr::NonEmpty(set) = set {
-            let extra = if let Some(set) = set.as_regular() {
+            let extra = if let &Set1Expr::Regular(set) = &set {
                 if !set.len().get().is_multiple_of(2) {
                     bail!("{self:?} cannot be split equally")
                 }
@@ -674,11 +685,16 @@ impl UnitInSeries {
         let others = self.others(context)?;
         let this = self.add_context(context)?;
         let mut hints = vec![Hint::Count(this.judged(judgment), quantity)];
-        hints.extend(
-            others
-                .into_iter()
-                .map(|other| Hint::NotCount(other.judged(judgment), quantity)),
-        );
+        if !others.is_empty() {
+            let quantity = quantity
+                .not()
+                .with_context(|| format!("impossible to not have {quantity:?}"))?;
+            hints.extend(
+                others
+                    .into_iter()
+                    .map(|other| Hint::Count(other.judged(judgment), quantity)),
+            );
+        }
         Ok(hints)
     }
 }
@@ -775,8 +791,7 @@ impl Quantifier {
         match self {
             Self::Subset(Cardinal::Exact(count), total) if count == total => Some(total),
             Self::Simple(Cardinal::Exact(total)) => Some(total),
-            Self::Simple(Cardinal::AtLeast(_) | Cardinal::AtMost(_) | Cardinal::Parity(_))
-            | Self::Subset(_, _) => None,
+            Self::Simple(_) | Self::Subset(_, _) => None,
         }
     }
 }

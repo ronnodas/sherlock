@@ -428,15 +428,6 @@ impl Set1Expr {
         }
     }
 
-    #[must_use]
-    pub(crate) fn as_regular(&self) -> Option<&Set1> {
-        if let Self::Regular(set) = self {
-            Some(set)
-        } else {
-            None
-        }
-    }
-
     pub(crate) fn conditions_to_contain(&self, coord: Coord) -> Result<Vec<Hint>> {
         match self {
             Self::Regular(set) => {

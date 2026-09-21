@@ -1,5 +1,7 @@
 use std::ops::Not;
 
+use anyhow::{Context as _, Result, bail};
+use itertools::Itertools as _;
 use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
@@ -19,8 +21,6 @@ pub(crate) enum Hint {
     Judgment(Coord, Judgment),
     /// Given set of coordinates has that many suspects
     Count(Set1Op, Cardinal),
-    /// Given set of coordinates does not have that many suspects
-    NotCount(Set1Op, Cardinal),
     /// Given set of coordinates in total have that many suspects
     CountTotal([Set1Op; 2], Cardinal),
     /// Given set of coordinates is connected
@@ -45,7 +45,6 @@ impl Hint {
         match self {
             &Self::Judgment(coord, judgment) => solution[coord] == judgment,
             Self::Count(set, quantity) => quantity.matches(solution.select(set).len()),
-            Self::NotCount(set, quantity) => !quantity.matches(solution.select(set).len()),
             Self::CountTotal(sets, quantity) => {
                 let total = sets.iter().map(|set| solution.select(set).len()).sum();
                 quantity.matches(total)
@@ -83,6 +82,41 @@ impl Hint {
                     let neighbors = solution.select(&coord.neighbors().judged(*judgment)).len();
                     cardinal.matches(neighbors)
                 })
+            }
+        }
+    }
+
+    fn contains(set: &Set1Op, coord: Coord) -> Result<Vec<Self>> {
+        match set {
+            Set1Op::Judged(inner, judgment) => {
+                let mut hints = match inner.as_ref() {
+                    &Set1Expr::Regular(set) => {
+                        if !set.contains(coord) {
+                            bail!("{set:?} does not contain {coord}")
+                        }
+                        vec![]
+                    }
+                    Set1Expr::Op(set) => Self::contains(set, coord)?,
+                };
+                hints.push(Self::Judgment(coord, *judgment));
+                Ok(hints)
+            }
+            Set1Op::Shift(inner, direction) => {
+                let pre_shift = coord
+                    .step(direction.flip())
+                    .with_context(|| format!("{coord:?} is not {direction:?} from anyone"))?;
+                Self::contains(inner, pre_shift)
+            }
+            Set1Op::Intersection(vec, fixed) => {
+                if let Some(set) = fixed
+                    && !set.contains(coord)
+                {
+                    bail!("{set:?} does not contain {coord}")
+                }
+                vec.iter()
+                    .map(|set| Self::contains(set, coord))
+                    .flatten_ok()
+                    .collect()
             }
         }
     }
@@ -169,6 +203,7 @@ pub(crate) enum Cardinal {
     Exact(Number),
     AtLeast(Number),
     AtMost(Number),
+    NotExact(Number),
     Parity(Parity),
 }
 
@@ -178,8 +213,21 @@ impl Cardinal {
             Self::Exact(value) => len == value,
             Self::AtLeast(value) => len >= value,
             Self::AtMost(value) => len <= value,
+            Self::NotExact(value) => len != value,
             Self::Parity(parity) => parity.matches(len),
         }
+    }
+
+    fn not(self) -> Option<Self> {
+        let count = match self {
+            Self::Exact(0) => Self::AtLeast(1),
+            Self::Exact(value) => Self::NotExact(value),
+            Self::AtLeast(value) => Self::AtMost(value.checked_sub(1)?),
+            Self::AtMost(value) => Self::AtLeast(value.strict_add(1)),
+            Self::Parity(parity) => Self::Parity(!parity),
+            Self::NotExact(value) => Self::Exact(value),
+        };
+        Some(count)
     }
 }
 
