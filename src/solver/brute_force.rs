@@ -19,12 +19,14 @@ impl BruteForceSolver {
     }
 }
 
-impl Engine for BruteForceSolver {
-    fn new() -> Self {
+impl Default for BruteForceSolver {
+    fn default() -> Self {
         let solutions = Solution::all(iter::empty());
         Self { solutions }
     }
+}
 
+impl Engine for BruteForceSolver {
     fn for_board(board: &Board) -> Self {
         let fixed = board
             .fixed()

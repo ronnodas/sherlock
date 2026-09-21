@@ -204,13 +204,12 @@ impl<E: Engine> Solver<E> {
     }
 }
 
-pub(crate) trait Engine: Sized {
-    fn new() -> Self;
+pub(crate) trait Engine: Sized + Default {
     fn add_parsed_hint(&mut self, hint: &Hint);
     fn updates(&mut self) -> Result<Vec<(Coord, Judgment)>>;
 
     fn for_board(board: &Board) -> Self {
-        let mut this = Self::new();
+        let mut this = Self::default();
         for (coord, judgment) in board.fixed().into_iter() {
             if let Some(judgment) = judgment {
                 this.add_parsed_hint(&Hint::Judgment(coord, judgment));
@@ -631,8 +630,8 @@ mod tests {
 
     use super::*;
 
-    fn solve<E: Engine>(puzzle: &Puzzle) {
-        let mut engine = E::new();
+    pub(crate) fn solve<E: Engine>(puzzle: &Puzzle) {
+        let mut engine = E::default();
 
         engine.add_parsed_hint(&Hint::Judgment(
             puzzle.start,
