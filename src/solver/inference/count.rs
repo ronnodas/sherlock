@@ -1,7 +1,9 @@
 use std::cmp::Ordering;
+use std::num::NonZero;
 use std::ops::BitAnd;
 use std::range::RangeInclusive;
 
+use crate::solver::board::coordinates::Set1;
 use crate::solver::hint::{BoundOrNot, Number, Parity};
 use crate::solver::inference::Contradiction;
 
@@ -18,7 +20,7 @@ pub(crate) fn reduce_cardinal(count: BoundOrNot, rhs: Number) -> Option<BoundOrN
     Some(count)
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum CountSet {
     Exact(Number),
     Complex {
@@ -28,9 +30,12 @@ pub(crate) enum CountSet {
 }
 
 impl CountSet {
-    pub(crate) fn intersect(&mut self, rhs: Self) -> Result<(), Contradiction> {
-        *self = (*self & rhs).ok_or(Contradiction)?;
-        Ok(())
+    // TODO return bool to mark updated
+    pub(crate) fn intersect(&mut self, rhs: Self) -> Result<bool, Contradiction> {
+        let value = (*self & rhs).ok_or(Contradiction)?;
+        let updated = value != *self;
+        *self = value;
+        Ok(updated)
     }
 
     pub(crate) fn minimum(self) -> Number {
@@ -56,7 +61,7 @@ impl CountSet {
         }
     }
 
-    pub(crate) fn simplify(self) -> Option<Self> {
+    fn simplify(self) -> Option<Self> {
         match self {
             Self::Exact(value) => Some(Self::Exact(value)),
             Self::Complex { mut range, parity } => {
@@ -88,7 +93,7 @@ impl CountSet {
                 Self::complex(min, max, parity)
             }
             [Self::Exact(exact), Self::Complex { range, parity }] => {
-                let min = exact.checked_sub(range.last)?;
+                let min = exact.saturating_sub(range.last);
                 let max = exact.checked_sub(range.start)?;
                 let parity = parity.map(|parity| parity ^ Parity::of(exact));
                 Self::complex(min, max, parity)
@@ -119,13 +124,34 @@ impl CountSet {
         .simplify()
     }
 
-    pub(crate) fn from_cardinal(cardinal: BoundOrNot, max: Number) -> Option<Self> {
+    pub(crate) fn from_cardinal(cardinal: BoundOrNot, max: NonZero<Number>) -> Option<Self> {
         match cardinal {
-            BoundOrNot::Exact(value) => (value <= max).then_some(Self::Exact(value)),
-            BoundOrNot::AtLeast(min) => Self::complex(min, max, None),
-            BoundOrNot::AtMost(value) => Some(Self::max(value.min(max))),
-            BoundOrNot::Parity(parity) => Self::complex(0, max, Some(parity)),
+            BoundOrNot::Exact(value) => (value <= max.get()).then_some(Self::Exact(value)),
+            BoundOrNot::AtLeast(min) => Self::complex(min, max.get(), None),
+            BoundOrNot::AtMost(value) => Some(Self::max(value.min(max.get()))),
+            BoundOrNot::Parity(parity) => Some(Self::from_parity(parity, max)),
             BoundOrNot::NotExact(_) => todo!(),
+        }
+    }
+
+    pub(crate) fn from_parity(parity: Parity, max: NonZero<Number>) -> Self {
+        let min = match parity {
+            Parity::Even => 0,
+            Parity::Odd => 1,
+        };
+        let max = if parity.matches(max.get()) {
+            max.get()
+        } else {
+            max.get().strict_sub(1)
+        };
+
+        if min == max {
+            Self::Exact(min)
+        } else {
+            Self::Complex {
+                range: (min..=max).into(),
+                parity: Some(parity),
+            }
         }
     }
 
@@ -146,6 +172,49 @@ impl CountSet {
     #[must_use]
     pub(crate) fn is_exact(self) -> bool {
         matches!(self, Self::Exact(..))
+    }
+
+    pub(crate) fn parity(self) -> Option<Parity> {
+        match self {
+            Self::Exact(exact) => Some(Parity::of(exact)),
+            Self::Complex { parity, .. } => parity,
+        }
+    }
+
+    pub(crate) fn strict_add(self, rhs: Self) -> Self {
+        match [self, rhs] {
+            [Self::Exact(this), Self::Exact(rhs)] => Self::Exact(this.strict_add(rhs)),
+            [Self::Complex { range, parity }, Self::Exact(exact)]
+            | [Self::Exact(exact), Self::Complex { range, parity }] => Self::Complex {
+                range: (range.start.strict_add(exact)..=range.last.strict_add(exact)).into(),
+                parity: parity.map(|parity| parity ^ Parity::of(exact)),
+            },
+            [
+                Self::Complex { range, parity },
+                Self::Complex {
+                    range: range_rhs,
+                    parity: parity_rhs,
+                },
+            ] => {
+                let parity = parity.zip(parity_rhs).map(|(this, rhs)| this ^ rhs);
+                let range = (range.start.strict_add(range_rhs.start)
+                    ..=range.last.strict_add(range_rhs.last))
+                    .into();
+                Self::Complex { range, parity }
+            }
+        }
+    }
+
+    pub(crate) fn tight(self, set: Set1) -> Result<Option<EndPoint>, Contradiction> {
+        match set.len().get().cmp(&self.minimum()) {
+            Ordering::Less => return Err(Contradiction),
+            Ordering::Equal => return Ok(Some(EndPoint::Minimum)),
+            Ordering::Greater => {}
+        }
+        if self.maximum() == 0 {
+            return Ok(Some(EndPoint::Maximum));
+        }
+        Ok(None)
     }
 }
 
@@ -185,6 +254,11 @@ impl From<Number> for CountSet {
     }
 }
 
+pub(crate) enum EndPoint {
+    Minimum,
+    Maximum,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Interval<T> {
     range: RangeInclusive<T>,
@@ -208,9 +282,25 @@ impl<T: Ord + Copy> Interval<T> {
         })
     }
 
-    pub(crate) fn exact(value: T) -> Self {
-        let range = (value..=value).into();
-        Self { range }
+    pub(crate) fn exact(exact: T) -> Self {
+        Self {
+            range: (exact..=exact).into(),
+        }
+    }
+
+    pub(crate) fn max(&self) -> T {
+        self.range.last
+    }
+
+    pub(crate) fn min(&self) -> T {
+        self.range.start
+    }
+
+    pub(crate) fn intersect(&mut self, rhs: Self) -> Result<bool, Contradiction> {
+        let intersection = self.intersection(rhs).ok_or(Contradiction)?;
+        let updated = intersection != *self;
+        *self = intersection;
+        Ok(updated)
     }
 }
 

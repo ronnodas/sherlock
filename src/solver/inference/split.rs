@@ -86,7 +86,7 @@ impl ByJudgment {
         [self.variable, self.fixed[judgment]]
     }
 
-    pub(crate) fn judgment(self, judgment: Judgment) -> Set {
+    fn judgment(self, judgment: Judgment) -> Set {
         self.fixed[judgment]
     }
 }
