@@ -3,6 +3,9 @@ use std::num::NonZero;
 use std::ops::BitAnd;
 use std::range::RangeInclusive;
 
+use itertools::Itertools as _;
+use mitsein::iter1::{IntoIterator1, Iterator1};
+
 use crate::solver::board::coordinates::Set1;
 use crate::solver::hint::{BoundOrNot, Number, Parity};
 use crate::solver::inference::Contradiction;
@@ -27,6 +30,7 @@ pub(crate) enum CountSet {
         range: RangeInclusive<Number>,
         parity: Option<Parity>,
     },
+    BitSet(BitSet),
 }
 
 impl CountSet {
@@ -42,6 +46,7 @@ impl CountSet {
         match self {
             Self::Exact(value) => value,
             Self::Complex { range, .. } => range.start,
+            Self::BitSet(bits) => bits.min(),
         }
     }
 
@@ -49,6 +54,7 @@ impl CountSet {
         match self {
             Self::Exact(value) => value,
             Self::Complex { range, .. } => range.last,
+            Self::BitSet(bits) => bits.into_iter1().max(),
         }
     }
 
@@ -58,6 +64,7 @@ impl CountSet {
             Self::Complex { range, parity } => {
                 range.contains(&len) && parity.is_none_or(|parity| parity.matches(len))
             }
+            Self::BitSet(bits) => bits.contains(len),
         }
     }
 
@@ -80,6 +87,7 @@ impl CountSet {
                     Ordering::Greater => None,
                 }
             }
+            Self::BitSet(bits) => Some(bits.into()),
         }
     }
 
@@ -113,6 +121,27 @@ impl CountSet {
                     .map(|(a, b)| if a == b { Parity::Even } else { Parity::Odd });
                 Self::complex(min, max, parity)
             }
+            [Self::Exact(exact), Self::BitSet(bits)] => {
+                Self::bit_set(bits.into_iter().filter_map(|rhs| exact.checked_sub(rhs)))
+            }
+            [Self::Complex { range, parity }, Self::BitSet(bits)] => Self::bit_set(
+                Self::iter_complex(range, parity)
+                    .cartesian_product(bits)
+                    .filter_map(|(a, b)| a.checked_sub(b)),
+            ),
+            [Self::BitSet(bits), Self::Exact(rhs)] => {
+                Self::bit_set(bits.into_iter().filter_map(|value| value.checked_sub(rhs)))
+            }
+            [Self::BitSet(bits), Self::Complex { range, parity }] => Self::bit_set(
+                bits.into_iter()
+                    .cartesian_product(Self::iter_complex(range, parity))
+                    .filter_map(|(a, b)| a.checked_sub(b)),
+            ),
+            [Self::BitSet(bits), Self::BitSet(rhs)] => Self::bit_set(
+                bits.into_iter()
+                    .cartesian_product(rhs)
+                    .filter_map(|(a, b)| a.checked_sub(b)),
+            ),
         }
     }
 
@@ -130,7 +159,9 @@ impl CountSet {
             BoundOrNot::AtLeast(min) => Self::complex(min, max.get(), None),
             BoundOrNot::AtMost(value) => Some(Self::max(value.min(max.get()))),
             BoundOrNot::Parity(parity) => Some(Self::from_parity(parity, max)),
-            BoundOrNot::NotExact(_) => todo!(),
+            BoundOrNot::NotExact(value) => {
+                Self::bit_set((0..=max.get()).filter(|&len| len != value))
+            }
         }
     }
 
@@ -178,6 +209,7 @@ impl CountSet {
         match self {
             Self::Exact(exact) => Some(Parity::of(exact)),
             Self::Complex { parity, .. } => parity,
+            Self::BitSet(bits) => bits.parity(),
         }
     }
 
@@ -202,6 +234,26 @@ impl CountSet {
                     .into();
                 Self::Complex { range, parity }
             }
+            [Self::Exact(exact), Self::BitSet(bits)] | [Self::BitSet(bits), Self::Exact(exact)] => {
+                BitSet::try_from_iter(bits.into_iter().map(|rhs| exact.strict_add(rhs)))
+                    .expect("possible len should fit in `u32`")
+                    .into()
+            }
+            [Self::Complex { range, parity }, Self::BitSet(bits)]
+            | [Self::BitSet(bits), Self::Complex { range, parity }] => BitSet::try_from_iter(
+                Self::iter_complex(range, parity)
+                    .cartesian_product(bits)
+                    .map(|(a, b)| a.strict_add(b)),
+            )
+            .expect("possible len should fit in `u32`")
+            .into(),
+            [Self::BitSet(bits), Self::BitSet(rhs)] => BitSet::try_from_iter(
+                bits.into_iter()
+                    .cartesian_product(rhs)
+                    .map(|(a, b)| a.strict_add(b)),
+            )
+            .expect("possible len should fit in `u32`")
+            .into(),
         }
     }
 
@@ -216,15 +268,31 @@ impl CountSet {
         }
         Ok(None)
     }
+
+    fn bit_set(values: impl IntoIterator<Item = Number>) -> Option<Self> {
+        Some(BitSet::try_from_iter(values)?.into())
+    }
+
+    fn iter_complex(
+        range: RangeInclusive<Number>,
+        parity: Option<Parity>,
+    ) -> impl Iterator<Item = Number> + Clone {
+        range
+            .into_iter()
+            .step_by(if parity.is_some() { 2 } else { 1 })
+    }
 }
 
 impl BitAnd for CountSet {
     type Output = Option<Self>;
 
     fn bitand(self, rhs: Self) -> Self::Output {
-        match [self, rhs] {
-            [Self::Exact(exact), rhs] | [rhs, Self::Exact(exact)] => {
-                rhs.matches(exact).then_some(Self::Exact(exact))
+        let intersection = match [self, rhs] {
+            [Self::Exact(exact), other] | [other, Self::Exact(exact)] => {
+                if !other.matches(exact) {
+                    return None;
+                }
+                Self::Exact(exact)
             }
             [
                 Self::Complex { range, parity },
@@ -242,15 +310,27 @@ impl BitAnd for CountSet {
                     [Some(parity), Some(parity_1)] if parity == parity_1 => Some(parity),
                     [Some(_), Some(_)] => return None,
                 };
-                Self::complex(min, max, parity)
+                Self::complex(min, max, parity)?
             }
-        }
+            [Self::Complex { range, parity }, Self::BitSet(bits)]
+            | [Self::BitSet(bits), Self::Complex { range, parity }] => {
+                Self::bit_set(Self::iter_complex(range, parity).filter(|&val| bits.contains(val)))?
+            }
+            [Self::BitSet(bits), Self::BitSet(rhs)] => (bits & rhs)?.into(),
+        };
+        Some(intersection)
     }
 }
 
 impl From<Number> for CountSet {
     fn from(exact: Number) -> Self {
         Self::Exact(exact)
+    }
+}
+
+impl From<BitSet> for CountSet {
+    fn from(bits: BitSet) -> Self {
+        bits.singleton().map_or(Self::BitSet(bits), Self::Exact)
     }
 }
 
@@ -364,3 +444,92 @@ impl From<Interval<Number>> for CountSet {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct BitSet(NonZero<u32>);
+
+impl BitSet {
+    fn contains(self, len: Number) -> bool {
+        self.0.get() & (1 << len) != 0
+    }
+
+    fn singleton(self) -> Option<Number> {
+        (self.0.count_ones().get() == 1).then(|| self.min())
+    }
+
+    fn min(self) -> Number {
+        self.0.trailing_zeros().try_into().expect("at most 20")
+    }
+
+    fn try_from_iter(values: impl IntoIterator<Item = Number>) -> Option<Self> {
+        let bits = values.into_iter().try_fold(0, |bits, value| {
+            Some(bits | 1_u32.checked_shl(value.into())?)
+        })?;
+        let bits = NonZero::new(bits)?;
+        Some(Self(bits))
+    }
+
+    fn parity(self) -> Option<Parity> {
+        if self.0.get() & 0x5555_5555 == 0 {
+            Some(Parity::Odd)
+        } else if self.0.get() & 0xAAAA_AAAA == 0 {
+            Some(Parity::Even)
+        } else {
+            None
+        }
+    }
+}
+
+impl BitAnd for BitSet {
+    type Output = Option<Self>;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Some(Self(NonZero::new(self.0.get() & rhs.0.get())?))
+    }
+}
+
+impl IntoIterator for BitSet {
+    type Item = Number;
+
+    type IntoIter = IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter { bits: self.0.get() }
+    }
+}
+
+impl IntoIterator1 for BitSet {
+    #[expect(
+        unsafe_code,
+        reason = "There is no other way to infallibly create an Iterator1<BitSetIter>"
+    )]
+    fn into_iter1(self) -> Iterator1<Self::IntoIter> {
+        // SAFETY yields self.0.count_ones() many items
+        unsafe { Iterator1::from_iter_unchecked(self) }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct IntoIter {
+    bits: u32,
+}
+
+impl Iterator for IntoIter {
+    type Item = Number;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.bits == 0 {
+            return None;
+        }
+        let index = self.bits.trailing_zeros();
+        self.bits ^= 1 << index;
+        Some(index.try_into().expect("at most 20"))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.bits.count_ones().try_into().expect("at most 20");
+        (len, Some(len))
+    }
+}
+
+impl ExactSizeIterator for IntoIter {}
