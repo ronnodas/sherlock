@@ -1017,7 +1017,7 @@ checksum = "9c733520a3e6c2c5ff9933f88e5bbde446838d4fa65d357ce9b20eb4d264dcd9"
 dependencies = [
  "cfg-if",
  "linearize-derive",
- "rand 0.10.2",
+ "rand 0.10.3",
  "rand 0.8.8",
  "rand 0.9.5",
  "version_check",
@@ -1164,7 +1164,8 @@ dependencies = [
 [[package]]
 name = "mitsein"
 version = "0.9.0"
-source = "git+https://github.com/olson-sean-k/mitsein.git#bff5197411838cd41bcfb5b8e4ca347d7dd148a9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a49aef75c004fb496a23f175395415ecfe2a630e4c6175ae6f7d9cc1a19332e"
 dependencies = [
  "arrayvec",
  "either",
@@ -1570,9 +1571,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.10.2"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7f5fa3a058cd35567ef9bfa5e75732bee0f9e4c55fa90477bef2dfcdbc4be80"
+checksum = "65c9fb96cbc91e3478eaae79a69fcd3f1ae4ad052e471fe6732fff548984b4af"
 dependencies = [
  "rand_core 0.10.1",
 ]
