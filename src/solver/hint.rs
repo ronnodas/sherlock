@@ -1,4 +1,4 @@
-use std::ops::Not;
+use std::ops::{BitXor, Not};
 
 use anyhow::{Context as _, Result, bail};
 use itertools::Itertools as _;
@@ -245,9 +245,14 @@ pub(crate) enum Parity {
 
 impl Parity {
     pub(crate) fn matches(self, len: Number) -> bool {
-        match self {
-            Self::Even => len.is_multiple_of(2),
-            Self::Odd => !len.is_multiple_of(2),
+        self == Self::of(len)
+    }
+
+    pub(crate) fn of(number: Number) -> Self {
+        if number.is_multiple_of(2) {
+            Self::Even
+        } else {
+            Self::Odd
         }
     }
 }
@@ -260,5 +265,13 @@ impl Not for Parity {
             Self::Even => Self::Odd,
             Self::Odd => Self::Even,
         }
+    }
+}
+
+impl BitXor for Parity {
+    type Output = Self;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        if self == rhs { Self::Even } else { Self::Odd }
     }
 }
