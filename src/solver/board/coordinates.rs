@@ -287,7 +287,7 @@ impl IntoIterator1 for Set1 {
         reason = "There is no other way to infallibly create an Iterator1<SetIntoIter>"
     )]
     fn into_iter1(self) -> Iterator1<Self::IntoIter> {
-        // SAFETY
+        // SAFETY yields self.0.count_ones() many items
         unsafe { Iterator1::from_iter_unchecked(self) }
     }
 }
