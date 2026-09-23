@@ -150,3 +150,6 @@ wildcard_enum_match_arm = "warn"
 ## allows
 redundant_pub_crate = "allow"
 missing_const_for_fn = "allow"
+
+[dev-dependencies]
+test_each_file = "0.3.7"

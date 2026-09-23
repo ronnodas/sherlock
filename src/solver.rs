@@ -625,10 +625,14 @@ struct Save {
 mod tests {
     use std::collections::HashMap;
 
+    use test_each_file::test_each_file;
+
     use crate::models::Solution;
     use crate::solver::board::Lookup;
 
     use super::*;
+
+    test_each_file! { in "./archive" as puzzle => brute_force}
 
     pub(crate) fn solve<E: Engine>(puzzle: &Puzzle) {
         let mut engine = E::default();
@@ -663,18 +667,9 @@ mod tests {
         assert_eq!(marked.into_iter().filter(|&(_, marked)| marked).count(), 20);
     }
 
-    #[ignore = "slow but comprehensive"]
-    #[test]
-    fn archive() {
-        for file in fs::read_dir(ARCHIVE_DIR).unwrap() {
-            let path = file.unwrap().path();
-            if path.extension().is_some_and(|ext| ext == "ron") {
-                println!("Trying to solve: {}", path.display());
-                let contents = fs::read_to_string(path).unwrap();
-                let puzzle = ron::from_str(&contents).unwrap();
-                solve::<BruteForceSolver>(&puzzle);
-            }
-        }
+    fn brute_force(puzzle: &str) {
+        let puzzle = ron::from_str(puzzle).unwrap();
+        solve::<BruteForceSolver>(&puzzle);
     }
 
     #[test]
