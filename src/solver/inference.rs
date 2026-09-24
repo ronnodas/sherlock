@@ -24,7 +24,7 @@ use crate::solver::inference::split::{ByJudgment, SetSimplify};
 mod count;
 mod split;
 
-const MAX_BIFURCATION_DEPTH: u8 = 1;
+const MAX_BIFURCATION_DEPTH: u8 = 2;
 
 #[derive(Debug, Default, Clone)]
 struct InferenceSolver {
@@ -35,7 +35,7 @@ struct InferenceSolver {
     difference: IndexMap<[Set1; 2], Interval<i8>>,
     sum: IndexMap<[Set1; 2], Interval<Number>>,
     generic: Vec<Hint>,
-    depth: u8,
+    allowed_depth: Option<u8>,
     #[cfg(test)]
     validation_solution: Option<Solution>,
 }
@@ -46,7 +46,7 @@ impl InferenceSolver {
         tactic: Tactic,
         update: impl FnOnce(&mut Self) -> Result<bool, Contradiction>,
     ) -> Result<bool, Contradiction> {
-        if self.depth == 0 {
+        if self.allowed_depth.is_none() {
             eprintln!("{}", tactic.name());
         }
         let updated = update(self)?;
@@ -70,10 +70,7 @@ impl InferenceSolver {
             || self.update_phase(Tactic::CountsFromDifferences, Self::counts_from_differences)?
             || self.update_phase(Tactic::CombineCriminalCounts, Self::combine_criminal_counts)?
             // || self.update_phase(Tactic::InclusionExclusion, Self::inclusion_exclusion_bounds)?
-            || {
-                (self.depth < MAX_BIFURCATION_DEPTH)
-                    && self.update_phase(Tactic::Bifurcate, Self::bifurcate)?
-            };
+            || self.update_phase(Tactic::Bifurcate, Self::bifurcate)?;
         Ok(updated)
     }
 
@@ -307,11 +304,26 @@ impl InferenceSolver {
     }
 
     fn bifurcate(&mut self) -> Result<bool, Contradiction> {
+        if let Some(depth) = self.allowed_depth {
+            depth
+                .checked_sub(1)
+                .map_or(Ok(false), |depth| self.bifurcate_to(depth))
+        } else {
+            for depth in 0..MAX_BIFURCATION_DEPTH {
+                if self.bifurcate_to(depth)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+    }
+
+    fn bifurcate_to(&mut self, depth: u8) -> Result<bool, Contradiction> {
         let mut new = Vec::new();
         for (coord, _) in self.known.iter().filter(|(_, judgment)| judgment.is_none()) {
             for judgment in [Judgment::Innocent, Judgment::Criminal] {
                 let mut clone = self.clone();
-                clone.depth = clone.depth.strict_add(1);
+                clone.allowed_depth = Some(depth);
                 clone.known[coord] = Some(judgment);
                 #[cfg(test)]
                 if clone
