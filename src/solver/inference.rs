@@ -164,13 +164,13 @@ impl InferenceSolver {
         for (index, &(set, judgment)) in self.connected.iter().enumerate() {
             let [variable, fixed] = ByJudgment::split(set, &self.known).only(judgment);
             if let Some(variable) = variable.non_empty() {
-                if variable == set {
-                    continue;
-                }
                 let count = self.count_judged(variable, judgment)?;
+                let mut matches_count = 0_usize;
                 let possibilities = variable
                     .power_set()
-                    .filter(|sub| count.matches(sub.len()) && (*sub | fixed).connected())
+                    .filter(|sub| count.matches(sub.len()))
+                    .inspect(|_| matches_count = matches_count.strict_add(1))
+                    .filter(|sub| (*sub | fixed).connected())
                     .collect_vec();
                 let Ok(possibilities) = Slice1::try_from_slice(possibilities.as_slice()) else {
                     return Err(Contradiction);
@@ -181,6 +181,9 @@ impl InferenceSolver {
                         new.push(Theorem::All(unique, judgment));
                     }
                 } else {
+                    if possibilities.len().get() == matches_count {
+                        discard.push(index);
+                    }
                     let all = possibilities.iter1().copied().reduce(|a, b| a & b);
                     let any = possibilities.iter1().copied().reduce(|a, b| a | b);
 
