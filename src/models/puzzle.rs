@@ -112,32 +112,79 @@ impl From<Flattened> for Card {
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct Metadata {
+pub(crate) enum Metadata {
+    Daily {
+        date: Date,
+        difficulty: Difficulty,
+    },
+    Archive {
+        id: String,
+        difficulty: Difficulty,
+    },
+    PuzzlePack {
+        pack: u8,
+        puzzle: u8,
+        difficulty: Difficulty,
+    },
+    Community {
+        user: String,
+        id: String,
+    },
+    Custom,
+}
+
+impl Metadata {
+    pub(crate) fn split(self) -> PartialMetadata {
+        let (id, difficulty) = match self {
+            Self::Daily { date, difficulty } => (PuzzleId::Daily(date), Some(difficulty)),
+            Self::Archive { id, difficulty } => (PuzzleId::Archive(id), Some(difficulty)),
+            Self::PuzzlePack {
+                pack,
+                puzzle,
+                difficulty,
+            } => (PuzzleId::PuzzlePack { pack, puzzle }, Some(difficulty)),
+            Self::Community { user, id } => (PuzzleId::Community { user, id }, None),
+            Self::Custom => (PuzzleId::Custom, None),
+        };
+        PartialMetadata { id, difficulty }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct PartialMetadata {
     pub id: PuzzleId,
-    pub difficulty: Difficulty,
+    pub difficulty: Option<Difficulty>,
+}
+
+impl From<Metadata> for PartialMetadata {
+    fn from(metadata: Metadata) -> Self {
+        metadata.split()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, EnumDiscriminants, PartialEq, Eq)]
 #[strum_discriminants(derive(VariantArray, Display))]
-#[strum(serialize_all = "title_case")]
+#[strum_discriminants(strum(serialize_all = "title_case"))]
 pub(crate) enum PuzzleId {
-    Date(Date),
+    Daily(Date),
     Archive(String),
     PuzzlePack { pack: u8, puzzle: u8 },
+    Community { user: String, id: String },
     Custom,
 }
 
 impl PuzzleId {
     pub(crate) fn save_name(&self) -> Cow<'_, str> {
         match self {
-            Self::Date(date) => Cow::Owned(date.to_string()),
+            Self::Daily(date) => Cow::Owned(date.to_string()),
             Self::Archive(id) => Cow::Borrowed(id.as_str()),
             Self::PuzzlePack { pack, puzzle } => Cow::Owned(format!("puzzle-pack-{pack}-{puzzle}")),
             Self::Custom => Cow::Owned(String::new()),
+            Self::Community { user, id } => Cow::Owned(format!("community-{user}-{id}")),
         }
     }
 
-    pub(crate) fn date_from_month_b(year: &str, month: &str, day: &str) -> Option<Self> {
+    pub(crate) fn date_from_month_b(year: &str, month: &str, day: &str) -> Option<Date> {
         let month = match month {
             "Jan" => 1,
             "Feb" => 2,
@@ -153,9 +200,7 @@ impl PuzzleId {
             "Dec" => 12,
             _ => return None,
         };
-        Date::new(year.parse().ok()?, month, day.parse().ok()?)
-            .ok()
-            .map(Self::Date)
+        Date::new(year.parse().ok()?, month, day.parse().ok()?).ok()
     }
 }
 
@@ -169,4 +214,14 @@ pub(crate) enum Difficulty {
     Brutal,
     Evil,
     SuperEvil,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn title_case() {
+        assert_eq!(PuzzleIdDiscriminants::PuzzlePack.to_string(), "Puzzle Pack");
+    }
 }

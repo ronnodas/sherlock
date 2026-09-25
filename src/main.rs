@@ -9,9 +9,9 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use crate::editor::BoardEditor;
-use crate::models::{Puzzle, PuzzleId};
+use crate::models::{PartialMetadata, Puzzle, PuzzleId};
 use crate::player::App;
-use crate::solver::{ParsedBoard, PartialMetadata};
+use crate::solver::ParsedBoard;
 
 mod editor;
 mod grid;
@@ -163,7 +163,7 @@ fn fetch_today() -> Result<ParsedBoard> {
     let today = Timestamp::now()
         .to_zoned(TimeZone::get("America/New_York").expect("valid identifier"))
         .date();
-    fetch_from_url("https://cluesbysam.com/", PuzzleId::Date(today))
+    fetch_from_url("https://cluesbysam.com/", PuzzleId::Daily(today))
 }
 
 fn fetch_from_url(target_url: &str, id: PuzzleId) -> Result<ParsedBoard> {

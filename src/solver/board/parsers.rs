@@ -55,6 +55,13 @@ pub(crate) fn parse_metadata(document: &Document) -> Result<Option<Metadata>> {
                 regex_captures!(r"Puzzle Pack #(\d+) - #(\d+) \((.+)\)", &text)
             {
                 Some(puzzle_pack_metadata(pack, puzzle, difficulty).map(Some))
+            } else if let Some((_, user, id)) =
+                regex_captures!(r"Community puzzle: (.+)-([a-z0-9]+)", &text)
+            {
+                Some(Ok(Some(Metadata::Community {
+                    user: user.to_owned(),
+                    id: id.to_owned(),
+                })))
             } else {
                 None
             }
@@ -70,10 +77,10 @@ fn metadata_with_date(
     difficulty: &str,
 ) -> Result<Option<Metadata>> {
     if ["Daily Clues by Sam:", "Archive:"].contains(&prefix.trim()) {
-        let id = PuzzleId::date_from_month_b(year, month, day)
+        let date = PuzzleId::date_from_month_b(year, month, day)
             .with_context(|| format!("invalid date: {month} {day} {year}"))?;
         let difficulty = parse_difficulty(difficulty)?;
-        Ok(Some(Metadata { id, difficulty }))
+        Ok(Some(Metadata::Daily { date, difficulty }))
     } else {
         Ok(None)
     }
@@ -82,11 +89,11 @@ fn metadata_with_date(
 fn puzzle_pack_metadata(pack: &str, puzzle: &str, difficulty: &str) -> Result<Metadata> {
     let [pack, puzzle] = [pack, puzzle].map(str::parse);
     let difficulty = parse_difficulty(difficulty)?;
-    let id = PuzzleId::PuzzlePack {
+    Ok(Metadata::PuzzlePack {
         pack: pack?,
         puzzle: puzzle?,
-    };
-    Ok(Metadata { id, difficulty })
+        difficulty,
+    })
 }
 
 fn parse_difficulty(difficulty: &str) -> Result<Difficulty> {

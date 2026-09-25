@@ -3,7 +3,7 @@ use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::{fmt, fs, mem};
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use colored::Colorize as _;
 use inquire::list_option::ListOption;
 use inquire::{Confirm, CustomType, MultiSelect, Select, Text};
@@ -16,8 +16,8 @@ use strum::VariantArray as _;
 
 use crate::grid::Grid;
 use crate::models::{
-    Card, CardFront, Coord, Difficulty, Judgment, Metadata, Name, Puzzle, PuzzleId,
-    PuzzleIdDiscriminants,
+    Card, CardFront, Coord, Difficulty, Judgment, Metadata, Name, PartialMetadata, Puzzle,
+    PuzzleId, PuzzleIdDiscriminants,
 };
 use crate::solver::board::{Board, Format, HtmlBoard, SolvedBoard};
 use crate::solver::brute_force::BruteForceSolver;
@@ -327,7 +327,7 @@ impl Solved {
             }
         }
 
-        let metadata = self.metadata.complete()?;
+        let metadata = Self::complete_metadata(self.metadata)?;
 
         let cards = Grid::from_fn(|coord| {
             // TODO should deconstruct here rather than clone
@@ -339,6 +339,49 @@ impl Solved {
         });
 
         Puzzle::new(cards, start, metadata)
+    }
+
+    fn complete_metadata(metadata: PartialMetadata) -> Result<Metadata> {
+        let difficulty = || {
+            metadata.difficulty.map_or_else(
+                || {
+                    Select::new(
+                        "what difficulty was this puzzle rated at?",
+                        Difficulty::VARIANTS.to_vec(),
+                    )
+                    .prompt()
+                },
+                Ok,
+            )
+        };
+        let metadata = match metadata.id {
+            PuzzleId::Daily(date) => Metadata::Daily {
+                date,
+                difficulty: difficulty()?,
+            },
+            PuzzleId::Archive(id) => Metadata::Archive {
+                id,
+                difficulty: difficulty()?,
+            },
+            PuzzleId::PuzzlePack { pack, puzzle } => Metadata::PuzzlePack {
+                pack,
+                puzzle,
+                difficulty: difficulty()?,
+            },
+            PuzzleId::Community { user, id } => {
+                if let Some(difficulty) = metadata.difficulty {
+                    bail!("unexpected difficulty {difficulty} for community puzzle")
+                }
+                Metadata::Community { user, id }
+            }
+            PuzzleId::Custom => {
+                if let Some(difficulty) = metadata.difficulty {
+                    bail!("unexpected difficulty {difficulty} for custom puzzle")
+                }
+                Metadata::Custom
+            }
+        };
+        Ok(metadata)
     }
 }
 fn ron_config() -> PrettyConfig {
@@ -410,9 +453,9 @@ impl ParsedBoard {
             let kind = Select::new("enter puzzle id", PuzzleIdDiscriminants::VARIANTS.to_vec())
                 .prompt()?;
             let id = match kind {
-                PuzzleIdDiscriminants::Date => {
+                PuzzleIdDiscriminants::Daily => {
                     let date = CustomType::new("enter a date as YYYY-MM-DD").prompt()?;
-                    PuzzleId::Date(date)
+                    PuzzleId::Daily(date)
                 }
                 PuzzleIdDiscriminants::Archive => {
                     let id = Text::new("enter puzzle id").prompt()?;
@@ -422,6 +465,14 @@ impl ParsedBoard {
                     let pack = CustomType::new("enter pack number").prompt()?;
                     let puzzle = CustomType::new("enter puzzle number").prompt()?;
                     PuzzleId::PuzzlePack { pack, puzzle }
+                }
+                PuzzleIdDiscriminants::Community => {
+                    let id = Text::new("enter puzzle id (<user>-<id>)").prompt()?;
+                    let (user, id) = id.split_once('-').context("incorrect_format")?;
+                    PuzzleId::Community {
+                        user: user.to_owned(),
+                        id: id.to_owned(),
+                    }
                 }
                 PuzzleIdDiscriminants::Custom => PuzzleId::Custom,
             };
@@ -578,40 +629,6 @@ impl fmt::Display for Suspect {
 impl From<Update> for Suspect {
     fn from(update: Update) -> Self {
         Self::new(update.coord, update.name, update.judgment)
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct PartialMetadata {
-    pub id: PuzzleId,
-    pub difficulty: Option<Difficulty>,
-}
-
-impl PartialMetadata {
-    fn complete(self) -> Result<Metadata> {
-        let difficulty = {
-            match self.difficulty {
-                Some(difficulty) => difficulty,
-                None => Select::new(
-                    "what difficulty was this puzzle rated at?",
-                    Difficulty::VARIANTS.to_vec(),
-                )
-                .prompt()?,
-            }
-        };
-        Ok(Metadata {
-            id: self.id,
-            difficulty,
-        })
-    }
-}
-
-impl From<Metadata> for PartialMetadata {
-    fn from(metadata: Metadata) -> Self {
-        Self {
-            id: metadata.id,
-            difficulty: Some(metadata.difficulty),
-        }
     }
 }
 
