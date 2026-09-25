@@ -264,21 +264,6 @@ impl Solved {
     }
 
     fn extract_puzzle(mut self) -> Result<Puzzle> {
-        let start = if let Some(coord) = self.board.start() {
-            coord
-        } else {
-            let options = Coord::all()
-                .into_iter()
-                .map(|coord| {
-                    let name = self.board.front(coord).name.clone();
-                    let judgment = self.board.back(coord).judgment();
-                    Suspect::new(coord, name, judgment)
-                })
-                .collect_vec();
-            Select::new("Which card is revealed at the start?", options)
-                .prompt()?
-                .coord
-        };
         let mut unknown = Vec::with_capacity(20);
         for coord in Coord::all() {
             let back = self.board.back(coord);
@@ -328,6 +313,22 @@ impl Solved {
         }
 
         let metadata = Self::complete_metadata(self.metadata)?;
+
+        let start = if let Some(coord) = self.board.start() {
+            coord
+        } else {
+            let options = Coord::all()
+                .into_iter()
+                .map(|coord| {
+                    let name = self.board.front(coord).name.clone();
+                    let judgment = self.board.back(coord).judgment();
+                    Suspect::new(coord, name, judgment)
+                })
+                .collect_vec();
+            Select::new("Which card is revealed at the start?", options)
+                .prompt()?
+                .coord
+        };
 
         let cards = Grid::from_fn(|coord| {
             // TODO should deconstruct here rather than clone
