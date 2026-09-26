@@ -7,7 +7,7 @@ use crate::solver::board::coordinates::{Set, Set1, Set1Expr, SetExpr, SetOp};
 use crate::solver::hint::recipes::{
     AddContext, ColumnRecipe, Context, LineRecipe, NameRecipe, RowRecipe,
 };
-use crate::solver::hint::{Cardinal, Comparison, Hint, LineKind, Number, Parity};
+use crate::solver::hint::{Cardinal, CardinalOrNot, Comparison, Hint, LineKind, Number, Parity};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug)]
@@ -67,7 +67,7 @@ impl AddContext for Sentence {
                 match set.regular() {
                     Ok(set) if quantity.matches(set.len()) => {}
                     Ok(_) => bail!("{unit:?} does not match {quantity:?}"),
-                    Err(set) => hints.push(Hint::Count(set, quantity)),
+                    Err(set) => hints.push(Hint::Count(set, quantity.into())),
                 }
                 hints
             }
@@ -89,7 +89,7 @@ impl AddContext for Sentence {
             Self::EachUnitInSeriesHasSize(kind, quantity, judgment) => kind
                 .all(context)
                 .into_iter()
-                .map(|set| Hint::Count(set.judged(judgment), quantity))
+                .map(|set| Hint::Count(set.judged(judgment), quantity.into()))
                 .collect(),
             Self::OnlyGivenUnitHasNTraits(unit, quantity, judgment) => {
                 unit.only_one_with_n_traits(quantity, judgment, context)?
@@ -112,7 +112,7 @@ impl AddContext for Sentence {
                 match sets {
                     [SetOp::Empty, SetOp::Empty] => {}
                     [SetOp::Empty, SetOp::NonEmpty(set)] | [SetOp::NonEmpty(set), SetOp::Empty] => {
-                        hints.push(Hint::Count(set, Cardinal::Exact(0)));
+                        hints.push(Hint::Count(set, CardinalOrNot::Exact(0)));
                     }
                     [SetOp::NonEmpty(a), SetOp::NonEmpty(b)] => {
                         hints.push(Hint::CompareSets([a, b], Comparison::ExactDifference(0)));
@@ -125,7 +125,9 @@ impl AddContext for Sentence {
                 let (set, mut hints) = unit.add_context(context)?;
                 let hint = match [set.clone().judged(judgment), set.judged(!judgment)] {
                     [SetOp::Empty, _] => bail!("no {judgment} in {unit:?}"),
-                    [SetOp::NonEmpty(big), SetOp::Empty] => Hint::Count(big, Cardinal::AtLeast(1)),
+                    [SetOp::NonEmpty(big), SetOp::Empty] => {
+                        Hint::Count(big, CardinalOrNot::AtLeast(1))
+                    }
                     [SetOp::NonEmpty(big), SetOp::NonEmpty(small)] => {
                         Hint::CompareSets([big, small], Comparison::More)
                     }
@@ -189,7 +191,10 @@ impl Unit {
                     if !set.contains(coord) {
                         bail!("{name:?} does not belong to {self:?}")
                     }
-                    hints.push(Hint::Count(coord.neighbors().judged(judgment), count));
+                    hints.push(Hint::Count(
+                        coord.neighbors().judged(judgment),
+                        count.into(),
+                    ));
                     if set.len().get() > 1 {
                         let count = count
                             .not()
@@ -213,7 +218,10 @@ impl Unit {
             Set1Expr::Op(set) => {
                 if let Some(coord) = coord {
                     hints.extend(Hint::contains(&set, coord)?);
-                    hints.push(Hint::Count(coord.neighbors().judged(judgment), count));
+                    hints.push(Hint::Count(
+                        coord.neighbors().judged(judgment),
+                        count.into(),
+                    ));
                 }
                 let unique = Hint::CountWithNeighbors {
                     set: set.into(),
@@ -243,7 +251,7 @@ impl Unit {
                 }
             }
             SetOp::NonEmpty(self_) => {
-                hints.push(Hint::Count(self_.clone(), Cardinal::Exact(total)));
+                hints.push(Hint::Count(self_.clone(), CardinalOrNot::Exact(total)));
                 let other = other.intersect1(self_.into()).judged(judgment);
                 match other {
                     SetOp::Empty => {
@@ -252,7 +260,7 @@ impl Unit {
                         }
                     }
                     SetOp::NonEmpty(other) => {
-                        hints.push(Hint::Count(other, intersection));
+                        hints.push(Hint::Count(other, intersection.into()));
                     }
                 }
             }
@@ -292,7 +300,7 @@ impl Unit {
                                 }
                             }
                             Set1Expr::Op(set) => {
-                                hints.push(Hint::Count(set.clone(), Cardinal::Exact(total)));
+                                hints.push(Hint::Count(set.clone(), CardinalOrNot::Exact(total)));
                             }
                         }
                         intersection
@@ -305,7 +313,7 @@ impl Unit {
                         }
                     }
                     SetOp::NonEmpty(set) => {
-                        hints.push(Hint::Count(set, intersection));
+                        hints.push(Hint::Count(set, intersection.into()));
                     }
                 }
             }
@@ -355,7 +363,7 @@ impl Unit {
                     Comparison::More => big.len().checked_sub(1).map(Cardinal::AtMost),
                 }
                 .with_context(|| format!("{self:?} cannot be bigger by {compare:?}"))?;
-                hints.push(Hint::Count(small, count));
+                hints.push(Hint::Count(small, count.into()));
             }
             [Err(big), Ok(small)] => {
                 let count = match compare {
@@ -364,7 +372,7 @@ impl Unit {
                     }
                     Comparison::More => Cardinal::AtLeast(small.len().strict_add(1)),
                 };
-                hints.push(Hint::Count(big, count));
+                hints.push(Hint::Count(big, count.into()));
             }
             [Err(big), Err(small)] => {
                 hints.push(Hint::CompareSets([big, small], compare));
@@ -388,7 +396,7 @@ impl Unit {
                 }
             }
             [SetOp::Empty, SetOp::NonEmpty(set)] | [SetOp::NonEmpty(set), SetOp::Empty] => {
-                hints.push(Hint::Count(set, quantity));
+                hints.push(Hint::Count(set, quantity.into()));
             }
             [SetOp::NonEmpty(a), SetOp::NonEmpty(b)] => {
                 hints.push(Hint::CountTotal([a, b], quantity));
@@ -470,7 +478,7 @@ impl Unit {
                 let count = set.len().get() / 2;
                 Some(Hint::Count(
                     set.judged(Judgment::Innocent),
-                    Cardinal::Exact(count),
+                    CardinalOrNot::Exact(count),
                 ))
             } else {
                 match [
@@ -479,7 +487,7 @@ impl Unit {
                 ] {
                     [SetOp::Empty, SetOp::Empty] => None,
                     [SetOp::Empty, SetOp::NonEmpty(set)] | [SetOp::NonEmpty(set), SetOp::Empty] => {
-                        Some(Hint::Count(set, Cardinal::Exact(0)))
+                        Some(Hint::Count(set, CardinalOrNot::Exact(0)))
                     }
                     [SetOp::NonEmpty(a), SetOp::NonEmpty(b)] => {
                         Some(Hint::CompareSets([a, b], Comparison::ExactDifference(0)))
@@ -513,7 +521,7 @@ impl Unit {
                     bail!("{self:?} has no {judgment}")
                 }
             }
-            SetOp::NonEmpty(set) => hints.push(Hint::Count(set, quantity)),
+            SetOp::NonEmpty(set) => hints.push(Hint::Count(set, quantity.into())),
         }
         Ok(hints)
     }
@@ -549,7 +557,7 @@ impl AddContext for &Unit {
                     Ok(set) if quantity == &set.len() => set.into(),
                     Ok(_) => bail!("{inner:?} does not have size {quantity}"),
                     Err(set) => {
-                        hints.push(Hint::Count(set.clone(), Cardinal::Exact(*quantity)));
+                        hints.push(Hint::Count(set.clone(), CardinalOrNot::Exact(*quantity)));
                         set.into()
                     }
                 }
@@ -684,7 +692,7 @@ impl UnitInSeries {
     ) -> Result<Vec<Hint>> {
         let others = self.others(context)?;
         let this = self.add_context(context)?;
-        let mut hints = vec![Hint::Count(this.judged(judgment), quantity)];
+        let mut hints = vec![Hint::Count(this.judged(judgment), quantity.into())];
         if !others.is_empty() {
             let quantity = quantity
                 .not()

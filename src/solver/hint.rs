@@ -20,7 +20,7 @@ pub(crate) enum Hint {
     /// Given coordinate has given judgment
     Judgment(Coord, Judgment),
     /// Given set of coordinates has that many suspects
-    Count(Set1Op, Cardinal),
+    Count(Set1Op, CardinalOrNot),
     /// Given set of coordinates in total have that many suspects
     CountTotal([Set1Op; 2], Cardinal),
     /// Given set of coordinates is connected
@@ -203,7 +203,6 @@ pub(crate) enum Cardinal {
     Exact(Number),
     AtLeast(Number),
     AtMost(Number),
-    NotExact(Number),
     Parity(Parity),
 }
 
@@ -213,19 +212,17 @@ impl Cardinal {
             Self::Exact(value) => len == value,
             Self::AtLeast(value) => len >= value,
             Self::AtMost(value) => len <= value,
-            Self::NotExact(value) => len != value,
             Self::Parity(parity) => parity.matches(len),
         }
     }
 
-    fn not(self) -> Option<Self> {
+    pub(crate) fn not(self) -> Option<CardinalOrNot> {
         let count = match self {
-            Self::Exact(0) => Self::AtLeast(1),
-            Self::Exact(value) => Self::NotExact(value),
-            Self::AtLeast(value) => Self::AtMost(value.checked_sub(1)?),
-            Self::AtMost(value) => Self::AtLeast(value.strict_add(1)),
-            Self::Parity(parity) => Self::Parity(!parity),
-            Self::NotExact(value) => Self::Exact(value),
+            Self::Exact(0) => CardinalOrNot::AtLeast(1),
+            Self::Exact(value) => CardinalOrNot::NotExact(value),
+            Self::AtLeast(value) => CardinalOrNot::AtMost(value.checked_sub(1)?),
+            Self::AtMost(value) => CardinalOrNot::AtLeast(value.strict_add(1)),
+            Self::Parity(parity) => CardinalOrNot::Parity(!parity),
         };
         Some(count)
     }
@@ -273,5 +270,43 @@ impl BitXor for Parity {
 
     fn bitxor(self, rhs: Self) -> Self::Output {
         if self == rhs { Self::Even } else { Self::Odd }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum CardinalOrNot {
+    Exact(Number),
+    AtLeast(Number),
+    AtMost(Number),
+    NotExact(Number),
+    Parity(Parity),
+}
+
+impl CardinalOrNot {
+    pub(crate) fn matches(self, len: Number) -> bool {
+        match self {
+            Self::Exact(value) => len == value,
+            Self::AtLeast(value) => len >= value,
+            Self::AtMost(value) => len <= value,
+            Self::NotExact(value) => len != value,
+            Self::Parity(parity) => parity.matches(len),
+        }
+    }
+}
+
+impl From<Cardinal> for CardinalOrNot {
+    fn from(value: Cardinal) -> Self {
+        match value {
+            Cardinal::Exact(value) => Self::Exact(value),
+            Cardinal::AtLeast(value) => Self::AtLeast(value),
+            Cardinal::AtMost(value) => Self::AtMost(value),
+            Cardinal::Parity(parity) => Self::Parity(parity),
+        }
+    }
+}
+
+impl From<Parity> for CardinalOrNot {
+    fn from(v: Parity) -> Self {
+        Self::Parity(v)
     }
 }
