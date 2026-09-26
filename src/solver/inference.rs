@@ -463,6 +463,9 @@ impl InferenceSolver {
         if sets[0] == sets[1] {
             let count = sum.checked_div_2().ok_or(Contradiction)?;
             self.add_theorem(Theorem::CriminalCount(sets[0], count.into()))
+        } else if (sets[0] & sets[1]).is_empty() {
+            let set = sets[0] | sets[1];
+            self.add_theorem(Theorem::CriminalCount(set, sum.into()))
         } else {
             let total_len = sets[0].len().get().strict_add(sets[1].len().get());
             self.sum

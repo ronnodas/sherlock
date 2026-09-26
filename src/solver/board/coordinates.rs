@@ -75,6 +75,10 @@ impl Set {
         self.non_empty()
             .map_or(SetOp::Empty, |set| set.judged(judgment).into())
     }
+
+    pub(crate) fn is_empty(self) -> bool {
+        self.0 == 0
+    }
 }
 
 impl Default for Set {
