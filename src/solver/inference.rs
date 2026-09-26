@@ -17,7 +17,7 @@ use crate::models::Solution;
 use crate::models::{Coord, Judgment};
 use crate::solver::Engine;
 use crate::solver::board::coordinates::{Set, Set1, SetExpr1, SetOp1};
-use crate::solver::hint::{BoundOrNot, Comparison, Hint, Number};
+use crate::solver::hint::{Bound, BoundOrNot, Comparison, Hint, Number};
 use crate::solver::inference::count::{CountSet, EndPoint, Interval};
 use crate::solver::inference::split::{ByJudgment, SetSimplify};
 
@@ -608,6 +608,67 @@ impl InferenceSolver {
         Ok(updated)
     }
 
+    fn add_complex_sum(&mut self, sets: [SetOp1; 2], sum: Bound) -> Result<bool, Contradiction> {
+        let updated: bool = if let [SetOp1::Judged(a, judgment_a), SetOp1::Judged(b, judgment_b)] =
+            sets
+            && let [SetExpr1::Regular(a), SetExpr1::Regular(b)] = [a, b].map(|set| *set)
+        {
+            match [judgment_a, judgment_b] {
+                [Judgment::Innocent, Judgment::Innocent] => {
+                    // (|a| - crim(a)) + (|b| - crim(b)) = sum
+                    // crim(a) + crim(b) = |a| + |b| - sum
+                    let max = a.len().get().strict_add(b.len().get());
+                    let interval = match sum {
+                        Bound::Exact(value) => Ok(Interval::exact(
+                            max.checked_sub(value).ok_or(Contradiction)?,
+                        )),
+                        Bound::AtLeast(value) => Ok(Interval::zero_to(
+                            max.checked_sub(value).ok_or(Contradiction)?,
+                        )),
+                        Bound::AtMost(value) => {
+                            let min = max.checked_sub(value).ok_or(Contradiction)?;
+                            Ok(Interval::range(min, max).expect("min = max - value"))
+                        }
+                        Bound::Parity(parity) => Err(parity),
+                    };
+                    match interval {
+                        Ok(sum) => self.add_sum([a, b], sum)?,
+                        Err(parity) => match (a ^ b).non_empty() {
+                            Some(set) => {
+                                let count = CountSet::from_parity(parity, set.len());
+                                self.add_theorem(Theorem::CriminalCount(set, count))?
+                            }
+                            None => {
+                                if parity.matches(0) {
+                                    false
+                                } else {
+                                    return Err(Contradiction);
+                                }
+                            }
+                        },
+                    }
+                }
+                [Judgment::Innocent, Judgment::Criminal] => {
+                    // (|a| - crim(a)) + crim(b) = sum
+                    // crim(a) - crim(b) = |a| -  sum
+                    todo!()
+                }
+                [Judgment::Criminal, Judgment::Innocent] => {
+                    // crim(a) + (|b| - crim(b)) = sum
+                    // crim(b) - crim(a) = |b| - sum
+                    todo!()
+                }
+                [Judgment::Criminal, Judgment::Criminal] => {
+                    // crim(a) + crim(b) = sum
+                    todo!()
+                }
+            }
+        } else {
+            todo!()
+        };
+        Ok(updated)
+    }
+
     fn add_complex_diff(
         &mut self,
         sets: [SetOp1; 2],
@@ -717,7 +778,7 @@ impl InferenceSolver {
                 }
             },
             Hint::Count(set, count) => self.simplify_and_add_count(&set, count)?,
-            Hint::CountTotal(_, _) => todo!(),
+            Hint::CountTotal(sets, count) => self.add_complex_sum(sets, count)?,
             Hint::Connected(set) => match set {
                 SetOp1::Judged(inner, judgment) => {
                     if let &SetExpr1::Regular(set) = inner.as_ref() {
