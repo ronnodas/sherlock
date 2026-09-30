@@ -77,6 +77,20 @@ fn betty_2025_05_05() {
 }
 
 #[test]
+fn rose_2025_05_09() {
+    sentence(
+        "the only innocent above Olivia is not Amy",
+        &Sentence::UnitAndIntersectionSize {
+            total: 1,
+            quantified: Unit::direction(Direction::Above, "Olivia"),
+            other: Unit::not_name("Amy"),
+            intersection: Cardinal::Exact(1),
+            judgment: Judgment::Innocent,
+        },
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",

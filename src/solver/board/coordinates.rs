@@ -215,6 +215,10 @@ impl Set1 {
     pub(crate) fn judged(self, judgment: Judgment) -> Set1Op {
         Set1Op::Judged(Box::new(Set1Expr::Regular(self)), judgment)
     }
+
+    pub(crate) fn complement(self) -> Set {
+        Set::from(self).complement()
+    }
 }
 
 impl PartialOrd for Set1 {

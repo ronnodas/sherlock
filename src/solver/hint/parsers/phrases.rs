@@ -161,6 +161,7 @@ pub(crate) enum Unit {
     Neighbor(NameRecipe),
     NotNeighbor(NameRecipe),
     Between([NameRecipe; 2]),
+    NotName(NameRecipe),
     Edges,
     Corners,
     All,
@@ -439,6 +440,11 @@ impl Unit {
         Self::Direction(direction, name.into())
     }
 
+    #[cfg(test)]
+    pub(crate) fn not_name(name: impl Into<NameRecipe>) -> Self {
+        Self::NotName(name.into())
+    }
+
     fn n_members_have_n_neighbors(
         self,
         count: Cardinal,
@@ -561,6 +567,10 @@ impl AddContext for &Unit {
                         set.into()
                     }
                 }
+            }
+            Unit::NotName(name) => {
+                let coord = name.add_context(context)?;
+                Set1::from_one(coord).complement().into()
             }
             Unit::Shifted(inner, direction) => {
                 let set;

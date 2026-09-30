@@ -661,6 +661,7 @@ fn unit(input: &mut &[&str]) -> Result<Unit> {
                 ),
             ))
             .map(Unit::Neighbor),
+            preceded(word("not"), word(name)).map(Unit::NotName),
             profession_any.map(Unit::Profession),
         )),
     )
