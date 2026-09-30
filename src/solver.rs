@@ -163,9 +163,13 @@ impl<E: Engine> Solver<E> {
         self.save_name = Some(save_name);
     }
 
-    fn save_board(&self) -> Result<String> {
+    fn save_string(&self) -> Result<String> {
+        let save = SaveRef {
+            board: &self.board,
+            metadata: &self.metadata,
+        };
         let config = ron_config();
-        to_string_pretty(&self.board, config).map_err(Into::into)
+        to_string_pretty(&save, config).map_err(Into::into)
     }
 
     fn handle_mark_flavor(&mut self, pending: &mut Vec<Suspect>) -> Result<()> {
@@ -180,7 +184,7 @@ impl<E: Engine> Solver<E> {
     }
 
     fn save(&mut self) -> Result<()> {
-        let save = self.save_board()?;
+        let save = self.save_string()?;
         let save_name = self
             .save_name
             .as_deref()
@@ -642,10 +646,16 @@ impl From<Update> for Suspect {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 struct Save {
     board: Board,
     metadata: PartialMetadata,
+}
+
+#[derive(Serialize)]
+struct SaveRef<'solver> {
+    board: &'solver Board,
+    metadata: &'solver PartialMetadata,
 }
 
 #[cfg(test)]
