@@ -51,6 +51,20 @@ fn julie_2025_05_02() {
 }
 
 #[test]
+fn gary_2025_05_04() {
+    sentence(
+        "the only innocent below Austin is one of Kevin's neighbors",
+        &Sentence::UnitAndIntersectionSize {
+            total: 1,
+            quantified: Unit::direction(Direction::Below, "Austin"),
+            other: Unit::neighbor("Kevin"),
+            intersection: Cardinal::Exact(1),
+            judgment: Judgment::Innocent,
+        },
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",

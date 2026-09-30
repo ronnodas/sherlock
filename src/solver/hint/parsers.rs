@@ -652,7 +652,11 @@ fn unit(input: &mut &[&str]) -> Result<Unit> {
                 .map(|(direction, profession)| Unit::Profession(profession).shift(direction)),
             alt((
                 preceded(neighboring_verb, word(name)),
-                terminated(word(name_possessive), word(neighbor_any)),
+                delimited(
+                    opt(words(("one", "of"))),
+                    word(name_possessive),
+                    word(neighbor_any),
+                ),
             ))
             .map(Unit::Neighbor),
             profession_any.map(Unit::Profession),
