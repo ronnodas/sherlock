@@ -2,6 +2,7 @@ use std::fmt;
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use itertools::Itertools as _;
+use jiff::civil::Date;
 use lazy_regex::regex_captures;
 use select::document::Document;
 use select::node::Node;
@@ -50,40 +51,51 @@ pub(crate) fn parse_metadata(document: &Document) -> Result<Option<Metadata>> {
                 r"(.*)\b([A-Z][a-z]{2})\s+(\d{1,2})(?:st|nd|rd|th)?\s+(\d{4})\b \((.+)\)",
                 &text
             ) {
-                Some(metadata_with_date(prefix, month, day, year, difficulty))
+                Some(metadata_with_date_and_difficulty(
+                    prefix, month, day, year, difficulty,
+                ))
             } else if let Some((_, pack, puzzle, difficulty)) =
                 regex_captures!(r"Puzzle Pack #(\d+) - #(\d+) \((.+)\)", &text)
             {
-                Some(puzzle_pack_metadata(pack, puzzle, difficulty).map(Some))
+                Some(puzzle_pack_metadata(pack, puzzle, difficulty))
             } else if let Some((_, user, id)) =
                 regex_captures!(r"Community puzzle: (.+)-([a-z0-9]+)", &text)
             {
-                Some(Ok(Some(Metadata::Community {
+                Some(Ok(Metadata::Community {
                     user: user.to_owned(),
                     id: id.to_owned(),
-                })))
+                }))
+            } else if let Some((_, prefix, month, day, year)) = regex_captures!(
+                r"(.*)\b([A-Z][a-z]{2})\s+(\d{1,2})(?:st|nd|rd|th)?\s+(\d{4})",
+                &text
+            ) {
+                Some(metadata_with_date(prefix, month, day, year).map(Metadata::from))
             } else {
                 None
             }
         })
-        .unwrap_or(Ok(None))
+        .transpose()
 }
 
-fn metadata_with_date(
+fn metadata_with_date_and_difficulty(
     prefix: &str,
     month: &str,
     day: &str,
     year: &str,
     difficulty: &str,
-) -> Result<Option<Metadata>> {
-    if ["Daily Clues by Sam:", "Archive:"].contains(&prefix.trim()) {
-        let date = PuzzleId::date_from_month_b(year, month, day)
-            .with_context(|| format!("invalid date: {month} {day} {year}"))?;
-        let difficulty = parse_difficulty(difficulty)?;
-        Ok(Some(Metadata::Daily { date, difficulty }))
-    } else {
-        Ok(None)
+) -> Result<Metadata> {
+    let date = metadata_with_date(prefix, month, day, year)?;
+    let difficulty = Some(parse_difficulty(difficulty)?);
+    Ok(Metadata::Daily { date, difficulty })
+}
+
+fn metadata_with_date(prefix: &str, month: &str, day: &str, year: &str) -> Result<Date> {
+    if !["Daily Clues by Sam:", "Archive:"].contains(&prefix.trim()) {
+        eprintln!("unknown metadata prefix: {prefix}");
     }
+    let date = PuzzleId::date_from_month_b(year, month, day)
+        .with_context(|| format!("invalid date: {month} {day} {year}"))?;
+    Ok(date)
 }
 
 fn puzzle_pack_metadata(pack: &str, puzzle: &str, difficulty: &str) -> Result<Metadata> {

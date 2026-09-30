@@ -358,7 +358,16 @@ impl Solved {
         let metadata = match metadata.id {
             PuzzleId::Daily(date) => Metadata::Daily {
                 date,
-                difficulty: difficulty()?,
+                difficulty: {
+                    match metadata.difficulty {
+                        Some(t) => Some(t),
+                        None => Select::new(
+                            "what difficulty was this puzzle rated at?",
+                            Difficulty::VARIANTS.to_vec(),
+                        )
+                        .prompt_skippable()?,
+                    }
+                },
             },
             PuzzleId::Archive(id) => Metadata::Archive {
                 id,

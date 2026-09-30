@@ -115,7 +115,7 @@ impl From<Flattened> for Card {
 pub(crate) enum Metadata {
     Daily {
         date: Date,
-        difficulty: Difficulty,
+        difficulty: Option<Difficulty>,
     },
     Archive {
         id: String,
@@ -136,7 +136,7 @@ pub(crate) enum Metadata {
 impl Metadata {
     pub(crate) fn split(self) -> PartialMetadata {
         let (id, difficulty) = match self {
-            Self::Daily { date, difficulty } => (PuzzleId::Daily(date), Some(difficulty)),
+            Self::Daily { date, difficulty } => (PuzzleId::Daily(date), difficulty),
             Self::Archive { id, difficulty } => (PuzzleId::Archive(id), Some(difficulty)),
             Self::PuzzlePack {
                 pack,
@@ -147,6 +147,15 @@ impl Metadata {
             Self::Custom => (PuzzleId::Custom, None),
         };
         PartialMetadata { id, difficulty }
+    }
+}
+
+impl From<Date> for Metadata {
+    fn from(date: Date) -> Self {
+        Self::Daily {
+            date,
+            difficulty: None,
+        }
     }
 }
 
