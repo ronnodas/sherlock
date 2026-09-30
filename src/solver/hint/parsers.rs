@@ -601,10 +601,12 @@ impl Sentence {
         alt((
             preceded(
                 words(("There", "are", "a", "total", "of")),
-                separated_pair(
+                (
                     cardinal_judgment,
-                    word("in"),
-                    line_pair.map(|lines| lines.map(Unit::Line)),
+                    alt((
+                        preceded(word("in"), line_pair.map(|lines| lines.map(Unit::Line))),
+                        pair(profession_plural, "and").map(|profs| profs.map(Unit::Profession)),
+                    )),
                 ),
             ),
             terminated(
