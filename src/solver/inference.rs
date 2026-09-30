@@ -16,8 +16,8 @@ use crate::grid::Grid;
 use crate::models::Solution;
 use crate::models::{Coord, Judgment};
 use crate::solver::Engine;
-use crate::solver::board::coordinates::{Set, Set1, SetExpr1, SetOp1};
-use crate::solver::hint::{Bound, BoundOrNot, Comparison, Hint, Number};
+use crate::solver::board::coordinates::{Set, Set1, SetExpr1, SetOp, SetOp1};
+use crate::solver::hint::{Bound, BoundOrNot, Comparison, Hint, Number, Parity};
 use crate::solver::inference::count::{CountSet, EndPoint, Interval};
 use crate::solver::inference::split::{ByJudgment, SetSimplify};
 
@@ -616,55 +616,19 @@ impl InferenceSolver {
             sets
             && let [SetExpr1::Regular(a), SetExpr1::Regular(b)] = [a, b].map(|set| *set)
         {
-            match [judgment_a, judgment_b] {
-                [Judgment::Innocent, Judgment::Innocent] => {
-                    // (|a| - crim(a)) + (|b| - crim(b)) = sum
-                    // crim(a) + crim(b) = |a| + |b| - sum
-                    let max = a.len().get().strict_add(b.len().get());
-                    let interval = match sum {
-                        Bound::Exact(value) => Ok(Interval::exact(
-                            max.checked_sub(value).ok_or(Contradiction)?,
-                        )),
-                        Bound::AtLeast(value) => Ok(Interval::zero_to(
-                            max.checked_sub(value).ok_or(Contradiction)?,
-                        )),
-                        Bound::AtMost(value) => {
-                            let min = max.checked_sub(value).ok_or(Contradiction)?;
-                            Ok(Interval::range(min, max).expect("min = max - value"))
-                        }
-                        Bound::Parity(parity) => Err(parity),
-                    };
-                    match interval {
-                        Ok(sum) => self.add_sum([a, b], sum)?,
-                        Err(parity) => match (a ^ b).non_empty() {
-                            Some(set) => {
-                                let count = CountSet::from_parity(parity, set.len());
-                                self.add_theorem(Theorem::CriminalCount(set, count))?
-                            }
-                            None => {
-                                if parity.matches(0) {
-                                    false
-                                } else {
-                                    return Err(Contradiction);
-                                }
-                            }
-                        },
+            let sizes = [a, b].map(|set| set.len().get());
+            let judgments = [judgment_a, judgment_b];
+            match SumOrDiff::from_sum(sum, sizes, judgments)? {
+                Ok(SumOrDiff::Sum(sum)) => self.add_sum([a, b], sum)?,
+                Ok(SumOrDiff::Diff(difference)) => self.add_difference([a, b], difference)?,
+                Err(parity) => match (a ^ b).non_empty() {
+                    Some(set) => {
+                        let count = CountSet::from_parity(parity, set.len());
+                        self.add_theorem(Theorem::CriminalCount(set, count))?
                     }
-                }
-                [Judgment::Innocent, Judgment::Criminal] => {
-                    // (|a| - crim(a)) + crim(b) = sum
-                    // crim(a) - crim(b) = |a| -  sum
-                    todo!()
-                }
-                [Judgment::Criminal, Judgment::Innocent] => {
-                    // crim(a) + (|b| - crim(b)) = sum
-                    // crim(b) - crim(a) = |b| - sum
-                    todo!()
-                }
-                [Judgment::Criminal, Judgment::Criminal] => {
-                    // crim(a) + crim(b) = sum
-                    todo!()
-                }
+                    None if parity.matches(0) => false,
+                    None => return Err(Contradiction),
+                },
             }
         } else {
             todo!()
@@ -680,64 +644,14 @@ impl InferenceSolver {
         let updated = if let [SetOp1::Judged(a, judgment_a), SetOp1::Judged(b, judgment_b)] = sets
             && let [SetExpr1::Regular(a), SetExpr1::Regular(b)] = [a, b].map(|set| *set)
         {
-            match [judgment_a, judgment_b] {
-                [Judgment::Innocent, Judgment::Innocent] => {
-                    // (|a| - crim(a)) - (|b| - crim(b)) = excess
-                    // crim(a) - crim(b) = |a| - |b| - excess
-                    let len_diff = 0_i8
-                        .strict_add_unsigned(a.len().get())
-                        .strict_sub_unsigned(b.len().get());
-                    let difference = match compare {
-                        Comparison::ExactDifference(excess) => {
-                            Interval::exact(len_diff.strict_sub_unsigned(excess))
-                        }
-                        Comparison::More => Interval::range(
-                            0_i8.strict_sub_unsigned(b.len().get()),
-                            len_diff.strict_sub(1),
-                        )
-                        .ok_or(Contradiction)?,
-                    };
-                    self.add_difference([a, b], difference)?
-                }
-                [Judgment::Innocent, Judgment::Criminal] => {
-                    // (|a| - crim(a)) - crim(b) = excess
-                    // crim(a) + crim(b) = |a| -  excess
-                    let sum = match compare {
-                        Comparison::ExactDifference(excess) => {
-                            Interval::exact(a.len().get().strict_sub(excess))
-                        }
-                        Comparison::More => Interval::zero_to(a.len().get().strict_sub(1)),
-                    };
-                    self.add_sum([a, b], sum)?
-                }
-                [Judgment::Criminal, Judgment::Innocent] => {
-                    // crim(a) - (|b| - crim(b)) = excess
-                    // crim(a) + crim(b) = |b| + excess
-                    let sum = match compare {
-                        Comparison::ExactDifference(excess) => {
-                            Interval::exact(b.len().get().strict_add(excess))
-                        }
-                        Comparison::More => Interval::range(
-                            b.len().get().strict_add(1),
-                            a.len().get().strict_add(b.len().get()),
-                        )
-                        .ok_or(Contradiction)?,
-                    };
-                    self.add_sum([a, b], sum)?
-                }
-                [Judgment::Criminal, Judgment::Criminal] => {
-                    // crim(a) - crim(b) = count
-                    let difference = match compare {
-                        Comparison::ExactDifference(excess) => {
-                            Interval::exact(excess.try_into().expect("at most 20"))
-                        }
-                        Comparison::More => {
-                            Interval::range(1_i8, a.len().get().try_into().expect("at most 20"))
-                                .ok_or(Contradiction)?
-                        }
-                    };
-                    self.add_difference([a, b], difference)?
-                }
+            let sets = [a, b];
+            let sizes = sets.map(|set| set.len().get());
+            let judgments = [judgment_a, judgment_b];
+            let sum_or_diff = SumOrDiff::from_diff(compare, sizes, judgments)?;
+
+            match sum_or_diff {
+                SumOrDiff::Diff(difference) => self.add_difference(sets, difference)?,
+                SumOrDiff::Sum(sum) => self.add_sum(sets, sum)?,
             }
         } else {
             todo!()
@@ -790,7 +704,13 @@ impl InferenceSolver {
                         todo!()
                     }
                 }
-                SetOp1::Shift(_, _) => todo!(),
+                SetOp1::Shift(inner, dir) => {
+                    match inner.intersect_set1(Set1::shift_preimage(dir)) {
+                        SetOp::Empty if Set::empty().connected() => false,
+                        SetOp::Empty => return Err(Contradiction),
+                        SetOp::NonEmpty(set) => self.try_add_hint(Hint::Connected(set))?,
+                    }
+                }
                 SetOp1::Intersection(..) => todo!(),
             },
             Hint::CompareSets(sets, compare) => self.add_complex_diff(sets, compare)?,
@@ -828,19 +748,16 @@ impl InferenceSolver {
                     }
                 }
             }
-            Hint::EachNeighbors(set, count, judgment) => {
-                if let SetExpr1::Regular(set) = set {
-                    set.into_iter().try_fold(false, |updated, coord| {
-                        Ok(updated
-                            | self.simplify_and_add_count(
-                                &coord.neighbors().judged(judgment),
-                                count.into(),
-                            )?)
-                    })?
-                } else {
-                    todo!();
-                }
-            }
+            Hint::EachNeighbors(set, count, judgment) => match set {
+                SetExpr1::Regular(set) => set.into_iter().try_fold(false, |updated, coord| {
+                    Ok(updated
+                        | self.simplify_and_add_count(
+                            &coord.neighbors().judged(judgment),
+                            count.into(),
+                        )?)
+                })?,
+                SetExpr1::Op(_) => todo!(),
+            },
             Hint::CountWithNeighbors { .. } => todo!(),
             Hint::IfThen(_) => todo!(),
         };
@@ -1142,6 +1059,172 @@ impl BitAnd<bool> for TriState {
 impl From<bool> for TriState {
     fn from(value: bool) -> Self {
         if value { Self::Yes } else { Self::No }
+    }
+}
+
+enum SumOrDiff {
+    Sum(Interval<Number>),
+    Diff(Interval<i8>),
+}
+
+impl SumOrDiff {
+    fn from_sum(
+        sum: Bound,
+        sizes: [Number; 2],
+        judgments: [Judgment; 2],
+    ) -> Result<Result<Self, Parity>, Contradiction> {
+        let sum_or_diff = match judgments {
+            [Judgment::Innocent, Judgment::Innocent] => {
+                // (|a| - crim(a)) + (|b| - crim(b)) = sum
+                // crim(a) + crim(b) = |a| + |b| - sum
+                let max = sizes[0].strict_add(sizes[1]);
+                match sum {
+                    Bound::Exact(value) => Ok(Interval::exact(
+                        max.checked_sub(value).ok_or(Contradiction)?,
+                    )),
+                    Bound::AtLeast(value) => Ok(Interval::zero_to(
+                        max.checked_sub(value).ok_or(Contradiction)?,
+                    )),
+                    Bound::AtMost(value) => {
+                        let min = max.checked_sub(value).ok_or(Contradiction)?;
+                        Ok(Interval::range(min, max).expect("min = max - value"))
+                    }
+                    Bound::Parity(parity) => Err(parity),
+                }
+                .map(Self::Sum)
+            }
+            [Judgment::Innocent, Judgment::Criminal] => {
+                // (|a| - crim(a)) + crim(b) = sum
+                // crim(a) - crim(b) = |a| -  sum
+                match sum {
+                    Bound::Exact(value) => {
+                        let exact = 0_i8
+                            .strict_add_unsigned(sizes[0])
+                            .strict_sub_unsigned(value);
+                        Ok(Interval::exact(exact))
+                    }
+                    Bound::AtLeast(value) => Ok(Interval::range(
+                        sizes[1].try_into().expect("at most i8::MAX"),
+                        0_i8.strict_add_unsigned(sizes[0])
+                            .strict_sub_unsigned(value),
+                    )
+                    .ok_or(Contradiction)?),
+                    Bound::AtMost(value) => {
+                        let max: i8 = sizes[0].try_into().expect("at most i8::MAX");
+                        Ok(Interval::range(max.strict_sub_unsigned(value), max)
+                            .expect("min = max - value"))
+                    }
+                    Bound::Parity(parity) => Err(parity),
+                }
+                .map(Self::Diff)
+            }
+            [Judgment::Criminal, Judgment::Innocent] => {
+                // crim(a) + (|b| - crim(b)) = sum
+                // crim(a) - crim(b) = sum - |b|
+                match sum {
+                    Bound::Exact(value) => {
+                        let exact = 0_i8
+                            .strict_add_unsigned(value)
+                            .strict_sub_unsigned(sizes[1]);
+                        Ok(Interval::exact(exact))
+                    }
+                    Bound::AtLeast(value) => Ok(Interval::range(
+                        0_i8.strict_sub_unsigned(sizes[1])
+                            .strict_add_unsigned(value),
+                        sizes[0].try_into().expect("at most i8::MAX"),
+                    )
+                    .ok_or(Contradiction)?),
+                    Bound::AtMost(value) => {
+                        let min = i8::try_from(sizes[1])
+                            .expect("at most i8::MAX")
+                            .strict_neg();
+                        Ok(Interval::range(min, min.strict_add_unsigned(value))
+                            .expect("min = max - value"))
+                    }
+                    Bound::Parity(parity) => Err(parity),
+                }
+                .map(Self::Diff)
+            }
+            [Judgment::Criminal, Judgment::Criminal] => {
+                // crim(a) + crim(b) = sum
+                match sum {
+                    Bound::Exact(value) => Ok(Interval::exact(value)),
+                    Bound::AtLeast(value) => {
+                        let max = sizes[0].strict_add(sizes[1]);
+                        Ok(Interval::range(value, max).ok_or(Contradiction)?)
+                    }
+                    Bound::AtMost(value) => Ok(Interval::zero_to(value)),
+                    Bound::Parity(parity) => Err(parity),
+                }
+                .map(Self::Sum)
+            }
+        };
+        Ok(sum_or_diff)
+    }
+
+    fn from_diff(
+        compare: Comparison,
+        sizes: [Number; 2],
+        judgments: [Judgment; 2],
+    ) -> Result<Self, Contradiction> {
+        let sum_or_diff = match judgments {
+            [Judgment::Innocent, Judgment::Innocent] => {
+                // (|a| - crim(a)) - (|b| - crim(b)) = excess
+                // crim(a) - crim(b) = |a| - |b| - excess
+                let len_diff = 0_i8
+                    .strict_add_unsigned(sizes[0])
+                    .strict_sub_unsigned(sizes[1]);
+                let difference = match compare {
+                    Comparison::ExactDifference(excess) => {
+                        Interval::exact(len_diff.strict_sub_unsigned(excess))
+                    }
+                    Comparison::More => {
+                        Interval::range(0_i8.strict_sub_unsigned(sizes[1]), len_diff.strict_sub(1))
+                            .ok_or(Contradiction)?
+                    }
+                };
+                Self::Diff(difference)
+            }
+            [Judgment::Innocent, Judgment::Criminal] => {
+                // (|a| - crim(a)) - crim(b) = excess
+                // crim(a) + crim(b) = |a| -  excess
+                let sum = match compare {
+                    Comparison::ExactDifference(excess) => {
+                        Interval::exact(sizes[0].strict_sub(excess))
+                    }
+                    Comparison::More => Interval::zero_to(sizes[0].strict_sub(1)),
+                };
+                Self::Sum(sum)
+            }
+            [Judgment::Criminal, Judgment::Innocent] => {
+                // crim(a) - (|b| - crim(b)) = excess
+                // crim(a) + crim(b) = |b| + excess
+                let sum = match compare {
+                    Comparison::ExactDifference(excess) => {
+                        Interval::exact(sizes[1].strict_add(excess))
+                    }
+                    Comparison::More => {
+                        Interval::range(sizes[1].strict_add(1), sizes[0].strict_add(sizes[1]))
+                            .ok_or(Contradiction)?
+                    }
+                };
+                Self::Sum(sum)
+            }
+            [Judgment::Criminal, Judgment::Criminal] => {
+                // crim(a) - crim(b) = count
+                let difference = match compare {
+                    Comparison::ExactDifference(excess) => {
+                        Interval::exact(excess.try_into().expect("at most 20"))
+                    }
+                    Comparison::More => {
+                        Interval::range(1_i8, sizes[0].try_into().expect("at most 20"))
+                            .ok_or(Contradiction)?
+                    }
+                };
+                Self::Diff(difference)
+            }
+        };
+        Ok(sum_or_diff)
     }
 }
 
