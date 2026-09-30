@@ -575,14 +575,26 @@ impl Sentence {
     }
 
     fn total_number_of_traits_in_units(input: &mut &[&str]) -> Result<Self> {
-        terminated(
-            separated_pair(pair(name, "and"), word("have"), cardinal_judged_neighbors),
-            words(("in", "total")),
-        )
-        .map(|(names, (quantity, judgment))| {
-            let units = names.map(Unit::Neighbor);
-            Self::TotalUnitsSize(units, quantity, judgment)
-        })
+        alt((
+            preceded(
+                words(("There", "are", "a", "total", "of")),
+                separated_pair(
+                    cardinal_judgment,
+                    word("in"),
+                    line_pair.map(|lines| lines.map(Unit::Line)),
+                ),
+            ),
+            terminated(
+                separated_pair(
+                    pair(name, "and").map(|names| names.map(Unit::Neighbor)),
+                    word("have"),
+                    cardinal_judged_neighbors,
+                ),
+                words(("in", "total")),
+            )
+            .map(|(units, cardinal_judgment)| (cardinal_judgment, units)),
+        ))
+        .map(|((quantity, judgment), units)| Self::TotalUnitsSize(units, quantity, judgment))
         .parse_next(input)
     }
 }

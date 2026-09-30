@@ -13,6 +13,18 @@ use crate::solver::hint::{Cardinal, LineKind, Parity};
 use super::{Sentence, Series, Unit, UnitInSeries};
 
 #[test]
+fn zed_2025_05_01() {
+    sentence(
+        "There are a total of 7 criminals in columns C and D",
+        &Sentence::TotalUnitsSize(
+            [Column::C.into(), Column::D.into()],
+            Cardinal::Exact(7),
+            Judgment::Criminal,
+        ),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",
