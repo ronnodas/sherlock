@@ -25,6 +25,19 @@ fn zed_2025_05_01() {
 }
 
 #[test]
+fn vicky_2025_05_01() {
+    sentence(
+        "Everyone directly below a doctor is innocent",
+        &Sentence::UnitSize(
+            Unit::profession("doctor")
+                .shift(Direction::Below)
+                .with_judgment(Judgment::Criminal),
+            Cardinal::Exact(0),
+        ),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",

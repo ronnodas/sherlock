@@ -207,6 +207,12 @@ impl Sentence {
                     Quantifier::Subset(count, total) => (count, judgment, unit.quantify(total)),
                 },
             ),
+            separated_pair(
+                preceded(word("Everyone"), unit),
+                word("is"),
+                word(judgment_singular),
+            )
+            .map(|(unit, judgment)| (Cardinal::Exact(0), !judgment, unit)),
         ))
         .map(|(count, judgment, unit)| Self::UnitSize(unit.with_judgment(judgment), count))
         .parse_next(input)
@@ -625,6 +631,12 @@ fn unit(input: &mut &[&str]) -> Result<Unit> {
                 .value(Unit::Corners),
             (alt((between, preceded(opt(word("in")), line.map(Unit::Line))))),
             (direction, word(name)).map(|(direction, name)| Unit::Direction(direction, name)),
+            separated_pair(
+                preceded(word("directly"), direction),
+                word(determiner),
+                profession_any,
+            )
+            .map(|(direction, profession)| Unit::Profession(profession).shift(direction)),
             alt((
                 preceded(neighboring_verb, word(name)),
                 terminated(word(name_possessive), word(neighbor_any)),
