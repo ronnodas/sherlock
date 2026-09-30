@@ -38,6 +38,19 @@ fn vicky_2025_05_01() {
 }
 
 #[test]
+fn julie_2025_05_02() {
+    sentence(
+        "Every coder has an innocent directly to the left of them",
+        &Sentence::UnitSize(
+            Unit::profession("coder")
+                .shift(Direction::Left)
+                .with_judgment(Judgment::Criminal),
+            Cardinal::Exact(0),
+        ),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",

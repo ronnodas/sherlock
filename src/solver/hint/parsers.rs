@@ -190,7 +190,7 @@ impl Sentence {
                 words((has_have, alt(("an", "a")))),
                 (
                     word(judgment_singular),
-                    delimited(word("directly"), direction, word(alt(("them", "us")))),
+                    terminated(directly_direction, word(alt(("them", "us")))),
                 ),
             )
             .map(|((quantifier, unit), (judgment, direction))| {
@@ -207,11 +207,28 @@ impl Sentence {
                     Quantifier::Subset(count, total) => (count, judgment, unit.quantify(total)),
                 },
             ),
-            separated_pair(
-                preceded(word("Everyone"), unit),
-                word("is"),
-                word(judgment_singular),
-            )
+            alt((
+                separated_pair(
+                    preceded(word("Everyone"), unit),
+                    word("is"),
+                    word(judgment_singular),
+                ),
+                delimited(
+                    word("Every"),
+                    separated_pair(
+                        word(profession_singular),
+                        word("has"),
+                        (
+                            preceded(alt((word("an"), word("a"))), word(judgment_singular)),
+                            directly_direction,
+                        ),
+                    ),
+                    word("them"),
+                )
+                .map(|(profession, (judgment, direction))| {
+                    (Unit::Profession(profession).shift(direction), judgment)
+                }),
+            ))
             .map(|(unit, judgment)| (Cardinal::Exact(0), !judgment, unit)),
         ))
         .map(|(count, judgment, unit)| Self::UnitSize(unit.with_judgment(judgment), count))
@@ -631,12 +648,8 @@ fn unit(input: &mut &[&str]) -> Result<Unit> {
                 .value(Unit::Corners),
             (alt((between, preceded(opt(word("in")), line.map(Unit::Line))))),
             (direction, word(name)).map(|(direction, name)| Unit::Direction(direction, name)),
-            separated_pair(
-                preceded(word("directly"), direction),
-                word(determiner),
-                profession_any,
-            )
-            .map(|(direction, profession)| Unit::Profession(profession).shift(direction)),
+            separated_pair(directly_direction, word(determiner), profession_any)
+                .map(|(direction, profession)| Unit::Profession(profession).shift(direction)),
             alt((
                 preceded(neighboring_verb, word(name)),
                 terminated(word(name_possessive), word(neighbor_any)),
@@ -846,6 +859,10 @@ fn direction(input: &mut &[&str]) -> Result<Direction> {
         ),
     ))
     .parse_next(input)
+}
+
+fn directly_direction(input: &mut &[&str]) -> Result<Direction> {
+    preceded(word("directly"), direction).parse_next(input)
 }
 
 fn determiner<'input>(input: &mut &'input str) -> Result<&'input str> {
