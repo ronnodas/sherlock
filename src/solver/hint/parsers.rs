@@ -116,8 +116,8 @@ impl Sentence {
                 Self::BiggestInSeries(UnitInSeries::Profession(profession), judgment)
             }),
             separated_pair(
-                word(name),
-                words(("has", "the", "most")),
+                name_has,
+                words(("the", "most")),
                 terminated(word(judgment_singular), word("neighbors")),
             )
             .map(|(name, judgment)| Self::BiggestInSeries(UnitInSeries::Neighbor(name), judgment)),
@@ -129,7 +129,7 @@ impl Sentence {
         alt((
             separated_pair(
                 alt((
-                    terminated(word(name), word(alt(("is", "am")))),
+                    terminated(word(name_subject), word(be_verb_singular)),
                     word("I'm").value(NameRecipe::Me),
                 )),
                 words(("one", "of")),
@@ -138,11 +138,14 @@ impl Sentence {
             .map(|(name, (count, judgment, unit))| {
                 Self::IsOneOfNInUnit(unit, name, count, judgment)
             }),
-            separated_pair(word(name), words(("is", "the", "only")), judged_unit).map(
-                |(name, (judgment, unit))| {
-                    Self::IsOneOfNInUnit(unit, name, Cardinal::Exact(1), judgment)
-                },
-            ),
+            separated_pair(
+                word(name_subject),
+                words(("is", "the", "only")),
+                judged_unit,
+            )
+            .map(|(name, (judgment, unit))| {
+                Self::IsOneOfNInUnit(unit, name, Cardinal::Exact(1), judgment)
+            }),
         ))
         .parse_next(input)
     }
@@ -163,13 +166,12 @@ impl Sentence {
                 }
             }),
             (
-                word(name),
-                delimited(
-                    word(has_have),
+                name_has,
+                terminated(
                     separated_pair(opt(word(number)), word("more"), word(judgment_singular)),
                     words((neighbor_any, "than")),
                 ),
-                word(name),
+                word(name_object),
             )
                 .map(|(big, (excess, judgment), small)| {
                     let [big, small] =
@@ -183,13 +185,13 @@ impl Sentence {
     fn unit_size(input: &mut &[&str]) -> Result<Self> {
         alt((
             preceded(there_is, cardinal_judged_unit),
-            separated_pair(word(name), word(has_have), cardinal_judged_neighbors)
-                .map(|(name, (quantity, judgment))| (quantity, judgment, Unit::Neighbor(name))),
+            (name_has, cardinal, judged_neighbors)
+                .map(|(name, quantity, judgment)| (quantity, judgment, Unit::Neighbor(name))),
             separated_pair(
                 quantified_unit,
-                words((has_have, alt(("an", "a")))),
+                word(has_have),
                 (
-                    word(judgment_singular),
+                    a_judgment,
                     terminated(directly_direction, word(alt(("them", "us")))),
                 ),
             )
@@ -201,7 +203,7 @@ impl Sentence {
                 let unit = unit.shift(direction);
                 (cardinal, judgment, unit)
             }),
-            separated_pair(quantified_unit, word(be_verb), word(judgment_any)).map(
+            (quantified_unit, is_judgment_any).map(
                 |((quantifier, unit), judgment)| match quantifier {
                     Quantifier::Simple(cardinal) => (cardinal, judgment, unit),
                     Quantifier::Subset(count, total) => (count, judgment, unit.quantify(total)),
@@ -218,10 +220,7 @@ impl Sentence {
                     separated_pair(
                         word(profession_singular),
                         word("has"),
-                        (
-                            preceded(alt((word("an"), word("a"))), word(judgment_singular)),
-                            directly_direction,
-                        ),
+                        (a_judgment, directly_direction),
                     ),
                     word("them"),
                 )
@@ -249,15 +248,15 @@ impl Sentence {
                     }),
                 )),
                 word("has"),
-                cardinal_judged_neighbors,
+                (cardinal, judged_neighbors),
             )
             .map(|(unit, (count, judgment))| {
                 Self::UniqueInUnitHasNNeighbors(unit, count, None, judgment)
             }),
             separated_pair(
-                word(name),
-                words(("is", "the", "only", alt(("one", "person")))),
-                separated_pair(unit, word("with"), cardinal_judged_neighbors),
+                word(name_subject),
+                words((be_verb_singular, "the", "only", alt(("one", "person")))),
+                separated_pair(unit, word("with"), (cardinal, judged_neighbors)),
             )
             .map(|(name, (unit, (quantity, judgment)))| {
                 Self::UniqueInUnitHasNNeighbors(unit, quantity, Some(name), judgment)
@@ -270,7 +269,7 @@ impl Sentence {
         separated_pair(
             quantified_profession,
             word(has_have),
-            cardinal_judged_neighbors,
+            (cardinal, judged_neighbors),
         )
         .map(|((count, profession), (neighbors, judgment))| {
             let unit = Unit::Profession(profession);
@@ -318,9 +317,9 @@ impl Sentence {
             .context(StrContext::Label("a matching row/column"))
             .map(|(line, (_, (quantity, judgment)))| (line.into(), quantity, judgment)),
             separated_pair(
-                word(name),
-                words(("is", "the", "only", "one", "with")),
-                cardinal_judged_neighbors,
+                word(name_subject),
+                words((be_verb_singular, "the", "only", "one", "with")),
+                (cardinal, judged_neighbors),
             )
             .map(|(name, (quantity, judgment))| (UnitInSeries::Neighbor(name), quantity, judgment)),
             separated_pair(
@@ -342,8 +341,8 @@ impl Sentence {
                 (
                     preceded(opt(there_is), quantified_judged_unit),
                     alt((
-                        preceded(neighboring_verb, word(name)).map(Unit::Neighbor),
-                        preceded(opt(word(be_verb)), unit),
+                        preceded(neighboring_verb, word(name_object)).map(Unit::Neighbor),
+                        preceded(opt(word(be_verb_third_person)), unit),
                     )),
                 ),
                 eof,
@@ -368,12 +367,12 @@ impl Sentence {
             }),
             terminated(
                 separated_pair(
-                    word(name),
+                    word(name_subject),
                     word("shares"),
                     separated_pair(
-                        (quantifier, word(judgment_any)),
-                        (word(neighbor_any), word("with")),
-                        word(name),
+                        (quantifier, judged_neighbors),
+                        word("with"),
+                        word(name_object),
                     ),
                 ),
                 eof,
@@ -387,14 +386,18 @@ impl Sentence {
                 )
             }),
             terminated(
-                separated_pair(quantified_judged_unit, word(neighbor_any), word(name)),
+                separated_pair(
+                    quantified_judged_unit,
+                    word(neighbor_any),
+                    word(name_object),
+                ),
                 eof,
             )
             .map(|((quantifier, judgment, unit), name)| {
                 (quantifier, unit, Unit::Neighbor(name), judgment)
             }),
             terminated(
-                separated_pair(quantified_judged_unit, not_neighbor_any, word(name)),
+                separated_pair(quantified_judged_unit, not_neighbor_any, word(name_object)),
                 eof,
             )
             .map(|((quantifier, judgment, unit), name)| {
@@ -421,7 +424,7 @@ impl Sentence {
     fn units_share_n_traits(input: &mut &[&str]) -> Result<Self> {
         alt((
             terminated(
-                separated_pair(pair(name, "and"), word("have"), cardinal_judgment),
+                separated_pair(pair(name_subject, "and"), word("have"), cardinal_judgment),
                 words((neighbor_any, "in", "common")),
             )
             .map(|(names, (count, judgment))| {
@@ -436,39 +439,42 @@ impl Sentence {
                     quantifier,
                     separated_pair(word(name_possessive), word("neighbors"), unit),
                 ),
-                word(be_verb),
+                word(be_verb_third_person),
                 word(judgment_singular),
             )
             .map(|((quantity, (name, unit)), judgment)| {
                 ([Unit::Neighbor(name), unit], judgment, quantity)
             }),
-            separated_pair(
-                word(name),
-                word("has"),
+            (
+                name_has,
                 separated_pair(cardinal_judgment, word(neighbor_any), unit),
             )
-            .map(|(name, ((quantity, judgment), unit))| {
+                .map(|(name, ((quantity, judgment), unit))| {
+                    (
+                        [Unit::Neighbor(name), unit],
+                        judgment,
+                        Quantifier::Simple(quantity),
+                    )
+                }),
+            separated_pair(
+                pair(name_subject, "and"),
+                word("share"),
+                (cardinal, judged_neighbors),
+            )
+            .map(|(names, (quantity, judgment))| {
                 (
-                    [Unit::Neighbor(name), unit],
+                    names.map(Unit::Neighbor),
                     judgment,
                     Quantifier::Simple(quantity),
                 )
             }),
-            separated_pair(pair(name, "and"), word("share"), cardinal_judged_neighbors).map(
-                |(names, (quantity, judgment))| {
-                    (
-                        names.map(Unit::Neighbor),
-                        judgment,
-                        Quantifier::Simple(quantity),
-                    )
-                },
-            ),
-            separated_pair(
-                separated_pair(quantified_unit, neighboring_verb, word(name)),
-                word(be_verb),
-                word(judgment_any),
+            (
+                separated_pair(quantified_unit, neighboring_verb, word(name_object)),
+                is_judgment_any,
             )
-            .map(|(((quantifier, a), b), judgment)| ([a, Unit::Neighbor(b)], judgment, quantifier)),
+                .map(|(((quantifier, a), b), judgment)| {
+                    ([a, Unit::Neighbor(b)], judgment, quantifier)
+                }),
         ))
         .map(|(units, judgment, cardinal)| Self::IntersectionSize(units, cardinal, judgment))
         .parse_next(input)
@@ -492,7 +498,7 @@ impl Sentence {
                 (judgment_a == judgment_b).then_some((judgment_a, [a, b]))
             }),
             separated_pair(
-                pair(name, "and"),
+                pair(name_subject, "and"),
                 words(("have", "an", "equal", "number", "of")),
                 terminated(word(judgment_singular), word("neighbors")),
             )
@@ -511,12 +517,12 @@ impl Sentence {
             )
             .map(|(series, (quantity, judgment))| (series, quantity, judgment)),
             separated_pair(
-                preceded(words(("There", be_verb)), cardinal_judgment),
+                preceded(words(("There", be_verb_third_person)), cardinal_judgment),
                 words((alt(("in", "among")), "each")),
                 word(series),
             )
             .map(|((quantity, judgment), series)| (series, quantity, judgment)),
-            preceded(words(("Everyone", "has")), cardinal_judged_neighbors)
+            preceded(words(("Everyone", "has")), (cardinal, judged_neighbors))
                 .map(|(quantity, judgment)| (Series::Neighbor, quantity, judgment)),
         ))
         .map(|(series, quantity, judgment)| {
@@ -530,15 +536,18 @@ impl Sentence {
             preceded(
                 words(("There", "are", "more")),
                 (
-                    separated_pair(word(judgment_any), word("than"), word(judgment_any)),
+                    alt((
+                        pair(judgment_plural, "than"),
+                        pair(judgment_singular, "than"),
+                    )),
                     unit,
                 ),
             )
-            .map(|((more, less), unit)| (unit, more, less)),
-            separated_pair(
-                word(name),
-                words(("has", "more")),
-                terminated(
+            .map(|([more, less], unit)| (unit, more, less)),
+            (
+                name_has,
+                delimited(
+                    word("more"),
                     separated_pair(
                         word(judgment_singular),
                         word("than"),
@@ -547,7 +556,7 @@ impl Sentence {
                     word("neighbors"),
                 ),
             )
-            .map(|(name, (more, less))| (Unit::Neighbor(name), more, less)),
+                .map(|(name, (more, less))| (Unit::Neighbor(name), more, less)),
         ))
         .verify(|&(_, more, less)| more == !less)
         .map(|(unit, judgment, _)| Self::MoreTraitsInUnit(unit, judgment))
@@ -574,13 +583,9 @@ impl Sentence {
     }
 
     fn has_trait(input: &mut &[&str]) -> Result<Self> {
-        separated_pair(
-            word(name),
-            (word("is"), opt(word("a"))),
-            word(judgment_singular),
-        )
-        .map(|(name, judgment)| Self::HasTrait(name, judgment))
-        .parse_next(input)
+        separated_pair(word(raw_name), word("is"), judgment_predicate_singular)
+            .map(|(name, judgment)| Self::HasTrait(NameRecipe::Explicit(name.into()), judgment))
+            .parse_next(input)
     }
 
     fn at_most_n_traits_in_neighbors_in_unit(input: &mut &[&str]) -> Result<Self> {
@@ -612,9 +617,9 @@ impl Sentence {
             ),
             terminated(
                 separated_pair(
-                    pair(name, "and").map(|names| names.map(Unit::Neighbor)),
+                    pair(name_subject, "and").map(|names| names.map(Unit::Neighbor)),
                     word("have"),
-                    cardinal_judged_neighbors,
+                    (cardinal, judged_neighbors),
                 ),
                 words(("in", "total")),
             )
@@ -634,13 +639,8 @@ fn unit_pair(input: &mut &[&str]) -> Result<[Unit; 2]> {
 }
 
 fn unit(input: &mut &[&str]) -> Result<Unit> {
-    (
-        alt((
-            word(judgment_any).map(Some),
-            word("person").value(None),
-            word("persons").value(None),
-            empty.value(None),
-        )),
+    preceded(
+        alt((word("person").void(), word("persons").void(), empty)),
         alt((
             words(("in", "total")).value(Unit::All),
             words(("on", "the", "edges")).value(Unit::Edges),
@@ -650,11 +650,16 @@ fn unit(input: &mut &[&str]) -> Result<Unit> {
             )
                 .value(Unit::Corners),
             (alt((between, preceded(opt(word("in")), line.map(Unit::Line))))),
-            (direction, word(name)).map(|(direction, name)| Unit::Direction(direction, name)),
-            separated_pair(directly_direction, word(determiner), profession_any)
-                .map(|(direction, profession)| Unit::Profession(profession).shift(direction)),
+            (direction, word(name_object))
+                .map(|(direction, name)| Unit::Direction(direction, name)),
+            separated_pair(
+                directly_direction,
+                word(indefinite_article),
+                word(profession_singular),
+            )
+            .map(|(direction, profession)| Unit::Profession(profession).shift(direction)),
             alt((
-                preceded(neighboring_verb, word(name)),
+                preceded(neighboring_verb, word(name_object)),
                 delimited(
                     opt(words(("one", "of"))),
                     word(name_possessive),
@@ -662,18 +667,11 @@ fn unit(input: &mut &[&str]) -> Result<Unit> {
                 ),
             ))
             .map(Unit::Neighbor),
-            preceded(word("not"), word(name)).map(Unit::NotName),
+            preceded(word("not"), word(name_object)).map(Unit::NotName),
             profession_any.map(Unit::Profession),
         )),
     )
-        .map(|(judgment, unit)| {
-            if let Some(judgment) = judgment {
-                unit.with_judgment(judgment)
-            } else {
-                unit
-            }
-        })
-        .parse_next(input)
+    .parse_next(input)
 }
 
 fn maybe_judged_unit(input: &mut &[&str]) -> Result<(Option<Judgment>, Unit)> {
@@ -708,23 +706,35 @@ fn quantified_judged_unit(input: &mut &[&str]) -> Result<(Quantifier, Judgment, 
 fn cardinal_judged_unit(input: &mut &[&str]) -> Result<(Cardinal, Judgment, Unit)> {
     alt((
         (cardinal, word(judgment_any), unit),
-        (word(name_possessive), cardinal_judged_neighbors)
-            .map(|(name, (quantity, judgment))| (quantity, judgment, Unit::Neighbor(name))),
+        (word(name_possessive), cardinal, judged_neighbors)
+            .map(|(name, quantity, judgment)| (quantity, judgment, Unit::Neighbor(name))),
     ))
     .parse_next(input)
 }
 
+// TODO include the optional determiners at the end of `quantifier` and `cardinal` and remove ones
+// made redundant
 fn quantifier(input: &mut &[&str]) -> Result<Quantifier> {
     alt((
         word("both").value(Quantifier::Subset(Cardinal::Exact(2), 2)),
         (
             word("neither"),
-            opt((word("of"), opt(words((determiner, "2"))))),
+            opt((
+                word("of"),
+                opt(words((alt((determiner, pronoun_possessive)), "2"))),
+            )),
         )
             .value(Quantifier::Subset(Cardinal::Exact(0), 2)),
         separated_pair(
             cardinal,
-            (opt(words(("out", "of"))), opt(word(determiner))),
+            (
+                opt(words(("out", "of"))),
+                alt((
+                    word(determiner).void(),
+                    word(pronoun_possessive).void(),
+                    empty,
+                )),
+            ),
             word(number),
         )
         .map(|(a, b)| Quantifier::Subset(a, b)),
@@ -765,8 +775,8 @@ fn cardinal_judgment(input: &mut &[&str]) -> Result<(Cardinal, Judgment)> {
     (cardinal, word(judgment_any)).parse_next(input)
 }
 
-fn cardinal_judged_neighbors(input: &mut &[&str]) -> Result<(Cardinal, Judgment)> {
-    terminated(cardinal_judgment, word(neighbor_any)).parse_next(input)
+fn judged_neighbors(input: &mut &[&str]) -> Result<Judgment> {
+    terminated(word(judgment_adjective), word(neighbor_any)).parse_next(input)
 }
 
 fn quantified_possessive_judged_neighbors(
@@ -788,6 +798,30 @@ fn quantified_possessive_judged_neighbors(
         .parse_next(input)
 }
 
+fn a_judgment(input: &mut &[&str]) -> Result<Judgment> {
+    alt((
+        words(("an", "innocent")).value(Judgment::Innocent),
+        words(("a", "criminal")).value(Judgment::Criminal),
+    ))
+    .parse_next(input)
+}
+
+fn is_judgment_any(input: &mut &[&str]) -> Result<Judgment> {
+    alt((
+        preceded(word("is"), judgment_predicate_singular),
+        preceded(word("are"), word(judgment_adjective)),
+    ))
+    .parse_next(input)
+}
+
+fn judgment_predicate_singular(input: &mut &[&str]) -> Result<Judgment> {
+    alt((
+        word("innocent").value(Judgment::Innocent),
+        words(("a", "criminal")).value(Judgment::Criminal),
+    ))
+    .parse_next(input)
+}
+
 fn judgment_any(input: &mut &str) -> Result<Judgment> {
     alt((judgment_plural, judgment_singular)).parse_next(input)
 }
@@ -800,7 +834,9 @@ fn judgment_plural(input: &mut &str) -> Result<Judgment> {
     .parse_next(input)
 }
 
-fn judgment_singular(input: &mut &str) -> Result<Judgment> {
+use judgment_adjective as judgment_singular;
+
+fn judgment_adjective(input: &mut &str) -> Result<Judgment> {
     alt((
         "innocent".value(Judgment::Innocent),
         "criminal".value(Judgment::Criminal),
@@ -821,10 +857,30 @@ fn name_possessive(input: &mut &str) -> Result<NameRecipe> {
     .parse_next(input)
 }
 
-fn name(input: &mut &str) -> Result<NameRecipe> {
+fn name_has(input: &mut &[&str]) -> Result<NameRecipe> {
+    alt((
+        words(("I", "have")).value(NameRecipe::Me),
+        terminated(word(raw_name), word("has")).map(|name| NameRecipe::Explicit(name.into())),
+    ))
+    .parse_next(input)
+}
+
+fn name_subject(input: &mut &str) -> Result<NameRecipe> {
+    raw_name
+        .map(|name| {
+            if name == "I" {
+                NameRecipe::Me
+            } else {
+                NameRecipe::Explicit(name.into())
+            }
+        })
+        .parse_next(input)
+}
+
+fn name_object(input: &mut &str) -> Result<NameRecipe> {
     alt((
         raw_name.map(|name| {
-            if name == "I" || name == "Me" {
+            if name == "Me" {
                 NameRecipe::Me
             } else {
                 NameRecipe::Explicit(name.into())
@@ -850,10 +906,22 @@ fn quantified_profession(input: &mut &[&str]) -> Result<(Quantifier, Profession)
 
 fn quantified_unit(input: &mut &[&str]) -> Result<(Quantifier, Unit)> {
     alt((
-        separated_pair(quantifier, opt(word(determiner)), unit),
-        separated_pair(cardinal, opt(word(determiner)), (number_phrase, unit))
-            .map(|(cardinal, (total, unit))| (Quantifier::Subset(cardinal, total), unit)),
+        separated_pair(quantifier, opt(word(determiner)), maybe_judged_unit),
+        separated_pair(
+            cardinal,
+            opt(word(determiner)),
+            (number_phrase, maybe_judged_unit),
+        )
+        .map(|(cardinal, (total, unit))| (Quantifier::Subset(cardinal, total), unit)),
     ))
+    .map(|(quantifier, (judgment, unit))| {
+        let unit = if let Some(judgment) = judgment {
+            unit.with_judgment(judgment)
+        } else {
+            unit
+        };
+        (quantifier, unit)
+    })
     .parse_next(input)
 }
 
@@ -877,14 +945,22 @@ fn directly_direction(input: &mut &[&str]) -> Result<Direction> {
     preceded(word("directly"), direction).parse_next(input)
 }
 
+fn indefinite_article<'input>(input: &mut &'input str) -> Result<&'input str> {
+    alt(("a", "an")).parse_next(input)
+}
+
+fn pronoun_possessive<'input>(input: &mut &'input str) -> Result<&'input str> {
+    alt(("her", "his")).parse_next(input)
+}
+
 fn determiner<'input>(input: &mut &'input str) -> Result<&'input str> {
-    alt(("the", "a", "an", "us", "her", "his")).parse_next(input)
+    alt(("the", "us")).parse_next(input)
 }
 
 fn profession_any(input: &mut &[&str]) -> Result<Profession> {
     alt((
         word(profession_plural),
-        preceded(opt(word(alt(("an", "a")))), word(profession_singular)),
+        preceded(opt(word(indefinite_article)), word(profession_singular)),
     ))
     .parse_next(input)
 }
@@ -911,29 +987,39 @@ fn not_neighbor_any(input: &mut &[&str]) -> Result<()> {
 fn there_is<'input, 'inner: 'input>(
     input: &mut &'input [&'inner str],
 ) -> Result<&'input [&'inner str]> {
-    alt((words(("There", be_verb)).take(), word("There's").take())).parse_next(input)
+    alt((
+        words(("There", be_verb_third_person)).take(),
+        word("There's").take(),
+    ))
+    .parse_next(input)
 }
 
 fn has_have<'input>(input: &mut &'input str) -> Result<&'input str> {
     alt(("has", "have")).parse_next(input)
 }
 
+// TODO split, "who neighbor" and "neighboring" are qualifiers, while "also neighbor" is a verb
+// phrase
 fn neighboring_verb<'input, 'inner: 'input>(
     input: &mut &'input [&'inner str],
 ) -> Result<&'input [&'inner str]> {
     alt((
         (opt(word(alt(("who", "also")))), word("neighbor")).take(),
-        (opt(word(be_verb)), word("neighboring")).take(),
+        (opt(word(be_verb_third_person)), word("neighboring")).take(),
     ))
     .parse_next(input)
 }
 
-fn be_verb<'input>(input: &mut &'input str) -> Result<&'input str> {
+fn be_verb_third_person<'input>(input: &mut &'input str) -> Result<&'input str> {
     alt(("is", "are")).parse_next(input)
 }
 
+fn be_verb_singular<'input>(input: &mut &'input str) -> Result<&'input str> {
+    alt(("is", "am")).parse_next(input)
+}
+
 fn between(input: &mut &[&str]) -> Result<Unit> {
-    preceded(words(("in", "between")), pair(name, "and"))
+    preceded(words(("in", "between")), pair(name_object, "and"))
         .map(Unit::Between)
         .parse_next(input)
 }
