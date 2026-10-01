@@ -833,10 +833,17 @@ pub(crate) enum MoreOrLess {
 }
 
 impl MoreOrLess {
-    pub(crate) fn more(self, [left, right]: [Judgment; 2]) -> Judgment {
+    pub(crate) fn big<T>(self, [left, right]: [T; 2]) -> T {
         match self {
             Self::More => left,
             Self::Less => right,
+        }
+    }
+
+    pub(crate) fn big_small<T>(self, [left, right]: [T; 2]) -> [T; 2] {
+        match self {
+            Self::More => [left, right],
+            Self::Less => [right, left],
         }
     }
 }

@@ -152,33 +152,44 @@ impl Sentence {
 
     fn more_traits_in_unit_than_unit(input: &mut &[&str]) -> Result<Self> {
         alt((
-            preceded(
-                words(("There", "are", "more")),
+            (
+                preceded(words(("There", "are")), word(more_or_less)),
                 separated_pair(judged_unit, word("than"), maybe_judged_unit),
             )
-            .map(|((judgment, big), (judgment_small, small))| {
-                let big = big.with_judgment(judgment);
-                let small = small.with_judgment(judgment_small.unwrap_or(judgment));
-                Self::UnitBiggerThanUnit {
-                    big,
-                    small,
-                    excess: None,
-                }
-            }),
+                .map(|(cmp, ((judgment, big), (judgment_small, small)))| {
+                    let left = big.with_judgment(judgment);
+                    let right = small.with_judgment(judgment_small.unwrap_or(judgment));
+                    let units = cmp.big_small([left, right]);
+                    (units, None)
+                }),
             (
                 name_has,
-                terminated(
-                    separated_pair(opt(word(number)), word("more"), word(judgment_singular)),
-                    words((neighbor_any, "than")),
-                ),
+                opt(word(number)),
+                word(more_or_less),
+                terminated(word(judgment_singular), words((neighbor_any, "than"))),
                 word(name_object),
             )
-                .map(|(big, (excess, judgment), small)| {
-                    let [big, small] =
-                        [big, small].map(|name| Unit::Neighbor(name).with_judgment(judgment));
-                    Self::UnitBiggerThanUnit { big, small, excess }
+                .map(|(left, excess, cmp, judgment, right)| {
+                    let units = cmp
+                        .big_small([left, right])
+                        .map(|name| Unit::Neighbor(name).with_judgment(judgment));
+                    (units, excess)
+                }),
+            (
+                name_has,
+                word(more_or_less),
+                word(judgment_plural),
+                direction,
+                delimited(word("than"), direction, word(pronoun_object)),
+            )
+                .map(|(name, cmp, judgment, left, right)| {
+                    let units = cmp.big_small([left, right]).map(|direction| {
+                        Unit::Direction(direction, name.clone()).with_judgment(judgment)
+                    });
+                    (units, None)
                 }),
         ))
+        .map(|([big, small], excess)| Self::UnitBiggerThanUnit { big, small, excess })
         .parse_next(input)
     }
 
@@ -553,7 +564,7 @@ impl Sentence {
                 .map(|(name, cmp, left, right)| (cmp, [left, right], Unit::Neighbor(name))),
         ))
         .verify(|&(_, [more, less], _)| more == !less)
-        .map(|(cmp, judgments, unit)| Self::MoreTraitsInUnit(unit, cmp.more(judgments)))
+        .map(|(cmp, judgments, unit)| Self::MoreTraitsInUnit(unit, cmp.big(judgments)))
         .parse_next(input)
     }
 
@@ -900,7 +911,7 @@ fn raw_name<'input>(input: &mut &'input str) -> Result<&'input str> {
 }
 
 fn pronoun_object<'input>(input: &mut &'input str) -> Result<&'input str> {
-    alt(("him", "her", "them")).parse_next(input)
+    alt(("him", "her", "them", "me")).parse_next(input)
 }
 
 fn quantified_profession(input: &mut &[&str]) -> Result<(Quantifier, Profession)> {
@@ -938,7 +949,7 @@ fn direction(input: &mut &[&str]) -> Result<Direction> {
                 word("left").value(Direction::Left),
                 word("right").value(Direction::Right),
             )),
-            word("of"),
+            opt(word("of")),
         ),
     ))
     .parse_next(input)

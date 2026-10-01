@@ -121,6 +121,18 @@ fn barb_2025_05_15() {
 }
 
 #[test]
+fn gus_2025_05_15() {
+    sentence(
+        "I have more innocents to the right than to the left of me",
+        &Sentence::UnitBiggerThanUnit {
+            big: Unit::Direction(Direction::Right, Name::Me).with_judgment(Judgment::Innocent),
+            small: Unit::Direction(Direction::Left, Name::Me).with_judgment(Judgment::Innocent),
+            excess: None,
+        },
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",
