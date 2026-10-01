@@ -1045,6 +1045,7 @@ fn more_or_less(input: &mut &str) -> Result<MoreOrLess> {
     alt((
         "more".value(MoreOrLess::More),
         "less".value(MoreOrLess::Less),
+        "fewer".value(MoreOrLess::Less),
     ))
     .parse_next(input)
 }
