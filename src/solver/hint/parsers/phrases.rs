@@ -825,3 +825,18 @@ impl From<Parity> for Quantifier {
         Self::Simple(v.into())
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum MoreOrLess {
+    More,
+    Less,
+}
+
+impl MoreOrLess {
+    pub(crate) fn more(self, [left, right]: [Judgment; 2]) -> Judgment {
+        match self {
+            Self::More => left,
+            Self::Less => right,
+        }
+    }
+}

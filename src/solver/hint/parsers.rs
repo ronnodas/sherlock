@@ -11,7 +11,7 @@ use winnow::token::{any, rest};
 use winnow::{Parser, Result};
 
 use crate::models::{Column, Direction, Judgment, Profession, Row};
-use crate::solver::hint::parsers::phrases::Quantifier;
+use crate::solver::hint::parsers::phrases::{MoreOrLess, Quantifier};
 use crate::solver::hint::recipes::{ColumnRecipe, LineRecipe, NameRecipe, RowRecipe};
 use crate::solver::hint::{Cardinal, LineKind, Number, Parity};
 
@@ -534,32 +534,26 @@ impl Sentence {
     fn more_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
         alt((
             preceded(
-                words(("There", "are", "more")),
+                words(("There", "are")),
                 (
+                    word(more_or_less),
                     alt((
                         pair(judgment_plural, "than"),
                         pair(judgment_singular, "than"),
                     )),
                     unit,
                 ),
-            )
-            .map(|([more, less], unit)| (unit, more, less)),
+            ),
             (
                 name_has,
-                delimited(
-                    word("more"),
-                    separated_pair(
-                        word(judgment_singular),
-                        word("than"),
-                        word(judgment_singular),
-                    ),
-                    word("neighbors"),
-                ),
+                word(more_or_less),
+                word(judgment_singular),
+                delimited(word("than"), word(judgment_singular), word("neighbors")),
             )
-                .map(|(name, (more, less))| (Unit::Neighbor(name), more, less)),
+                .map(|(name, cmp, left, right)| (cmp, [left, right], Unit::Neighbor(name))),
         ))
-        .verify(|&(_, more, less)| more == !less)
-        .map(|(unit, judgment, _)| Self::MoreTraitsInUnit(unit, judgment))
+        .verify(|&(_, [more, less], _)| more == !less)
+        .map(|(cmp, judgments, unit)| Self::MoreTraitsInUnit(unit, cmp.more(judgments)))
         .parse_next(input)
     }
 
@@ -1031,6 +1025,14 @@ fn between(input: &mut &[&str]) -> Result<Unit> {
     preceded(words(("in", "between")), pair(name_object, "and"))
         .map(Unit::Between)
         .parse_next(input)
+}
+
+fn more_or_less(input: &mut &str) -> Result<MoreOrLess> {
+    alt((
+        "more".value(MoreOrLess::More),
+        "less".value(MoreOrLess::Less),
+    ))
+    .parse_next(input)
 }
 
 fn series(input: &mut &str) -> Result<Series> {
