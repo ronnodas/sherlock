@@ -105,6 +105,14 @@ fn david_2025_05_10() {
 }
 
 #[test]
+fn daniel_2025_05_14() {
+    sentence(
+        "Gabe has an equal number of innocent and criminal neighbors",
+        &Sentence::UnitEquallySplit(Unit::neighbor("Gabe")),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",

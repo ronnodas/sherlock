@@ -572,10 +572,19 @@ impl Sentence {
             preceded(
                 words(("There's", "an", "equal", "number", "of")),
                 (
-                    pair(judgment_singular, "and"),
+                    pair(judgment_adjective, "and"),
                     word(profession_plural).map(Unit::Profession),
                 ),
             ),
+            (
+                name_has,
+                delimited(
+                    words(("an", "equal", "number", "of")),
+                    pair(judgment_adjective, "and"),
+                    word("neighbors"),
+                ),
+            )
+                .map(|(name, judgments)| (judgments, Unit::Neighbor(name))),
         ))
         .verify(|&([a, b], _)| a == !b)
         .map(|(_, unit)| Self::UnitEquallySplit(unit))
