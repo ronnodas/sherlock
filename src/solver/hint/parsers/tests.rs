@@ -133,6 +133,14 @@ fn gus_2025_05_15() {
 }
 
 #[test]
+fn nick_2025_05_17() {
+    sentence(
+        "There's an equal number of innocents and criminals above Xena",
+        &Sentence::UnitEquallySplit(Unit::direction(Direction::Above, "Xena")),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",

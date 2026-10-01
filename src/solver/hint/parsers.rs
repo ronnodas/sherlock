@@ -576,10 +576,13 @@ impl Sentence {
             ),
             preceded(
                 words(("There's", "an", "equal", "number", "of")),
-                (
-                    pair(judgment_adjective, "and"),
-                    word(profession_plural).map(Unit::Profession),
-                ),
+                alt((
+                    (
+                        pair(judgment_adjective, "and"),
+                        word(profession_plural).map(Unit::Profession),
+                    ),
+                    (pair(judgment_plural, "and"), unit),
+                )),
             ),
             (
                 name_has,
