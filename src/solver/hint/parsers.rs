@@ -353,17 +353,18 @@ impl Sentence {
                 separated_pair(
                     separated_pair(word(name_possessive), word("only"), word(judgment_singular)),
                     words(("neighbor", "is")),
-                    unit,
+                    alt((
+                        terminated(direction, word(pronoun_object)).map(Err),
+                        unit.map(Ok),
+                    )),
                 ),
                 eof,
             )
-            .map(|((quantified, judgment), other)| {
-                (
-                    Quantifier::Subset(Cardinal::Exact(1), 1),
-                    Unit::Neighbor(quantified),
-                    other,
-                    judgment,
-                )
+            .map(|((name, judgment), other)| {
+                let other =
+                    other.unwrap_or_else(|direction| Unit::Direction(direction, name.clone()));
+                let quantifier = Quantifier::Subset(Cardinal::Exact(1), 1);
+                (quantifier, Unit::Neighbor(name), other, judgment)
             }),
             terminated(
                 separated_pair(
@@ -837,6 +838,10 @@ fn name(input: &mut &str) -> Result<NameRecipe> {
 fn raw_name<'input>(input: &mut &'input str) -> Result<&'input str> {
     rest.verify(|s: &str| s.chars().next().is_some_and(char::is_uppercase))
         .parse_next(input)
+}
+
+fn pronoun_object<'input>(input: &mut &'input str) -> Result<&'input str> {
+    alt(("him", "her", "them")).parse_next(input)
 }
 
 fn quantified_profession(input: &mut &[&str]) -> Result<(Quantifier, Profession)> {

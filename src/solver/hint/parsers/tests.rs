@@ -91,6 +91,20 @@ fn rose_2025_05_09() {
 }
 
 #[test]
+fn david_2025_05_10() {
+    sentence(
+        "Tyler's only innocent neighbor is to the left of him",
+        &Sentence::UnitAndIntersectionSize {
+            total: 1,
+            quantified: Unit::neighbor("Tyler"),
+            other: Unit::direction(Direction::Left, "Tyler"),
+            intersection: Cardinal::Exact(1),
+            judgment: Judgment::Innocent,
+        },
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",
