@@ -165,6 +165,18 @@ fn will_2025_06_07() {
 }
 
 #[test]
+fn hal_2025_06_08() {
+    sentence(
+        "All criminals below Maria are in row 5",
+        &Sentence::AllTraitsInUnitAreInUnit {
+            split: Unit::direction(Direction::Below, "Maria"),
+            judgment: Judgment::Criminal,
+            other: Row::Five.into(),
+        },
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",

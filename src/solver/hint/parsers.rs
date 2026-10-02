@@ -71,6 +71,7 @@ impl Sentence {
                 terminated(Self::at_most_n_traits_in_neighbors_in_unit, eof),
                 terminated(Self::total_number_of_traits_in_units, eof),
             )),
+            terminated(Self::all_traits_in_unit_are_in_unit, eof),
         ))
         .parse_next(input)
     }
@@ -450,17 +451,16 @@ impl Sentence {
                     Quantifier::Simple(count),
                 )
             }),
-            separated_pair(
+            (
                 (
                     quantifier,
                     separated_pair(word(name_possessive), word("neighbors"), unit),
                 ),
-                word(be_verb_third_person),
-                word(judgment_singular),
+                is_judgment_any,
             )
-            .map(|((quantity, (name, unit)), judgment)| {
-                ([Unit::Neighbor(name), unit], judgment, quantity)
-            }),
+                .map(|((quantity, (name, unit)), judgment)| {
+                    ([Unit::Neighbor(name), unit], judgment, quantity)
+                }),
             (
                 name_has,
                 separated_pair(cardinal_judgment, word(neighbor_any), unit),
@@ -654,6 +654,18 @@ impl Sentence {
         ))
         .map(|((quantity, judgment), units)| Self::TotalUnitsSize(units, quantity, judgment))
         .parse_next(input)
+    }
+
+    fn all_traits_in_unit_are_in_unit(input: &mut &[&str]) -> Result<Self> {
+        separated_pair(preceded(word("All"), judged_unit), word("are"), unit)
+            .map(
+                |((judgment, split), other)| Self::AllTraitsInUnitAreInUnit {
+                    split,
+                    judgment,
+                    other,
+                },
+            )
+            .parse_next(input)
     }
 }
 

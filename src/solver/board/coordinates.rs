@@ -535,7 +535,7 @@ impl Set1Op {
         }
     }
 
-    fn intersect(self, rhs: Self) -> SetOp {
+    pub(crate) fn intersect(self, rhs: Self) -> SetOp {
         match [self, rhs] {
             [this, Self::Judged(rhs, judgment)] | [Self::Judged(rhs, judgment), this] => match *rhs
             {

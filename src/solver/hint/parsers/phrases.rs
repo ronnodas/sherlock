@@ -47,6 +47,11 @@ pub(crate) enum Sentence {
     IntersectionSize([Unit; 2], Quantifier, Judgment),
     EachInUnitHasAtMostNNeighbors(Unit, Number, Judgment),
     TotalUnitsSize([Unit; 2], Cardinal, Judgment),
+    AllTraitsInUnitAreInUnit {
+        split: Unit,
+        judgment: Judgment,
+        other: Unit,
+    },
 }
 
 impl AddContext for Sentence {
@@ -147,6 +152,11 @@ impl AddContext for Sentence {
                 neighbors,
                 judgment,
             } => unit.n_members_have_n_neighbors(quantity, neighbors, judgment, context)?,
+            Self::AllTraitsInUnitAreInUnit {
+                split,
+                judgment,
+                other,
+            } => split.all_traits_are_in_unit(judgment, &other, context)?,
         };
         Ok(hints)
     }
@@ -528,6 +538,27 @@ impl Unit {
                 }
             }
             SetOp::NonEmpty(set) => hints.push(Hint::Count(set, quantity.into())),
+        }
+        Ok(hints)
+    }
+
+    fn all_traits_are_in_unit(
+        &self,
+        judgment: Judgment,
+        other: &Self,
+        context: Context<'_>,
+    ) -> Result<Vec<Hint>> {
+        let (self_, mut hints) = self.add_context(context)?;
+        let (other, other_hints) = other.add_context(context)?;
+        hints.extend(other_hints);
+        if let SetOp::NonEmpty(split) = self_.judged(judgment) {
+            let hint = match other.intersect1(split.clone().into()).regular() {
+                Ok(intersection) => Hint::Count(split, CardinalOrNot::Exact(intersection.len())),
+                Err(intersection) => {
+                    Hint::CompareSets([split, intersection], Comparison::ExactDifference(0))
+                }
+            };
+            hints.push(hint);
         }
         Ok(hints)
     }
