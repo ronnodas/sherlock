@@ -5,6 +5,7 @@ use itertools::Itertools as _;
 use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
+use strum::EnumDiscriminants;
 
 use crate::models::{Column, Coord, Judgment, Row, Solution};
 use crate::solver::board::coordinates::{Set, Set1, Set1Expr, Set1Op};
@@ -137,7 +138,8 @@ impl Comparison {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumDiscriminants)]
+#[strum_discriminants(name(LineKind))]
 pub(crate) enum Line {
     Row(Row),
     Column(Column),
@@ -181,12 +183,6 @@ impl From<Line> for Set {
             Line::Column(column) => column.all().into_iter().collect(),
         }
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum LineKind {
-    Row,
-    Column,
 }
 
 impl LineKind {
