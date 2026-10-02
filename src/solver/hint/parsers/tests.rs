@@ -141,6 +141,18 @@ fn nick_2025_05_17() {
 }
 
 #[test]
+fn floyd_2025_06_04() {
+    sentence(
+        "There is only one profession with no criminals",
+        &Sentence::UniqueUnitInSeriesHasSize(
+            Series::Profession,
+            Cardinal::Exact(0),
+            Judgment::Criminal,
+        ),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",

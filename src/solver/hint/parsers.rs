@@ -312,6 +312,11 @@ impl Sentence {
                 word(neighbor_any),
             )
             .map(|(quantity, judgment)| (Series::Neighbor, quantity, judgment)),
+            preceded(
+                words(("There", "is", "only", "one", "profession", "with")),
+                cardinal_judgment,
+            )
+            .map(|(quantity, judgment)| (Series::Profession, quantity, judgment)),
         ))
         .map(|(series, count, judgment)| Self::UniqueUnitInSeriesHasSize(series, count, judgment))
         .parse_next(input)
@@ -1205,6 +1210,7 @@ words_impl!((P0, O0), (P1, O1); a, b);
 words_impl!((P0, O0), (P1, O1), (P2, O2); a, b, c);
 words_impl!((P0, O0), (P1, O1), (P2, O2), (P3, O3); a, b, c, d);
 words_impl!((P0, O0), (P1, O1), (P2, O2), (P3, O3), (P4, O4); a, b, c, d, e);
+words_impl!((P0, O0), (P1, O1), (P2, O2), (P3, O3), (P4, O4), (P5, O5); a, b, c, d, e, f);
 
 #[cfg(test)]
 mod tests;
