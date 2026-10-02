@@ -540,6 +540,11 @@ impl Sentence {
             .map(|((quantity, judgment), series)| (series, quantity, judgment)),
             preceded(words(("Everyone", "has")), (cardinal, judged_neighbors))
                 .map(|(quantity, judgment)| (Series::Neighbor, quantity, judgment)),
+            preceded(
+                words(("There", "is", "no")),
+                separated_pair(word(series), words(("with", "only")), word(judgment_plural)),
+            )
+            .map(|(series, judgment)| (series, Cardinal::AtLeast(1), !judgment)),
         ))
         .map(|(series, quantity, judgment)| {
             Self::EachUnitInSeriesHasSize(series, quantity, judgment)
