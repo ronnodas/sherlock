@@ -37,9 +37,9 @@ impl Index<Coord> for Solution {
 }
 
 struct Generator {
-    counter: u32,
+    bitmask: u32,
     template: Grid<Judgment>,
-    free_indices: Vec<Coord>,
+    free_indices: Set,
 }
 
 impl Generator {
@@ -52,20 +52,16 @@ impl Generator {
             fixed_mask[idx] = true;
         }
 
-        let free_indices: Vec<Coord> = Coord::all()
+        let free_indices: Set = Coord::all()
             .into_iter()
             .filter(|i| !fixed_mask[*i])
             .collect();
 
         Self {
-            counter: 0,
+            bitmask: 1_u32 << free_indices.len(),
             template,
             free_indices,
         }
-    }
-
-    fn max_counter(&self) -> u32 {
-        1_u32 << self.free_indices.len()
     }
 }
 
@@ -73,27 +69,24 @@ impl Iterator for Generator {
     type Item = Solution;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.counter >= self.max_counter() {
-            return None;
-        }
+        self.bitmask = self.bitmask.checked_sub(1)?;
 
         let mut current = self.template.clone();
 
-        for (bit_pos, &target_idx) in self.free_indices.iter().enumerate() {
+        for (bit_pos, coord) in self.free_indices.into_iter().enumerate() {
             // Check if the nth bit of the counter is set
-            if (self.counter >> bit_pos) & 1 == 1 {
-                current[target_idx] = Judgment::Criminal;
+            current[coord] = if (self.bitmask >> bit_pos) & 1 == 0 {
+                Judgment::Criminal
             } else {
-                current[target_idx] = Judgment::Innocent;
-            }
+                Judgment::Innocent
+            };
         }
 
-        self.counter += 1;
         Some(current.into())
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.max_counter() - self.counter)
+        self.bitmask
             .try_into()
             .map_or((usize::MAX, None), |remaining| (remaining, Some(remaining)))
     }
