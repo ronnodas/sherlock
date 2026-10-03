@@ -147,19 +147,20 @@ fn parse_name(card: Node<'_>) -> Result<String> {
         .unique_child(H3.and(Class(ClassName::Name)))
         .context("`div .name` should have a unique `h3 .name`")?
         .text();
-    // emulating `text-transform: capitalize`
-    Ok(name
-        .trim()
-        .chars()
-        .with_position()
-        .map(|(position, c)| {
-            if position.is_first {
-                c.to_ascii_uppercase()
-            } else {
-                c
-            }
-        })
-        .collect())
+    Ok(css_capitalize_single_word(&name))
+}
+
+/// emulating `text-transform: capitalize`
+fn css_capitalize_single_word(s: &str) -> String {
+    let mut chars = s.chars();
+    chars.next().map_or_default(|first| {
+        let first = first.to_uppercase();
+        let rest = chars.as_str();
+        let mut result = String::with_capacity(first.len().strict_add(rest.len()));
+        result.extend(first);
+        result.push_str(rest);
+        result
+    })
 }
 
 pub(crate) trait NodeExt<'html>: Sized + fmt::Debug {
