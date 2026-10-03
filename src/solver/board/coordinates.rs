@@ -168,8 +168,7 @@ impl Iterator for SetIntoIter {
 
 impl ExactSizeIterator for SetIntoIter {}
 
-//TODO custom Debug
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Set1(NonZero<u32>);
 
 impl Set1 {
@@ -303,6 +302,12 @@ impl FromIterator1<Coord> for Set1 {
     {
         let (head, tail) = items.into_iter1().into_head_and_tail();
         Self::from_one(head) | Set::from_iter(tail)
+    }
+}
+
+impl fmt::Debug for Set1 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_set().entries(*self).finish()
     }
 }
 
