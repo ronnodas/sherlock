@@ -679,7 +679,7 @@ mod tests {
             puzzle.cards[puzzle.start].judgment,
         ));
         let mut pending = vec![puzzle.start];
-        let mut marked = Grid::filled(false);
+        let mut marked = Grid::from_fn(|coord| coord == puzzle.start);
 
         let lookup = Lookup::new(&puzzle.cards);
         while let Some(speaker) = pending.pop() {
