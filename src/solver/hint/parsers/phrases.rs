@@ -54,36 +54,36 @@ pub(crate) enum Sentence {
     },
 }
 
-impl AddContext for Sentence {
+impl AddContext for &Sentence {
     type Output = Vec<Hint>;
 
     fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
         let hints: Vec<Hint> = match self {
-            Self::UnitIsConnected(unit) => unit.members_are_connected(context)?,
-            Self::BiggestInSeries(unit, judgment) => unit.has_most(judgment, context)?,
-            Self::IsOneOfNInUnit(unit, name, quantity, judgment) => {
-                unit.one_of_n_in_unit(&name, quantity, judgment, context)?
+            Sentence::UnitIsConnected(unit) => unit.members_are_connected(context)?,
+            Sentence::BiggestInSeries(unit, judgment) => unit.has_most(*judgment, context)?,
+            Sentence::IsOneOfNInUnit(unit, name, quantity, judgment) => {
+                unit.one_of_n_in_unit(name, *quantity, *judgment, context)?
             }
-            Self::UnitBiggerThanUnit { big, small, excess } => {
-                big.bigger_than(&small, excess, context)?
+            Sentence::UnitBiggerThanUnit { big, small, excess } => {
+                big.bigger_than(small, *excess, context)?
             }
-            Self::UnitSize(unit, quantity) => {
+            Sentence::UnitSize(unit, quantity) => {
                 let (set, mut hints) = unit.add_context(context)?;
                 match set.regular() {
                     Ok(set) if quantity.matches(set.len()) => {}
                     Ok(_) => bail!("{unit:?} does not match {quantity:?}"),
-                    Err(set) => hints.push(Hint::Count(set, quantity.into())),
+                    Err(set) => hints.push(Hint::Count(set, (*quantity).into())),
                 }
                 hints
             }
-            Self::TotalUnitsSize(units, quantity, judgment) => {
-                Unit::total_size(&units, quantity, judgment, context)?
+            Sentence::TotalUnitsSize(units, quantity, judgment) => {
+                Unit::total_size(units, *quantity, *judgment, context)?
             }
-            Self::UniqueInUnitHasNNeighbors(unit, quantity, name, judgment) => {
-                unit.unique_member_has_n_neighbors(quantity, judgment, name.as_ref(), context)?
+            Sentence::UniqueInUnitHasNNeighbors(unit, quantity, name, judgment) => {
+                unit.unique_member_has_n_neighbors(*quantity, *judgment, name.as_ref(), context)?
             }
 
-            Self::UniqueUnitInSeriesHasSize(series, count, judgment) => {
+            &Sentence::UniqueUnitInSeriesHasSize(series, count, judgment) => {
                 let sets = series
                     .all(context)
                     .into_iter1()
@@ -91,29 +91,27 @@ impl AddContext for Sentence {
                     .collect1();
                 vec![Hint::UniqueWithCount { sets, count }]
             }
-            Self::EachUnitInSeriesHasSize(kind, quantity, judgment) => kind
+            &Sentence::EachUnitInSeriesHasSize(kind, quantity, judgment) => kind
                 .all(context)
                 .into_iter()
                 .map(|set| Hint::Count(set.judged(judgment), quantity.into()))
                 .collect(),
-            Self::OnlyGivenUnitHasNTraits(unit, quantity, judgment) => {
-                unit.only_one_with_n_traits(quantity, judgment, context)?
+            Sentence::OnlyGivenUnitHasNTraits(unit, quantity, judgment) => {
+                unit.only_one_with_n_traits(*quantity, *judgment, context)?
             }
-            Self::UnitAndIntersectionSize {
+            Sentence::UnitAndIntersectionSize {
                 total,
                 quantified,
                 other,
                 intersection,
                 judgment,
-            } => {
-                quantified.this_and_intersection(total, &other, intersection, judgment, context)?
+            } => quantified.and_intersection(*total, other, *intersection, *judgment, context)?,
+            Sentence::IntersectionSize([a, b], quantity, judgment) => {
+                a.intersection(b, *quantity, *judgment, context)?
             }
-            Self::IntersectionSize([a, b], quantity, judgment) => {
-                a.intersection(&b, quantity, judgment, context)?
-            }
-            Self::EqualNumberOfTraitsInUnits(units, judgment) => {
+            Sentence::EqualNumberOfTraitsInUnits(units, judgment) => {
                 let (sets, mut hints) = units.add_context(context)?;
-                let sets = sets.map(|set| set.judged(judgment));
+                let sets = sets.map(|set| set.judged(*judgment));
                 match sets {
                     [SetOp::Empty, SetOp::Empty] => {}
                     [SetOp::Empty, SetOp::NonEmpty(set)] | [SetOp::NonEmpty(set), SetOp::Empty] => {
@@ -125,10 +123,10 @@ impl AddContext for Sentence {
                 }
                 hints
             }
-            Self::UnitEquallySplit(unit) => unit.equal_traits(context)?,
-            Self::MoreTraitsInUnit(unit, judgment) => {
+            Sentence::UnitEquallySplit(unit) => unit.equal_traits(context)?,
+            Sentence::MoreTraitsInUnit(unit, judgment) => {
                 let (set, mut hints) = unit.add_context(context)?;
-                let hint = match [set.clone().judged(judgment), set.judged(!judgment)] {
+                let hint = match [set.clone().judged(*judgment), set.judged(!*judgment)] {
                     [SetOp::Empty, _] => bail!("no {judgment} in {unit:?}"),
                     [SetOp::NonEmpty(big), SetOp::Empty] => {
                         Hint::Count(big, CardinalOrNot::AtLeast(1))
@@ -140,23 +138,23 @@ impl AddContext for Sentence {
                 hints.push(hint);
                 hints
             }
-            Self::HasTrait(name, judgment) => {
-                vec![Hint::Judgment(name.add_context(context)?, judgment)]
+            Sentence::HasTrait(name, judgment) => {
+                vec![Hint::Judgment(name.add_context(context)?, *judgment)]
             }
-            Self::EachInUnitHasAtMostNNeighbors(unit, number, judgment) => {
-                unit.members_have_at_most_neighbors(number, judgment, context)?
+            Sentence::EachInUnitHasAtMostNNeighbors(unit, number, judgment) => {
+                unit.members_have_at_most_neighbors(*number, *judgment, context)?
             }
-            Self::NInUnitHaveNNeighbors {
+            Sentence::NInUnitHaveNNeighbors {
                 unit,
                 quantity,
                 neighbors,
                 judgment,
-            } => unit.n_members_have_n_neighbors(quantity, neighbors, judgment, context)?,
-            Self::AllTraitsInUnitAreInUnit {
+            } => unit.n_members_have_n_neighbors(*quantity, *neighbors, *judgment, context)?,
+            Sentence::AllTraitsInUnitAreInUnit {
                 split,
                 judgment,
                 other,
-            } => split.all_traits_are_in_unit(judgment, &other, context)?,
+            } => split.all_traits_are_in_unit(*judgment, other, context)?,
         };
         Ok(hints)
     }
@@ -246,7 +244,7 @@ impl Unit {
         Ok(hints)
     }
 
-    fn this_and_intersection(
+    fn and_intersection(
         &self,
         total: Number,
         other: &Self,
@@ -456,7 +454,7 @@ impl Unit {
     }
 
     fn n_members_have_n_neighbors(
-        self,
+        &self,
         count: Cardinal,
         each: Cardinal,
         judgment: Judgment,
@@ -678,7 +676,7 @@ pub(crate) enum UnitInSeries {
 }
 
 impl UnitInSeries {
-    fn has_most(self, judgment: Judgment, context: Context<'_>) -> Result<Vec<Hint>> {
+    fn has_most(&self, judgment: Judgment, context: Context<'_>) -> Result<Vec<Hint>> {
         let small = self.others(context)?;
         let big = self.add_context(context)?.judged(judgment);
         let hints = small
@@ -726,7 +724,7 @@ impl UnitInSeries {
     }
 
     fn only_one_with_n_traits(
-        self,
+        &self,
         quantity: Cardinal,
         judgment: Judgment,
         context: Context<'_>,
@@ -748,17 +746,17 @@ impl UnitInSeries {
     }
 }
 
-impl AddContext for UnitInSeries {
+impl AddContext for &UnitInSeries {
     type Output = Set1;
 
     fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
         let set = match self {
-            Self::Line(line) => line.add_context(context)?.into(),
-            Self::Profession(profession) => *context
+            UnitInSeries::Line(line) => line.add_context(context)?.into(),
+            UnitInSeries::Profession(profession) => *context
                 .by_profession
-                .get(&profession)
+                .get(profession)
                 .with_context(|| format!("{profession} not in puzzle"))?,
-            Self::Neighbor(suspect) => suspect.add_context(context)?.neighbors(),
+            UnitInSeries::Neighbor(suspect) => suspect.add_context(context)?.neighbors(),
         };
         Ok(set)
     }
