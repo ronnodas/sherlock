@@ -177,6 +177,17 @@ fn hal_2025_06_08() {
 }
 
 #[test]
+fn isaac_2025_06_14() {
+    sentence(
+        "Not everyone below Adam is a criminal",
+        &Sentence::UnitSize(
+            Unit::direction(Direction::Below, "Adam").with_judgment(Judgment::Innocent),
+            Cardinal::AtLeast(1),
+        ),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",

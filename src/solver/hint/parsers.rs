@@ -241,6 +241,12 @@ impl Sentence {
                 }),
             ))
             .map(|(unit, judgment)| (Cardinal::Exact(0), !judgment, unit)),
+            separated_pair(
+                preceded(words(("Not", "everyone")), unit),
+                word("is"),
+                judgment_predicate_singular,
+            )
+            .map(|(unit, judgment)| (Cardinal::AtLeast(1), !judgment, unit)),
         ))
         .map(|(count, judgment, unit)| Self::UnitSize(unit.with_judgment(judgment), count))
         .parse_next(input)
