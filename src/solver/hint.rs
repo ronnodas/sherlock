@@ -132,7 +132,7 @@ pub(crate) enum Comparison {
 impl Comparison {
     fn compare(self, lhs: Number, rhs: Number) -> bool {
         match self {
-            Self::ExactDifference(excess) => lhs == rhs + excess,
+            Self::ExactDifference(excess) => lhs == rhs.strict_add(excess),
             Self::More => lhs > rhs,
         }
     }

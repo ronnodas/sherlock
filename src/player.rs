@@ -209,7 +209,7 @@ impl<'puzz> App<'puzz> {
                             HintText::Logical(hint) => HintState::Revealed(judgment, hint),
                         }
                     }
-                    None => self.mistakes += 1,
+                    None => self.mistakes = self.mistakes.strict_add(1),
                 }
             }
             Message::Move(direction) => match self.current.step(direction) {

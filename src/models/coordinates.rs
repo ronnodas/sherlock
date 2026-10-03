@@ -27,7 +27,10 @@ impl Coord {
     }
 
     pub(crate) const fn to_index(self) -> usize {
-        4 * self.row.to_index() + self.col.to_index()
+        self.row
+            .to_index()
+            .strict_mul(4)
+            .strict_add(self.col.to_index())
     }
 
     pub(crate) fn step(self, direction: Direction) -> Option<Self> {
