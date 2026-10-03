@@ -550,6 +550,7 @@ impl Unit {
         let (other, other_hints) = other.add_context(context)?;
         hints.extend(other_hints);
         if let SetOp::NonEmpty(split) = self_.judged(judgment) {
+            hints.push(Hint::Count(split.clone(), CardinalOrNot::AtLeast(1)));
             let hint = match other.intersect1(split.clone().into()).regular() {
                 Ok(intersection) => Hint::Count(split, CardinalOrNot::Exact(intersection.len())),
                 Err(intersection) => {
@@ -557,6 +558,8 @@ impl Unit {
                 }
             };
             hints.push(hint);
+        } else {
+            bail!("\"All\" should mean at least one, but {self:?} has no {judgment}")
         }
         Ok(hints)
     }
