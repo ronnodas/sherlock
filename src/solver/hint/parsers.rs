@@ -11,7 +11,7 @@ use winnow::token::{any, rest};
 use winnow::{Parser, Result};
 
 use crate::models::{Column, Direction, Judgment, Profession, Row};
-use crate::solver::hint::parsers::phrases::{MoreOrLess, Quantifier};
+use crate::solver::hint::parsers::phrases::{AnyAll, MoreOrLess, Quantifier};
 use crate::solver::hint::recipes::{ColumnRecipe, LineRecipe, NameRecipe, RowRecipe};
 use crate::solver::hint::{Cardinal, LineKind, Number, Parity};
 
@@ -82,16 +82,21 @@ impl Sentence {
     fn traits_are_neighbors_in_unit(input: &mut &[&str]) -> Result<Self> {
         terminated(
             (
-                alt((word("All").value(None), quantifier.map(Some))),
+                alt((
+                    word("All").value(Some(Quantifier::Simple(Cardinal::AtLeast(1)))),
+                    quantifier.map(Some),
+                    empty.value(None),
+                )),
                 judged_unit,
             ),
             words(("are", "connected")),
         )
         .verify_map(|(quantity, (judgment, unit))| {
             let unit = unit.with_judgment(judgment);
-            let unit = match quantity {
-                Some(quantity) => unit.quantify(quantity.exact()?),
-                None => unit,
+            let unit = if let Some(quantity) = quantity {
+                unit.quantify(quantity.to_cardinal()?)
+            } else {
+                unit
             };
             Some(Self::UnitIsConnected(unit))
         })
@@ -661,15 +666,20 @@ impl Sentence {
     }
 
     fn all_traits_in_unit_are_in_unit(input: &mut &[&str]) -> Result<Self> {
-        separated_pair(preceded(word("All"), judged_unit), word("are"), unit)
-            .map(
-                |((judgment, split), other)| Self::AllTraitsInUnitAreInUnit {
-                    split,
-                    judgment,
-                    other,
-                },
-            )
-            .parse_next(input)
+        separated_pair(
+            (word(any_all), judged_unit),
+            word(be_verb_third_person),
+            unit,
+        )
+        .map(
+            |((any_all, (judgment, split)), other)| Self::TraitsInUnitAreInUnit {
+                any_all,
+                split,
+                judgment,
+                other,
+            },
+        )
+        .parse_next(input)
     }
 }
 
@@ -1087,6 +1097,10 @@ fn more_or_less(input: &mut &str) -> Result<MoreOrLess> {
         "fewer".value(MoreOrLess::Less),
     ))
     .parse_next(input)
+}
+
+fn any_all(input: &mut &str) -> Result<AnyAll> {
+    alt(("all".value(AnyAll::All), "any".value(AnyAll::Any))).parse_next(input)
 }
 
 fn series(input: &mut &str) -> Result<Series> {

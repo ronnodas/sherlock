@@ -47,7 +47,8 @@ pub(crate) enum Sentence {
     IntersectionSize([Unit; 2], Quantifier, Judgment),
     EachInUnitHasAtMostNNeighbors(Unit, Number, Judgment),
     TotalUnitsSize([Unit; 2], Cardinal, Judgment),
-    AllTraitsInUnitAreInUnit {
+    TraitsInUnitAreInUnit {
+        any_all: AnyAll,
         split: Unit,
         judgment: Judgment,
         other: Unit,
@@ -151,11 +152,12 @@ impl AddContext for &Sentence {
                 neighbors,
                 judgment,
             } => unit.n_members_have_n_neighbors(*quantity, *neighbors, *judgment, context)?,
-            Sentence::AllTraitsInUnitAreInUnit {
+            Sentence::TraitsInUnitAreInUnit {
+                any_all,
                 split,
                 judgment,
                 other,
-            } => split.all_traits_are_in_unit(*judgment, other, context)?,
+            } => split.traits_are_in_unit(*any_all, *judgment, other, context)?,
             Sentence::IsInUnit(unit, name, judgment) => unit.contains(name, *judgment, context)?,
         };
         Ok(hints)
@@ -176,7 +178,7 @@ pub(crate) enum Unit {
     Corners,
     All,
     Shifted(Box<Self>, Direction),
-    Quantified(Box<Self>, Number),
+    Quantified(Box<Self>, Cardinal),
     Judged(Box<Self>, Judgment),
 }
 
@@ -426,8 +428,8 @@ impl Unit {
         Ok(hints)
     }
 
-    pub(crate) fn quantify(self, quantity: Number) -> Self {
-        Self::Quantified(Box::new(self), quantity)
+    pub(crate) fn quantify(self, quantity: impl Into<Cardinal>) -> Self {
+        Self::Quantified(Box::new(self), quantity.into())
     }
 
     #[cfg(test)]
@@ -542,8 +544,9 @@ impl Unit {
         Ok(hints)
     }
 
-    fn all_traits_are_in_unit(
+    fn traits_are_in_unit(
         &self,
+        any_all: AnyAll,
         judgment: Judgment,
         other: &Self,
         context: Context<'_>,
@@ -552,7 +555,9 @@ impl Unit {
         let (other, other_hints) = other.add_context(context)?;
         hints.extend(other_hints);
         if let SetOp::NonEmpty(split) = self_.judged(judgment) {
-            hints.push(Hint::Count(split.clone(), CardinalOrNot::AtLeast(1)));
+            if any_all.is_all() {
+                hints.push(Hint::Count(split.clone(), CardinalOrNot::AtLeast(1)));
+            }
             let hint = match other.intersect1(split.clone().into()).regular() {
                 Ok(intersection) => Hint::Count(split, CardinalOrNot::Exact(intersection.len())),
                 Err(intersection) => {
@@ -560,7 +565,7 @@ impl Unit {
                 }
             };
             hints.push(hint);
-        } else {
+        } else if any_all.is_all() {
             bail!("\"All\" should mean at least one, but {self:?} has no {judgment}")
         }
         Ok(hints)
@@ -610,10 +615,10 @@ impl AddContext for &Unit {
                 let set;
                 (set, hints) = inner.add_context(context)?;
                 match set.regular() {
-                    Ok(set) if quantity == &set.len() => set.into(),
-                    Ok(_) => bail!("{inner:?} does not have size {quantity}"),
+                    Ok(set) if quantity.matches(set.len()) => set.into(),
+                    Ok(_) => bail!("{inner:?} does not have size {quantity:?}"),
                     Err(set) => {
-                        hints.push(Hint::Count(set.clone(), CardinalOrNot::Exact(*quantity)));
+                        hints.push(Hint::Count(set.clone(), (*quantity).into()));
                         set.into()
                     }
                 }
@@ -855,11 +860,17 @@ pub(crate) enum Quantifier {
 }
 
 impl Quantifier {
-    pub(crate) fn exact(self) -> Option<Number> {
+    pub(crate) fn to_cardinal(self) -> Option<Cardinal> {
         match self {
-            Self::Subset(Cardinal::Exact(count), total) if count == total => Some(total),
-            Self::Simple(Cardinal::Exact(total)) => Some(total),
-            Self::Simple(_) | Self::Subset(_, _) => None,
+            Self::Subset(Cardinal::Exact(exact) | Cardinal::AtLeast(exact), total)
+                if exact == total =>
+            {
+                Some(Cardinal::Exact(exact))
+            }
+            Self::Subset(Cardinal::Parity(Parity::Even), 0) => Some(Cardinal::Exact(0)),
+            Self::Subset(Cardinal::Parity(Parity::Odd), 1) => Some(Cardinal::Exact(1)),
+            Self::Simple(cardinal) => Some(cardinal),
+            Self::Subset(_, _) => None,
         }
     }
 }
@@ -895,5 +906,21 @@ impl MoreOrLess {
             Self::More => [left, right],
             Self::Less => [right, left],
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AnyAll {
+    Any,
+    All,
+}
+
+impl AnyAll {
+    /// Returns `true` if the any all is [`All`].
+    ///
+    /// [`All`]: AnyAll::All
+    #[must_use]
+    pub(crate) fn is_all(self) -> bool {
+        matches!(self, Self::All)
     }
 }

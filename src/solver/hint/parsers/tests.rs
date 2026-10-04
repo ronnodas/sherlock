@@ -6,7 +6,7 @@ use winnow::error::ParserError;
 use winnow::stream::{Stream, StreamIsPartial};
 
 use crate::models::{Column, Direction, Judgment, Row};
-use crate::solver::hint::parsers::phrases::Quantifier;
+use crate::solver::hint::parsers::phrases::{AnyAll, Quantifier};
 use crate::solver::hint::recipes::{ColumnRecipe, NameRecipe as Name};
 use crate::solver::hint::{Cardinal, LineKind, Parity};
 
@@ -167,8 +167,9 @@ fn will_2025_06_07() {
 #[test]
 fn hal_2025_06_08() {
     sentence(
-        "All criminals below Maria are in row 5",
-        &Sentence::AllTraitsInUnitAreInUnit {
+        "all criminals below Maria are in row 5",
+        &Sentence::TraitsInUnitAreInUnit {
+            any_all: AnyAll::All,
             split: Unit::direction(Direction::Below, "Maria"),
             judgment: Judgment::Criminal,
             other: Row::Five.into(),
@@ -205,6 +206,19 @@ fn austin_2025_07_29() {
             Cardinal::AtLeast(2),
             Judgment::Criminal,
         ),
+    );
+}
+
+#[test]
+fn rose_2025_08_02() {
+    sentence(
+        "any innocent in row 2 is neighboring Carol",
+        &Sentence::TraitsInUnitAreInUnit {
+            any_all: AnyAll::Any,
+            split: Row::Two.into(),
+            judgment: Judgment::Innocent,
+            other: Unit::neighbor("Carol"),
+        },
     );
 }
 
@@ -1298,7 +1312,11 @@ fn debra_community_49f3f1_9eb600102931a676() {
 fn linda_community_6eebae_909beebb44a88201() {
     sentence(
         "All Noah's criminal neighbors are connected",
-        &Sentence::UnitIsConnected(Unit::neighbor("Noah").with_judgment(Judgment::Criminal)),
+        &Sentence::UnitIsConnected(
+            Unit::neighbor("Noah")
+                .with_judgment(Judgment::Criminal)
+                .quantify(Cardinal::AtLeast(1)),
+        ),
     );
 }
 

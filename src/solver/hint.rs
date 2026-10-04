@@ -230,6 +230,12 @@ impl From<Parity> for Cardinal {
     }
 }
 
+impl From<Number> for Cardinal {
+    fn from(value: Number) -> Self {
+        Self::Exact(value)
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Parity {
     Even,
