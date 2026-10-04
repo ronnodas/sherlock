@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{assert_matches, fmt};
 
 use winnow::error::ContextError;
 use winnow::stream::{Stream, StreamIsPartial};
@@ -1686,6 +1686,28 @@ fn more_than_one() {
 #[test]
 fn fewer_than() {
     parser(bound, &["fewer", "than", "2"], &Bound::AtMost(1));
+}
+
+#[test]
+fn parse_fails() {
+    let content = include_str!("../../../../parse-fails.md");
+
+    let hints = content
+        .lines()
+        .skip_while(|line| !line.starts_with('|'))
+        .skip(2)
+        .take_while(|line| line.starts_with('|'))
+        .filter_map(|line| {
+            line.split('|')
+                .nth(3)
+                .map(str::trim)
+                .filter(|hint| !hint.is_empty() && !hint.starts_with('!'))
+        });
+
+    for hint in hints {
+        let result = Sentence::parse(hint);
+        assert_matches!(result, Err(_), "successfully parsed {hint:?}");
+    }
 }
 
 fn sentence(input: &str, expected: &Sentence) {
