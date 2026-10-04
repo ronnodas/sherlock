@@ -794,7 +794,14 @@ fn number_phrase(input: &mut &[&str]) -> Result<Number> {
 }
 
 fn number(input: &mut &str) -> Result<Number> {
-    alt((dec_uint, "none".value(0), "one".value(1), "two".value(2))).parse_next(input)
+    alt((
+        dec_uint,
+        "none".value(0),
+        "one".value(1),
+        "two".value(2),
+        "zero".value(0),
+    ))
+    .parse_next(input)
 }
 
 fn parity(input: &mut &[&str]) -> Result<Parity> {
