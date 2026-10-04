@@ -196,6 +196,19 @@ fn austin_2025_07_16() {
 }
 
 #[test]
+fn austin_2025_07_29() {
+    sentence(
+        "Vicky is one of multiple criminals to the left of Zed",
+        &Sentence::IsOneOfNInUnit(
+            Unit::direction(Direction::Left, "Zed"),
+            "Vicky".into(),
+            Cardinal::AtLeast(2),
+            Judgment::Criminal,
+        ),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",

@@ -794,6 +794,7 @@ fn cardinal(input: &mut &[&str]) -> Result<Cardinal> {
         terminated(number_phrase, opt(word("of"))).map(Cardinal::Exact),
         preceded(words(("at", "least")), word(number)).map(Cardinal::AtLeast),
         delimited(word("an"), parity, words(("number", "of"))).map(Cardinal::Parity),
+        word("multiple").value(Cardinal::AtLeast(2)),
     ))
     .parse_next(input)
 }
