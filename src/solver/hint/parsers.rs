@@ -128,25 +128,14 @@ impl Sentence {
 
     fn is_one_of_n_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
         alt((
-            separated_pair(
-                alt((
-                    terminated(word(name_subject), word(be_verb_singular)),
-                    word("I'm").value(NameRecipe::Me),
-                )),
-                words(("one", "of")),
-                cardinal_judged_unit,
-            )
-            .map(|(name, (count, judgment, unit))| {
-                Self::IsOneOfNInUnit(unit, name, count, judgment)
-            }),
-            separated_pair(
-                word(name_subject),
-                words(("is", "the", "only")),
-                judged_unit,
-            )
-            .map(|(name, (judgment, unit))| {
-                Self::IsOneOfNInUnit(unit, name, Cardinal::Exact(1), judgment)
-            }),
+            separated_pair(name_is, words(("one", "of")), cardinal_judged_unit).map(
+                |(name, (count, judgment, unit))| Self::IsOneOfNInUnit(unit, name, count, judgment),
+            ),
+            separated_pair(name_is, words(("the", "only")), judged_unit).map(
+                |(name, (judgment, unit))| {
+                    Self::IsOneOfNInUnit(unit, name, Cardinal::Exact(1), judgment)
+                },
+            ),
         ))
         .parse_next(input)
     }
@@ -272,8 +261,8 @@ impl Sentence {
                 Self::UniqueInUnitHasNNeighbors(unit, count, None, judgment)
             }),
             separated_pair(
-                word(name_subject),
-                words((be_verb_singular, "the", "only", alt(("one", "person")))),
+                name_is,
+                words(("the", "only", alt(("one", "person")))),
                 separated_pair(unit, word("with"), (cardinal, judged_neighbors)),
             )
             .map(|(name, (unit, (quantity, judgment)))| {
@@ -340,8 +329,8 @@ impl Sentence {
             .context(StrContext::Label("a matching row/column"))
             .map(|(line, (_, (quantity, judgment)))| (line.into(), quantity, judgment)),
             separated_pair(
-                word(name_subject),
-                words((be_verb_singular, "the", "only", "one", "with")),
+                name_is,
+                words(("the", "only", "one", "with")),
                 (cardinal, judged_neighbors),
             )
             .map(|(name, (quantity, judgment))| (UnitInSeries::Neighbor(name), quantity, judgment)),
@@ -910,6 +899,15 @@ fn name_has(input: &mut &[&str]) -> Result<NameRecipe> {
     .parse_next(input)
 }
 
+fn name_is(input: &mut &[&str]) -> Result<NameRecipe> {
+    alt((
+        word("I'm").value(NameRecipe::Me),
+        words(("I", "am")).value(NameRecipe::Me),
+        terminated(word(raw_name), word("is")).map(|name| NameRecipe::Explicit(name.into())),
+    ))
+    .parse_next(input)
+}
+
 fn name_subject(input: &mut &str) -> Result<NameRecipe> {
     raw_name
         .map(|name| {
@@ -1057,10 +1055,6 @@ fn neighboring_verb<'input, 'inner: 'input>(
 
 fn be_verb_third_person<'input>(input: &mut &'input str) -> Result<&'input str> {
     alt(("is", "are")).parse_next(input)
-}
-
-fn be_verb_singular<'input>(input: &mut &'input str) -> Result<&'input str> {
-    alt(("is", "am")).parse_next(input)
 }
 
 fn between(input: &mut &[&str]) -> Result<Unit> {

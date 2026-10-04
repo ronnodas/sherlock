@@ -906,6 +906,19 @@ fn terry_2026_07_21() {
 }
 
 #[test]
+fn tina_2026_07_28() {
+    sentence(
+        "I'm the only innocent to the right of Quita",
+        &Sentence::IsOneOfNInUnit(
+            Unit::Direction(Direction::Right, "Quita".into()),
+            Name::Me,
+            Cardinal::Exact(1),
+            Judgment::Innocent,
+        ),
+    );
+}
+
+#[test]
 fn kumar_2026_08_04() {
     sentence(
         "There is at least one criminal among each profession",
