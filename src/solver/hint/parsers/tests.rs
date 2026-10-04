@@ -188,6 +188,14 @@ fn isaac_2025_06_14() {
 }
 
 #[test]
+fn austin_2025_07_16() {
+    sentence(
+        "Isaac is one of the innocents in row 3",
+        &Sentence::IsInUnit(Row::Three.into(), "Isaac".into(), Judgment::Innocent),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",

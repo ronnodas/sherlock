@@ -52,6 +52,7 @@ pub(crate) enum Sentence {
         judgment: Judgment,
         other: Unit,
     },
+    IsInUnit(Unit, NameRecipe, Judgment),
 }
 
 impl AddContext for &Sentence {
@@ -62,7 +63,7 @@ impl AddContext for &Sentence {
             Sentence::UnitIsConnected(unit) => unit.members_are_connected(context)?,
             Sentence::BiggestInSeries(unit, judgment) => unit.has_most(*judgment, context)?,
             Sentence::IsOneOfNInUnit(unit, name, quantity, judgment) => {
-                unit.one_of_n_in_unit(name, *quantity, *judgment, context)?
+                unit.contains_in_n(name, *quantity, *judgment, context)?
             }
             Sentence::UnitBiggerThanUnit { big, small, excess } => {
                 big.bigger_than(small, *excess, context)?
@@ -155,6 +156,7 @@ impl AddContext for &Sentence {
                 judgment,
                 other,
             } => split.all_traits_are_in_unit(*judgment, other, context)?,
+            Sentence::IsInUnit(unit, name, judgment) => unit.contains(name, *judgment, context)?,
         };
         Ok(hints)
     }
@@ -515,7 +517,7 @@ impl Unit {
         Ok(hints)
     }
 
-    fn one_of_n_in_unit(
+    fn contains_in_n(
         &self,
         name: &NameRecipe,
         quantity: Cardinal,
@@ -561,6 +563,22 @@ impl Unit {
         } else {
             bail!("\"All\" should mean at least one, but {self:?} has no {judgment}")
         }
+        Ok(hints)
+    }
+
+    fn contains(
+        &self,
+        name: &NameRecipe,
+        judgment: Judgment,
+        context: Context<'_>,
+    ) -> Result<Vec<Hint>> {
+        let (set, mut hints) = self.add_context(context)?;
+        let coord = name.add_context(context)?;
+        let SetExpr::NonEmpty(set) = set else {
+            bail!("{self:?} is empty")
+        };
+        hints.extend(set.conditions_to_contain(coord)?);
+        hints.push(Hint::Judgment(coord, judgment));
         Ok(hints)
     }
 }

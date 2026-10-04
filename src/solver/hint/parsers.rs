@@ -71,7 +71,10 @@ impl Sentence {
                 terminated(Self::at_most_n_traits_in_neighbors_in_unit, eof),
                 terminated(Self::total_number_of_traits_in_units, eof),
             )),
-            terminated(Self::all_traits_in_unit_are_in_unit, eof),
+            alt((
+                terminated(Self::all_traits_in_unit_are_in_unit, eof),
+                terminated(Self::is_one_of_traits_in_unit, eof),
+            )),
         ))
         .parse_next(input)
     }
@@ -138,6 +141,12 @@ impl Sentence {
             ),
         ))
         .parse_next(input)
+    }
+
+    fn is_one_of_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
+        separated_pair(name_is, words(("one", "of", determiner)), judged_unit)
+            .map(|(name, (judgment, unit))| Self::IsInUnit(unit, name, judgment))
+            .parse_next(input)
     }
 
     fn more_traits_in_unit_than_unit(input: &mut &[&str]) -> Result<Self> {
