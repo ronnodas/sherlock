@@ -687,8 +687,10 @@ mod tests {
                 continue;
             };
             Sentence::parse(hint)
+                .with_context(|| format!("parsing {hint}"))
                 .unwrap()
                 .add_context(lookup.context(speaker))
+                .with_context(|| format!("parsing {hint}"))
                 .unwrap()
                 .into_iter()
                 .for_each(|hint| engine.add_parsed_hint(&hint));
