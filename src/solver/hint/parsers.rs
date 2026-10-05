@@ -129,6 +129,14 @@ impl Sentence {
                 terminated(word(judgment_singular), word("neighbors")),
             )
             .map(|(name, judgment)| Self::BiggestInSeries(UnitInSeries::Neighbor(name), judgment)),
+            separated_pair(
+                word(profession_singular),
+                words(("is", "the", "profession", "with", "the", "most")),
+                word(judgment_plural),
+            )
+            .map(|(profession, judgment)| {
+                Self::BiggestInSeries(UnitInSeries::Profession(profession), judgment)
+            }),
         ))
         .parse_next(input)
     }

@@ -188,6 +188,14 @@ fn isaac_2025_06_14() {
 }
 
 #[test]
+fn gary_2025_07_07() {
+    sentence(
+        "coder is the profession with the most innocents",
+        &Sentence::BiggestInSeries(UnitInSeries::profession("coder"), Judgment::Innocent),
+    );
+}
+
+#[test]
 fn austin_2025_07_16() {
     sentence(
         "Isaac is one of the innocents in row 3",
