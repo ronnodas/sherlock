@@ -462,7 +462,10 @@ impl Sentence {
         alt((
             terminated(
                 separated_pair(pair(name_subject, "and"), word("have"), cardinal_judgment),
-                words((neighbor_any, "in", "common")),
+                alt((
+                    words((neighbor_any, "in", "common")).void(),
+                    words(("common", neighbor_any)).void(),
+                )),
             )
             .map(|(names, (count, judgment))| {
                 (
