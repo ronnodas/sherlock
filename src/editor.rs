@@ -47,7 +47,7 @@ impl BoardEditor {
             .cards
             .into_values()
             .filter_map(CardEdit::finalize)
-            .collect_vec()
+            .collect::<Vec<_>>()
             .try_into()
             .map_err(|cards: Vec<_>| {
                 anyhow!("grid is incomplete: only {}/20 cards defined", cards.len())

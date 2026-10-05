@@ -328,7 +328,7 @@ impl Solved {
                     let judgment = self.board.back(coord).judgment();
                     Suspect::new(coord, name, judgment)
                 })
-                .collect_vec();
+                .collect();
             Select::new("Which card is revealed at the start?", options)
                 .prompt()?
                 .coord
@@ -787,16 +787,16 @@ mod tests {
 
         let (mut solver, _pending) = parsed.into_solver::<BruteForceSolver>();
         for &changes in steps {
-            let deductions = changes
+            let deductions: Vec<_> = changes
                 .iter()
                 .map(|&(name, judgment)| (Name::from(name), judgment))
-                .collect_vec();
-            let inferences = solver
+                .collect();
+            let inferences: Vec<_> = solver
                 .updates()
                 .unwrap()
                 .into_iter()
                 .map(|update| (update.name, update.judgment))
-                .collect_vec();
+                .collect();
             assert_eq!(inferences, deductions);
             for &(speaker, _) in changes {
                 if let Some(&hint) = hints.get(speaker) {

@@ -1,7 +1,6 @@
 use std::iter::once;
 
 use anyhow::anyhow;
-use itertools::Itertools as _;
 use winnow::ascii::dec_uint;
 use winnow::combinator::{
     alt, delimited, dispatch, empty, eof, fail, opt, preceded, separated_pair, terminated,
@@ -21,17 +20,17 @@ pub(crate) use phrases::{Sentence, Series, Unit, UnitInSeries};
 
 impl Sentence {
     pub(crate) fn parse(hint: &str) -> anyhow::Result<Self> {
-        let words = hint
+        let words: Vec<_> = hint
             .split_ascii_whitespace()
             .filter(|word| !word.is_empty())
-            .collect_vec();
+            .collect();
         Self::parse_cased(&words)
             .or_else(move |e| {
                 if let Some(&word) = words.first() {
                     let mut word = word.to_owned();
                     if let Some(first_char) = word.get_mut(..1) {
                         first_char.make_ascii_lowercase();
-                        let words = once(&*word).chain(words.into_iter().skip(1)).collect_vec();
+                        let words: Vec<_> = once(&*word).chain(words.into_iter().skip(1)).collect();
                         return Self::parse_cased(&words);
                     }
                 }

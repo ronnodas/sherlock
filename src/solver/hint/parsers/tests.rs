@@ -1,6 +1,5 @@
 use std::fmt;
 
-use itertools::Itertools as _;
 use winnow::Parser;
 use winnow::error::ParserError;
 use winnow::stream::{Stream, StreamIsPartial};
@@ -1345,7 +1344,7 @@ fn flora_community_6eebae_d5d5560b65d3f7ba() {
 }
 
 fn sentence(input: &str, sentence: &Sentence) {
-    let input = input.split(' ').filter(|s| !s.is_empty()).collect_vec();
+    let input: Vec<_> = input.split(' ').filter(|s| !s.is_empty()).collect();
     parser(&Sentence::any, &input, sentence);
 }
 

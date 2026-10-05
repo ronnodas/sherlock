@@ -687,7 +687,7 @@ mod tests {
 
     #[test]
     fn coordinate_all_order() {
-        let coords = Coord::all().into_iter().collect_vec();
+        let coords: Vec<_> = Coord::all().into_iter().collect();
         assert_eq!(coords.len(), 20);
         assert_eq!(coords[0].to_string(), "A1");
         assert_eq!(coords[1].to_string(), "B1");

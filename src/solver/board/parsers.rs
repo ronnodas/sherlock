@@ -1,7 +1,6 @@
 use std::fmt;
 
 use anyhow::{Context as _, Result, anyhow, bail};
-use itertools::Itertools as _;
 use jiff::civil::Date;
 use lazy_regex::regex_captures;
 use select::document::Document;
@@ -176,7 +175,7 @@ pub(crate) trait NodeExt<'html>: Sized + fmt::Debug {
             Err(anyhow!(
                 "expecting {predicate:?}, found name: {:?}, attrs: {:?}",
                 self.name(),
-                self.attrs().collect_vec()
+                self.attrs().collect::<Vec<_>>()
             ))
         }
     }
@@ -185,10 +184,10 @@ pub(crate) trait NodeExt<'html>: Sized + fmt::Debug {
         &self,
         predicate: impl Predicate + Copy,
     ) -> Result<[Node<'html>; N]> {
-        let children = self
+        let children: Vec<_> = self
             .children()
             .filter(|child| child.name().is_some() && child.is(predicate))
-            .collect_vec();
+            .collect();
         children.try_into().map_err(|children: Vec<Node<'_>>| {
             anyhow!("expecting {N} children, found {}", children.len())
         })
