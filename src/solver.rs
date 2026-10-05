@@ -456,12 +456,11 @@ impl ParsedBoard {
     }
 
     pub(crate) fn from_html_interactive(html: &str, save_name: Option<String>) -> Result<Self> {
-        let HtmlBoard {
-            board,
-            format,
-            metadata,
-        } = HtmlBoard::parse(html)?;
-        let metadata = if let Some(metadata) = metadata {
+        Self::from_html_board(HtmlBoard::parse(html)?, save_name)
+    }
+
+    pub(crate) fn from_html_board(board: HtmlBoard, save_name: Option<String>) -> Result<Self> {
+        let metadata = if let Some(metadata) = board.metadata {
             metadata.into()
         } else {
             let kind = Select::new("enter puzzle id", PuzzleIdDiscriminants::VARIANTS.to_vec())
@@ -496,7 +495,7 @@ impl ParsedBoard {
             }
         };
 
-        Self::from_html_common(board, format, metadata, save_name)
+        Self::from_html_common(board.board, board.format, metadata, save_name)
     }
 
     fn from_html_common(

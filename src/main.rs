@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::{fmt, fs};
 
 use anyhow::{Result, bail};
+use arboard::Clipboard;
 use bpaf::{Bpaf, Parser as _};
 use inquire::{Confirm, Editor, Select, Text};
 use jiff::Timestamp;
@@ -12,6 +13,7 @@ use crate::editor::BoardEditor;
 use crate::models::{PartialMetadata, Puzzle, PuzzleId};
 use crate::player::App;
 use crate::solver::ParsedBoard;
+use crate::solver::board::HtmlBoard;
 
 mod editor;
 mod grid;
@@ -32,6 +34,7 @@ fn main() -> Result<()> {
         Args::Html { path } => MainMenu::Solve(read_from_file(path, FileType::Html)?),
         Args::Load { path } => MainMenu::Solve(read_from_file(path, FileType::Ron)?),
         Args::Today => MainMenu::Solve(fetch_today()?),
+        Args::Paste => MainMenu::Solve(paste()?),
         Args::Archive { id_or_url } => MainMenu::Solve(archive(&id_or_url)?),
     };
     match result {
@@ -74,10 +77,7 @@ fn main_menu() -> Result<MainMenu> {
                 let path = Text::new("Enter path to html:").prompt()?;
                 MainMenu::Solve(read_from_file(path, FileType::Html)?)
             }
-            InputMode::Paste => {
-                let html = Editor::new("Enter HTML in your editor:").prompt()?;
-                MainMenu::Solve(ParsedBoard::from_html_interactive(&html, None)?)
-            }
+            InputMode::Paste => MainMenu::Solve(paste()?),
             InputMode::Manual => {
                 if let Some(board) = manual_mode()? {
                     MainMenu::Solve(board)
@@ -88,6 +88,18 @@ fn main_menu() -> Result<MainMenu> {
             InputMode::Replay => MainMenu::Play(load_puzzle()?),
         };
         return Ok(result);
+    }
+}
+
+fn paste() -> Result<ParsedBoard> {
+    if let Ok(mut clipboard) = Clipboard::new()
+        && let Ok(text) = clipboard.get_text()
+        && let Ok(board) = HtmlBoard::parse(&text)
+    {
+        ParsedBoard::from_html_board(board, None)
+    } else {
+        let html = Editor::new("Enter HTML in your editor:").prompt()?;
+        ParsedBoard::from_html_interactive(&html, None)
     }
 }
 
@@ -236,6 +248,10 @@ enum Args {
     /// Load today's puzzle
     #[bpaf(command("today"), short('t'))]
     Today,
+
+    /// Load today's puzzle
+    #[bpaf(command("paste"), short('p'))]
+    Paste,
 
     /// Load a puzzle from the online archive
     #[bpaf(command("archive"), short('a'))]
