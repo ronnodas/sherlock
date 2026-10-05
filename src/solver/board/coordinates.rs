@@ -341,11 +341,6 @@ impl SetExpr {
         }
     }
 
-    pub(crate) fn from_regular(set: Set) -> Self {
-        set.non_empty()
-            .map_or(Self::Empty, |set| Self::NonEmpty(set.into()))
-    }
-
     pub(crate) fn regular(self) -> Result<Set, SetOp1> {
         match self {
             Self::Empty => Ok(Set::empty()),
@@ -362,8 +357,9 @@ impl From<SetExpr1> for SetExpr {
 }
 
 impl From<Set> for SetExpr {
-    fn from(v: Set) -> Self {
-        Self::from_regular(v)
+    fn from(set: Set) -> Self {
+        set.non_empty()
+            .map_or(Self::Empty, |set| Self::NonEmpty(set.into()))
     }
 }
 
@@ -375,7 +371,7 @@ impl From<Set1> for SetExpr {
 
 impl From<Line> for SetExpr {
     fn from(line: Line) -> Self {
-        Self::from_regular(line.into())
+        Set::from(line).into()
     }
 }
 
@@ -390,7 +386,7 @@ impl SetEval for SetExpr {
 
 impl FromIterator<Coord> for SetExpr {
     fn from_iter<T: IntoIterator<Item = Coord>>(iter: T) -> Self {
-        Self::from_regular(iter.into_iter().collect())
+        iter.into_iter().collect::<Set>().into()
     }
 }
 
@@ -423,7 +419,7 @@ impl SetExpr1 {
 
     pub(crate) fn shift(self, direction: Direction) -> SetExpr {
         match self {
-            Self::Regular(set) => SetExpr::from_regular(set.shift(direction)),
+            Self::Regular(set) => set.shift(direction).into(),
             Self::Op(op) => op.shift(direction).into(),
         }
     }
