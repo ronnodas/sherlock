@@ -6,7 +6,7 @@ use mitsein::vec1::Vec1;
 use strum::EnumDiscriminants;
 
 use crate::models::{Column, Coord, Judgment, Row, Solution};
-use crate::solver::board::coordinates::{Set, Set1, Set1Expr, Set1Op};
+use crate::solver::board::coordinates::{Set, Set1, SetExpr1, SetOp1};
 
 mod parsers;
 pub(crate) mod recipes;
@@ -19,20 +19,20 @@ pub(crate) enum Hint {
     /// Given coordinate has given judgment
     Judgment(Coord, Judgment),
     /// Given set of coordinates has that many suspects
-    Count(Set1Op, CardinalOrNot),
+    Count(SetOp1, CardinalOrNot),
     /// Given set of coordinates in total have that many suspects
-    CountTotal([Set1Op; 2], Cardinal),
+    CountTotal([SetOp1; 2], Cardinal),
     /// Given set of coordinates is connected
-    Connected(Set1Op),
+    Connected(SetOp1),
     /// The first set compares with the second set
-    CompareSets([Set1Op; 2], Comparison),
+    CompareSets([SetOp1; 2], Comparison),
     /// Among the given `sets`, `count` many have `each` suspects
-    UniqueWithCount { sets: Vec1<Set1Op>, count: Cardinal },
+    UniqueWithCount { sets: Vec1<SetOp1>, count: Cardinal },
     /// Each member of the given set has a given number of neighbors with the given judgment
-    EachNeighbors(Set1Expr, Cardinal, Judgment),
+    EachNeighbors(SetExpr1, Cardinal, Judgment),
     /// `count` many members of the given set has `each` neighbors with given judgment
     CountWithNeighbors {
-        set: Set1Expr,
+        set: SetExpr1,
         each: Cardinal,
         count: Cardinal,
         judgment: Judgment,

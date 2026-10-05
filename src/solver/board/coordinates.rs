@@ -210,8 +210,8 @@ impl Set1 {
             .collect()
     }
 
-    pub(crate) fn judged(self, judgment: Judgment) -> Set1Op {
-        Set1Op::Judged(Box::new(Set1Expr::Regular(self)), judgment)
+    pub(crate) fn judged(self, judgment: Judgment) -> SetOp1 {
+        SetOp1::Judged(Box::new(SetExpr1::Regular(self)), judgment)
     }
 
     pub(crate) fn complement(self) -> Set {
@@ -321,7 +321,7 @@ impl fmt::Debug for Set1 {
 #[derive(Clone, Debug)]
 pub(crate) enum SetExpr {
     Empty,
-    NonEmpty(Set1Expr),
+    NonEmpty(SetExpr1),
 }
 
 impl SetExpr {
@@ -346,17 +346,17 @@ impl SetExpr {
             .map_or(Self::Empty, |set| Self::NonEmpty(set.into()))
     }
 
-    pub(crate) fn regular(self) -> Result<Set, Set1Op> {
+    pub(crate) fn regular(self) -> Result<Set, SetOp1> {
         match self {
             Self::Empty => Ok(Set::empty()),
-            Self::NonEmpty(Set1Expr::Regular(set)) => Ok(set.into()),
-            Self::NonEmpty(Set1Expr::Op(set)) => Err(set),
+            Self::NonEmpty(SetExpr1::Regular(set)) => Ok(set.into()),
+            Self::NonEmpty(SetExpr1::Op(set)) => Err(set),
         }
     }
 }
 
-impl From<Set1Expr> for SetExpr {
-    fn from(set: Set1Expr) -> Self {
+impl From<SetExpr1> for SetExpr {
+    fn from(set: SetExpr1) -> Self {
         Self::NonEmpty(set)
     }
 }
@@ -395,16 +395,16 @@ impl FromIterator<Coord> for SetExpr {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum Set1Expr {
+pub(crate) enum SetExpr1 {
     Regular(Set1),
-    Op(Set1Op),
+    Op(SetOp1),
 }
 
-impl Set1Expr {
+impl SetExpr1 {
     pub(crate) fn judged(self, judgment: Judgment) -> SetOp {
         match self {
             Self::Op(set) => set.judged(judgment),
-            Self::Regular(_) => Set1Op::Judged(Box::new(self), judgment).into(),
+            Self::Regular(_) => SetOp1::Judged(Box::new(self), judgment).into(),
         }
     }
 
@@ -429,19 +429,19 @@ impl Set1Expr {
     }
 }
 
-impl From<Set1> for Set1Expr {
+impl From<Set1> for SetExpr1 {
     fn from(set: Set1) -> Self {
         Self::Regular(set)
     }
 }
 
-impl From<Set1Op> for Set1Expr {
-    fn from(v: Set1Op) -> Self {
+impl From<SetOp1> for SetExpr1 {
+    fn from(v: SetOp1) -> Self {
         Self::Op(v)
     }
 }
 
-impl SetEval for Set1Expr {
+impl SetEval for SetExpr1 {
     fn eval(&self, solution: &Solution) -> Set {
         match self {
             &Self::Regular(set) => set.into(),
@@ -451,14 +451,14 @@ impl SetEval for Set1Expr {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum Set1Op {
-    Judged(Box<Set1Expr>, Judgment),
+pub(crate) enum SetOp1 {
+    Judged(Box<SetExpr1>, Judgment),
     Shift(Box<Self>, Direction),
     // the `Option` could be replaced by `Set1::all()` but this seems semantically better
     Intersection(Vec1<Self>, Option<Set1>),
 }
 
-impl Set1Op {
+impl SetOp1 {
     pub(crate) fn judged(self, judgment: Judgment) -> SetOp {
         match self {
             Self::Judged(this, other) if other == judgment => Self::Judged(this, other).into(),
@@ -527,8 +527,8 @@ impl Set1Op {
         match [self, rhs] {
             [this, Self::Judged(rhs, judgment)] | [Self::Judged(rhs, judgment), this] => match *rhs
             {
-                Set1Expr::Regular(rhs) => this.intersect_set1(rhs),
-                Set1Expr::Op(rhs) => this.intersect(rhs),
+                SetExpr1::Regular(rhs) => this.intersect_set1(rhs),
+                SetExpr1::Op(rhs) => this.intersect(rhs),
             }
             .judged(judgment),
 
@@ -555,13 +555,13 @@ impl Set1Op {
     }
 }
 
-impl From<Set1Op> for SetExpr {
-    fn from(set: Set1Op) -> Self {
+impl From<SetOp1> for SetExpr {
+    fn from(set: SetOp1) -> Self {
         Self::NonEmpty(set.into())
     }
 }
 
-impl SetEval for Set1Op {
+impl SetEval for SetOp1 {
     fn eval(&self, solution: &Solution) -> Set {
         match self {
             Self::Judged(inner, judgment) => inner
@@ -588,7 +588,7 @@ impl SetEval for Set1Op {
 #[derive(Clone, Debug)]
 pub(crate) enum SetOp {
     Empty,
-    NonEmpty(Set1Op),
+    NonEmpty(SetOp1),
 }
 
 impl SetOp {
@@ -622,8 +622,8 @@ impl SetOp {
     }
 }
 
-impl From<Set1Op> for SetOp {
-    fn from(v: Set1Op) -> Self {
+impl From<SetOp1> for SetOp {
+    fn from(v: SetOp1) -> Self {
         Self::NonEmpty(v)
     }
 }
