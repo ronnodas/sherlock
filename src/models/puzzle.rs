@@ -216,6 +216,7 @@ impl PuzzleId {
 #[derive(Serialize, Deserialize, VariantArray, Display, Clone, Copy, Debug, EnumString)]
 #[strum(serialize_all = "title_case")]
 pub(crate) enum Difficulty {
+    Beginner,
     Easy,
     Medium,
     Tricky,
