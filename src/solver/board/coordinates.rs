@@ -3,17 +3,16 @@ use std::fmt;
 use std::num::NonZero;
 use std::ops::{BitAnd, BitOr};
 
-use anyhow::{Context as _, Result, anyhow, bail};
+use anyhow::{Result, anyhow};
 use bitvec::order::Lsb0;
 use bitvec::view::BitView as _;
-use itertools::Itertools as _;
 use mitsein::iter1::{FromIterator1, IntoIterator1, Iterator1};
 use mitsein::vec1::{Vec1, vec1};
 
 use crate::macros::set1;
 use crate::models::{Column, Coord, Direction, Row, SetEval, Solution};
 use crate::solver::Judgment;
-use crate::solver::hint::{Hint, Line};
+use crate::solver::hint::Line;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub(crate) struct Set(u32);
@@ -218,6 +217,14 @@ impl Set1 {
     pub(crate) fn complement(self) -> Set {
         Set::from(self).complement()
     }
+
+    pub(crate) fn assert_contains(self, coord: Coord) -> Result<()> {
+        if self.contains(coord) {
+            Ok(())
+        } else {
+            Err(anyhow!("{self:?} does not contain {coord}"))
+        }
+    }
 }
 
 impl PartialOrd for Set1 {
@@ -326,22 +333,6 @@ impl SetExpr {
         }
     }
 
-    pub(crate) fn intersect(self, rhs: Self) -> Self {
-        if let Self::NonEmpty(rhs) = rhs {
-            self.intersect1(rhs)
-        } else {
-            Self::Empty
-        }
-    }
-
-    pub(crate) fn intersect1(self, rhs: Set1Expr) -> Self {
-        if let Self::NonEmpty(set) = self {
-            set.intersect(rhs)
-        } else {
-            Self::Empty
-        }
-    }
-
     pub(crate) fn shift(self, direction: Direction) -> Self {
         if let Self::NonEmpty(set) = self {
             set.shift(direction)
@@ -424,7 +415,7 @@ impl Set1Expr {
                 .filter(|&coord| rhs.contains(coord))
                 .collect(),
             (Self::Regular(set), Self::Op(op)) | (Self::Op(op), Self::Regular(set)) => {
-                op.intersect_set(set).into()
+                op.intersect_set1(set).into()
             }
             (Self::Op(this), Self::Op(rhs)) => this.intersect(rhs).into(),
         }
@@ -434,19 +425,6 @@ impl Set1Expr {
         match self {
             Self::Regular(set) => SetExpr::from_regular(set.shift(direction)),
             Self::Op(op) => op.shift(direction).into(),
-        }
-    }
-
-    pub(crate) fn conditions_to_contain(&self, coord: Coord) -> Result<Vec<Hint>> {
-        match self {
-            Self::Regular(set) => {
-                if set.contains(coord) {
-                    Ok(Vec::new())
-                } else {
-                    Err(anyhow!("{self:?} does not contain {coord}"))
-                }
-            }
-            Self::Op(op) => op.conditions_to_contain(coord),
         }
     }
 }
@@ -494,7 +472,7 @@ impl Set1Op {
     pub(crate) fn shift(self, direction: Direction) -> SetOp {
         match self {
             Self::Judged(..) | Self::Shift(..) => {
-                let inner = self.intersect_set(Set1::shift_preimage(direction));
+                let inner = self.intersect_set1(Set1::shift_preimage(direction));
                 if let SetOp::NonEmpty(inner) = inner {
                     Self::Shift(Box::new(inner), direction).into()
                 } else {
@@ -518,14 +496,19 @@ impl Set1Op {
         }
     }
 
-    fn intersect_set(self, rhs: Set1) -> SetOp {
+    pub(crate) fn intersect_set(self, rhs: Set) -> SetOp {
+        rhs.non_empty()
+            .map_or(SetOp::Empty, |rhs| self.intersect_set1(rhs))
+    }
+
+    fn intersect_set1(self, rhs: Set1) -> SetOp {
         match self {
             Self::Judged(this, judgment) => (*this).intersect(rhs.into()).judged(judgment),
             Self::Shift(this, direction) => {
                 let Some(pre_shift) = rhs.shift(direction.flip()).non_empty() else {
                     return SetOp::Empty;
                 };
-                (*this).intersect_set(pre_shift).shift(direction)
+                (*this).intersect_set1(pre_shift).shift(direction)
             }
             Self::Intersection(vec, fixed) => {
                 let fixed = match fixed {
@@ -544,7 +527,7 @@ impl Set1Op {
         match [self, rhs] {
             [this, Self::Judged(rhs, judgment)] | [Self::Judged(rhs, judgment), this] => match *rhs
             {
-                Set1Expr::Regular(rhs) => this.intersect_set(rhs),
+                Set1Expr::Regular(rhs) => this.intersect_set1(rhs),
                 Set1Expr::Op(rhs) => this.intersect(rhs),
             }
             .judged(judgment),
@@ -567,33 +550,6 @@ impl Set1Op {
                 } else {
                     intersection
                 }
-            }
-        }
-    }
-
-    pub(crate) fn conditions_to_contain(&self, coord: Coord) -> Result<Vec<Hint>> {
-        match self {
-            Self::Judged(inner, judgment) => {
-                let mut hints = inner.conditions_to_contain(coord)?;
-                hints.push(Hint::Judgment(coord, *judgment));
-                Ok(hints)
-            }
-            Self::Shift(inner, direction) => {
-                let coord = coord
-                    .step(direction.flip())
-                    .with_context(|| format!("{coord} is not {direction:?} of anything"))?;
-                inner.conditions_to_contain(coord)
-            }
-            Self::Intersection(vec, fixed) => {
-                if let Some(fixed) = fixed
-                    && !fixed.contains(coord)
-                {
-                    bail!("{self:?} does not contain {coord}")
-                }
-                vec.into_iter()
-                    .map(|set| set.conditions_to_contain(coord))
-                    .flatten_ok()
-                    .collect()
             }
         }
     }
@@ -647,7 +603,7 @@ impl SetOp {
     fn intersect_set(self, rhs: Set1) -> Self {
         match self {
             Self::Empty => Self::Empty,
-            Self::NonEmpty(set) => set.intersect_set(rhs),
+            Self::NonEmpty(set) => set.intersect_set1(rhs),
         }
     }
 
@@ -658,7 +614,7 @@ impl SetOp {
         }
     }
 
-    fn judged(self, judgment: Judgment) -> Self {
+    pub(crate) fn judged(self, judgment: Judgment) -> Self {
         match self {
             Self::Empty => Self::Empty,
             Self::NonEmpty(set) => set.judged(judgment),

@@ -1,7 +1,5 @@
 use std::ops::{BitXor, Not};
 
-use anyhow::{Context as _, Result, bail};
-use itertools::Itertools as _;
 use mitsein::array_vec1::ArrayVec1;
 use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
@@ -83,41 +81,6 @@ impl Hint {
                     let neighbors = solution.select(&coord.neighbors().judged(*judgment)).len();
                     cardinal.matches(neighbors)
                 })
-            }
-        }
-    }
-
-    fn contains(set: &Set1Op, coord: Coord) -> Result<Vec<Self>> {
-        match set {
-            Set1Op::Judged(inner, judgment) => {
-                let mut hints = match inner.as_ref() {
-                    &Set1Expr::Regular(set) => {
-                        if !set.contains(coord) {
-                            bail!("{set:?} does not contain {coord}")
-                        }
-                        vec![]
-                    }
-                    Set1Expr::Op(set) => Self::contains(set, coord)?,
-                };
-                hints.push(Self::Judgment(coord, *judgment));
-                Ok(hints)
-            }
-            Set1Op::Shift(inner, direction) => {
-                let pre_shift = coord
-                    .step(direction.flip())
-                    .with_context(|| format!("{coord:?} is not {direction:?} from anyone"))?;
-                Self::contains(inner, pre_shift)
-            }
-            Set1Op::Intersection(vec, fixed) => {
-                if let Some(set) = fixed
-                    && !set.contains(coord)
-                {
-                    bail!("{set:?} does not contain {coord}")
-                }
-                vec.iter()
-                    .map(|set| Self::contains(set, coord))
-                    .flatten_ok()
-                    .collect()
             }
         }
     }
