@@ -639,17 +639,25 @@ impl Sentence {
     }
 
     fn at_most_n_traits_in_neighbors_in_unit(input: &mut &[&str]) -> Result<Self> {
-        separated_pair(
-            preceded(words(("No", "one")), unit),
-            words(("has", "more", "than")),
-            (
-                word(number),
-                terminated(word(judgment_singular), word(neighbor_any)),
-            ),
-        )
-        .map(|(unit, (number, judgment))| {
-            Self::EachInUnitHasAtMostNNeighbors(unit, number, judgment)
-        })
+        alt((
+            separated_pair(
+                preceded(words(("No", "one")), unit),
+                words(("has", "more", "than")),
+                (
+                    word(number),
+                    terminated(word(judgment_singular), word(neighbor_any)),
+                ),
+            )
+            .map(|(unit, (number, judgment))| (unit, Cardinal::AtMost(number), judgment)),
+            separated_pair(
+                preceded(word("Everyone"), unit),
+                word("has"),
+                (cardinal, judged_neighbors),
+            )
+            .map(|(unit, (cardinal, judgment))| (unit, cardinal, judgment)),
+            // Everyone in column D has at least 2 innocent neighbors
+        ))
+        .map(|(unit, count, judgment)| Self::EachInUnitHasNNeighbors(unit, count, judgment))
         .parse_next(input)
     }
 

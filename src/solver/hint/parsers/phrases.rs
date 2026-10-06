@@ -45,7 +45,7 @@ pub(crate) enum Sentence {
     },
     // TODO replace with UnitSize?
     IntersectionSize([Unit; 2], Quantifier, Judgment),
-    EachInUnitHasAtMostNNeighbors(Unit, Number, Judgment),
+    EachInUnitHasNNeighbors(Unit, Cardinal, Judgment),
     TotalUnitsSize([Unit; 2], Cardinal, Judgment),
     TraitsInUnitAreInUnit {
         any_all: AnyAll,
@@ -138,8 +138,8 @@ impl AddContext for &Sentence {
             Sentence::HasTrait(name, judgment) => {
                 vec![Hint::Judgment(name.add_context(context)?, *judgment)]
             }
-            Sentence::EachInUnitHasAtMostNNeighbors(unit, number, judgment) => {
-                unit.members_have_at_most_neighbors(*number, *judgment, context)?
+            Sentence::EachInUnitHasNNeighbors(unit, count, judgment) => {
+                unit.members_have_at_most_neighbors(*count, *judgment, context)?
             }
             Sentence::NInUnitHaveNNeighbors {
                 unit,
@@ -420,18 +420,14 @@ impl Unit {
 
     fn members_have_at_most_neighbors(
         &self,
-        number: Number,
+        count: Cardinal,
         judgment: Judgment,
         context: Context<'_>,
     ) -> Result<Vec<Hint>> {
         let set = self.add_context(context)?;
-        let hints = set.non_empty().map_or_default(|set| {
-            vec![Hint::EachNeighbors(
-                set.into(),
-                Cardinal::AtMost(number),
-                judgment,
-            )]
-        });
+        let hints = set
+            .non_empty()
+            .map_or_default(|set| vec![Hint::EachNeighbors(set.into(), count, judgment)]);
         Ok(hints)
     }
 

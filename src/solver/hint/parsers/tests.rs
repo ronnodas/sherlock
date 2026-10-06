@@ -299,7 +299,11 @@ fn xena_2026_01_15() {
 fn salil_2026_01_15() {
     sentence(
         "No one in row 4 has more than 2 criminal neighbors",
-        &Sentence::EachInUnitHasAtMostNNeighbors(Row::Four.into(), 2, Judgment::Criminal),
+        &Sentence::EachInUnitHasNNeighbors(
+            Row::Four.into(),
+            Cardinal::AtMost(2),
+            Judgment::Criminal,
+        ),
     );
 }
 
@@ -1018,6 +1022,18 @@ fn bobby_2026_08_26() {
 }
 
 #[test]
+fn hal_2026_10_06() {
+    sentence(
+        "Everyone in column D has at least 2 innocent neighbors",
+        &Sentence::EachInUnitHasNNeighbors(
+            Column::D.into(),
+            Cardinal::AtLeast(2),
+            Judgment::Innocent,
+        ),
+    );
+}
+
+#[test]
 fn diane_0cf47() {
     sentence(
         "Xavi has more criminal neighbors than Ben",
@@ -1323,7 +1339,11 @@ fn eve_puzzle_pack_1_49() {
 fn debra_community_49f3f1_9eb600102931a676() {
     sentence(
         "No one in row 1 has more than one criminal neighbor",
-        &Sentence::EachInUnitHasAtMostNNeighbors(Row::One.into(), 1, Judgment::Criminal),
+        &Sentence::EachInUnitHasNNeighbors(
+            Row::One.into(),
+            Cardinal::AtMost(1),
+            Judgment::Criminal,
+        ),
     );
 }
 
