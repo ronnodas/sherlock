@@ -473,6 +473,13 @@ impl Sentence {
                     word("share"),
                     (cardinal, judged_neighbors),
                 ),
+                (
+                    there_is,
+                    cardinal_judgment,
+                    (neighboring_verb, word("both")),
+                    pair(name_object, "and"),
+                )
+                    .map(|(_, count_judgment, _, names)| (names, count_judgment)),
             ))
             .map(|(names, (count, judgment))| {
                 (
