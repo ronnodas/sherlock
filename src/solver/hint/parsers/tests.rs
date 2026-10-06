@@ -242,6 +242,18 @@ fn gus_2025_08_18() {
 }
 
 #[test]
+fn pam_2025_08_19() {
+    sentence(
+        "There's an odd number of innocents on the edges of column C",
+        &Sentence::IntersectionSize(
+            [Unit::Edges, Column::C.into()],
+            Parity::Odd.into(),
+            Judgment::Innocent,
+        ),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",

@@ -460,13 +460,20 @@ impl Sentence {
 
     fn units_share_n_traits(input: &mut &[&str]) -> Result<Self> {
         alt((
-            terminated(
-                separated_pair(pair(name_subject, "and"), word("have"), cardinal_judgment),
-                alt((
-                    words((neighbor_any, "in", "common")).void(),
-                    words(("common", neighbor_any)).void(),
-                )),
-            )
+            alt((
+                terminated(
+                    separated_pair(pair(name_subject, "and"), word("have"), cardinal_judgment),
+                    alt((
+                        words((neighbor_any, "in", "common")).void(),
+                        words(("common", neighbor_any)).void(),
+                    )),
+                ),
+                separated_pair(
+                    pair(name_subject, "and"),
+                    word("share"),
+                    (cardinal, judged_neighbors),
+                ),
+            ))
             .map(|(names, (count, judgment))| {
                 (
                     names.map(Unit::Neighbor),
@@ -495,24 +502,21 @@ impl Sentence {
                         Quantifier::Simple(quantity),
                     )
                 }),
-            separated_pair(
-                pair(name_subject, "and"),
-                word("share"),
-                (cardinal, judged_neighbors),
-            )
-            .map(|(names, (quantity, judgment))| {
-                (
-                    names.map(Unit::Neighbor),
-                    judgment,
-                    Quantifier::Simple(quantity),
-                )
-            }),
             (
                 separated_pair(quantified_unit, neighboring_verb, word(name_object)),
                 is_judgment_any,
             )
                 .map(|(((quantifier, a), b), judgment)| {
                     ([a, Unit::Neighbor(b)], judgment, quantifier)
+                }),
+            (
+                there_is,
+                cardinal_judgment,
+                words(("on", "the", "edges", "of")),
+                line,
+            )
+                .map(|(_, (count, judgment), _, line)| {
+                    ([Unit::Edges, line.into()], judgment, count.into())
                 }),
         ))
         .map(|(units, judgment, cardinal)| Self::IntersectionSize(units, cardinal, judgment))
