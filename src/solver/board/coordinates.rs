@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::fmt;
 use std::num::NonZero;
-use std::ops::{BitAnd, BitOr};
+use std::ops::{BitAnd, BitOr, BitXor};
 
 use anyhow::{Result, anyhow};
 use bitvec::order::Lsb0;
@@ -101,6 +101,14 @@ impl BitOr<Self> for Set {
 
     fn bitor(self, rhs: Self) -> Self::Output {
         Self(self.0 | rhs.0)
+    }
+}
+
+impl BitXor for Set {
+    type Output = Self;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        Self(self.0 ^ rhs.0)
     }
 }
 
@@ -278,6 +286,14 @@ impl BitOr<Set> for Set1 {
 
     fn bitor(self, rhs: Set) -> Self::Output {
         Self(self.0 | rhs.0)
+    }
+}
+
+impl BitXor for Set1 {
+    type Output = Set;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        Set::from(self) ^ Set::from(rhs)
     }
 }
 

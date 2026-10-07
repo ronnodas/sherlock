@@ -325,13 +325,13 @@ impl Unit {
                 coord.neighbors().judged(judgment),
                 count.into(),
             )];
-            if set.len().get() > 1 {
+            if let Some(others) = (set ^ Set1::from_one(coord)).non_empty() {
                 let count = count
                     .not()
                     .with_context(|| format!("impossible to not have {count:?}"))?;
                 hints.extend(
-                    set.into_iter()
-                        .filter(|&other| other != coord)
+                    others
+                        .into_iter()
                         .map(|other| Hint::Count(other.neighbors().judged(judgment), count)),
                 );
             }
