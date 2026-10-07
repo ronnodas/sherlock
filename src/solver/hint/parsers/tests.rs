@@ -996,10 +996,36 @@ fn kumar_2026_08_04() {
 }
 
 #[test]
+fn lisa_2026_08_04() {
+    sentence(
+        "only one person in a corner has a criminal directly below them",
+        &Sentence::UnitSize(
+            Unit::Corners
+                .shift(Direction::Below)
+                .with_judgment(Judgment::Criminal),
+            1.into(),
+        ),
+    );
+}
+
+#[test]
 fn zed_2026_08_07() {
     sentence(
         "There's an equal number of innocent and criminal cops",
         &Sentence::UnitEquallySplit(Unit::profession("cop")),
+    );
+}
+
+#[test]
+fn steve_2026_08_15() {
+    sentence(
+        "4 persons on the edges have a criminal directly below them",
+        &Sentence::UnitSize(
+            Unit::Edges
+                .shift(Direction::Below)
+                .with_judgment(Judgment::Criminal),
+            4.into(),
+        ),
     );
 }
 
@@ -1025,6 +1051,18 @@ fn bobby_2026_08_26() {
             Quantifier::Subset(1.into(), 2),
             Judgment::Innocent,
         ),
+    );
+}
+
+#[test]
+fn gus_2026_10_06() {
+    sentence(
+        "There are more innocents in row 2 than in column A",
+        &Sentence::UnitBiggerThanUnit {
+            big: Unit::from(Row::Two).with_judgment(Judgment::Innocent),
+            small: Unit::from(Column::A).with_judgment(Judgment::Innocent),
+            excess: None,
+        },
     );
 }
 

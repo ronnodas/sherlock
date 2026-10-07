@@ -160,11 +160,25 @@ impl Sentence {
             seq!(
                 _: words(("There", "are")),
                 word(more_or_less),
-                judged_unit,
+                word(judgment_plural),
+                _: word("in"),
+                line,
                 _: word("than"),
-                maybe_judged_unit
+                line,
             )
-            .map(|(cmp, (judgment, left), (judgment_right, right))| {
+            .map(|(cmp, judgment, left, right)| {
+                let units = [left, right].map(|line| Unit::from(line).with_judgment(judgment));
+                (cmp, units, None)
+            }),
+            seq!(
+                _: words(("There", "are")),
+                word(more_or_less),
+                judged_unit,
+                _: (word("than"), opt(word(determiner))),
+                opt(word(judgment_any)),
+                unit
+            )
+            .map(|(cmp, (judgment, left), judgment_right, right)| {
                 let left = left.with_judgment(judgment);
                 let right = right.with_judgment(judgment_right.unwrap_or(judgment));
                 (cmp, [left, right], None)
@@ -229,14 +243,15 @@ impl Sentence {
                 };
                 (cardinal, judgment, unit.shift(direction))
             }),
-            (quantified_unit, is_judgment_any).map(
-                |((quantifier, unit), judgment)| match quantifier {
+            (quantified_profession, is_judgment_any).map(|((quantifier, profession), judgment)| {
+                let unit = Unit::Profession(profession);
+                match quantifier {
                     Quantifier::Simple(cardinal) => (cardinal, judgment, unit.into()),
                     Quantifier::Subset(count, total) => {
                         (count, judgment, unit.quantify(total).into())
                     }
-                },
-            ),
+                }
+            }),
             alt((
                 seq!(
                     _: word("Everyone"),
@@ -273,7 +288,7 @@ impl Sentence {
         alt((
             seq!(
                 alt((
-                    preceded(words(("Only", "one")), unit),
+                    preceded(words(("Only", "one", "person")), unit),
                     quantified_profession.verify_map(|(quantifier, profession)| {
                         if let Quantifier::Subset(Cardinal::Exact(1), total) = quantifier {
                             Some(Unit::Profession(profession).quantify(total))
@@ -390,7 +405,7 @@ impl Sentence {
                 _: there_is,
                 cardinal_judged_unit,
                 alt((
-                    preceded(neighboring_qualifier, word(name_object)).map(Unit::Neighbor),
+                    preceded(neighboring_predicate, word(name_object)).map(Unit::Neighbor),
                     unit,
                 )),
                 _: eof,
@@ -501,7 +516,7 @@ impl Sentence {
                     _: there_is,
                     cardinal,
                     word(judgment_any),
-                    _: (neighboring_qualifier, word("both")),
+                    _: (neighboring_predicate, word("both")),
                     pair(name_object, "and"),
                 )
                 .map(|(cardinal, judgment, names)| (names, cardinal, judgment)),
@@ -520,7 +535,7 @@ impl Sentence {
             seq!(
                 name_has,
                 cardinal,
-                word(judgment_any),
+                word(judgment_adjective),
                 _: word(neighbor_any),
                 unit,
             )
@@ -528,12 +543,15 @@ impl Sentence {
                 ([Unit::Neighbor(name), unit], judgment, quantity.into())
             }),
             seq!(
-                quantified_unit,
-                _: neighboring_qualifier,
+                quantified_profession,
+                _: neighboring_predicate,
                 word(name_object),
                 is_judgment_any,
             )
-            .map(|((quantifier, a), b, judgment)| ([a, Unit::Neighbor(b)], judgment, quantifier)),
+            .map(|((quantifier, profession), name, judgment)| {
+                let units = [Unit::Profession(profession), Unit::Neighbor(name)];
+                (units, judgment, quantifier)
+            }),
             seq!(
                 _: there_is,
                 cardinal,
@@ -557,8 +575,7 @@ impl Sentence {
             seq!(
                 _: words(("There", "are", "as", "many")),
                 judged_unit,
-                _: word("as"),
-                _: opt(words(("there", "are"))),
+                _: (word("as"), opt(words(("there", "are"))), opt(word("us"))),
                 judged_unit,
             )
             .verify_map(|((judgment_a, a), (judgment_b, b))| {
@@ -620,11 +637,11 @@ impl Sentence {
                 _: words(("There", "are")),
                 word(more_or_less),
                 alt((
-                    pair(judgment_plural, "than"),
-                    pair(judgment_adjective, "than"),
+                    (pair(judgment_plural, "than"), unit),
+                    (pair(judgment_adjective, "than"), word(profession_plural).map(Unit::Profession)),
                 )),
-                unit,
-            ),
+            )
+            .map(|(cmp, (judgments, unit))| (cmp, judgments, unit)),
             seq!(
                 name_has,
                 word(more_or_less),
@@ -635,7 +652,7 @@ impl Sentence {
             )
             .map(|(name, cmp, left, right)| (cmp, [left, right], Unit::Neighbor(name))),
         ))
-        .verify(|&(_, [more, less], _)| more == !less)
+        .verify(|&(_, [left, right], _)| left == !right)
         .map(|(cmp, judgments, unit)| Self::MoreTraitsInUnit(unit, cmp.big(judgments)))
         .parse_next(input)
     }
@@ -750,19 +767,15 @@ fn unit_pair(input: &mut &[&str]) -> Result<[Unit; 2]> {
     .parse_next(input)
 }
 
-// TODO split off a unit_predicate
 fn unit(input: &mut &[&str]) -> Result<Unit> {
-    preceded(
-        alt((word("person").void(), word("persons").void(), empty)),
+    alt((
         alt((
             words(("in", "total")).value(Unit::All),
             words(("on", "the", "edges")).value(Unit::Edges),
-            (
-                word("in"),
-                alt((words(("a", "corner")), words(("the", "corners")))),
-            )
-                .value(Unit::Corners),
-            alt((between, preceded(opt(word("in")), line.map(Unit::Line)))),
+            words(("in", "a", "corner")).value(Unit::Corners),
+            words(("in", "the", "corners")).value(Unit::Corners),
+            preceded(words(("in", "between")), pair(name_object, "and")).map(Unit::Between),
+            preceded(word("in"), line.map(Unit::Line)),
             (direction, word(name_object))
                 .map(|(direction, name)| Unit::Direction(direction, name)),
             separated_pair(
@@ -771,38 +784,41 @@ fn unit(input: &mut &[&str]) -> Result<Unit> {
                 word(profession_singular),
             )
             .map(|(direction, profession)| Unit::Profession(profession).shift(direction)),
-            alt((
-                preceded(neighboring_qualifier, word(name_object)),
-                delimited(
-                    opt(words(("one", "of"))),
-                    word(name_possessive),
-                    word(neighbor_any),
-                ),
-            ))
-            .map(Unit::Neighbor),
-            preceded(word("not"), word(name_object)).map(Unit::NotName),
-            profession_any.map(Unit::Profession),
+            terminated(word(name_possessive), word(neighbor_any)).map(Unit::Neighbor),
         )),
-    )
+        delimited(
+            words(("one", "of")),
+            word(name_possessive),
+            word("neighbors"),
+        )
+        .map(Unit::Neighbor),
+        preceded(neighboring_predicate, word(name_object)).map(Unit::Neighbor),
+        preceded(word("not"), word(name_object)).map(Unit::NotName),
+        profession_any.map(Unit::Profession),
+    ))
     .parse_next(input)
 }
 
 fn maybe_judged_unit(input: &mut &[&str]) -> Result<(Option<Judgment>, Unit)> {
-    seq!(
-        _: opt(word(determiner)),
-        opt(word(judgment_any)),
-        unit
-    )
+    alt((
+        (word(judgment_any).map(Some), unit),
+        preceded(
+            word(alt(("persons", "person"))),
+            alt((
+                words(("on", "the", "edges")).value(Unit::Edges),
+                words(("in", "a", "corner")).value(Unit::Corners),
+                preceded(word("in"), line.map(Unit::Line)),
+            )),
+        )
+        .map(|unit| (None, unit)),
+        profession_any.map(|profession| (None, Unit::Profession(profession))),
+    ))
     .parse_next(input)
 }
 
 fn judged_unit(input: &mut &[&str]) -> Result<(Judgment, Unit)> {
     alt((
-        seq!(
-            _: opt(word("us")),
-            word(judgment_any),
-            unit
-        ),
+        (word(judgment_any), unit),
         seq!(
             word(name_possessive),
             word(judgment_adjective),
@@ -1039,34 +1055,16 @@ fn quantified_profession(input: &mut &[&str]) -> Result<(Quantifier, Profession)
 }
 
 fn quantified_unit_expr(input: &mut &[&str]) -> Result<(Quantifier, UnitExpr)> {
-    alt((
-        separated_pair(quantifier, opt(word(determiner)), maybe_judged_unit),
-        seq!(
-            cardinal,
-            _: opt(word(determiner)),
-            number_phrase,
-            maybe_judged_unit,
-        )
-        .map(|(cardinal, total, unit)| (Quantifier::Subset(cardinal, total), unit)),
-    ))
-    .map(|(quantifier, (judgment, unit))| {
-        let unit = if let Some(judgment) = judgment {
-            unit.with_judgment(judgment)
-        } else {
-            unit.into()
-        };
-        (quantifier, unit)
-    })
-    .parse_next(input)
-}
-
-fn quantified_unit(input: &mut &[&str]) -> Result<(Quantifier, Unit)> {
-    alt((
-        separated_pair(quantifier, opt(word(determiner)), unit),
-        seq!(cardinal, _: opt(word(determiner)), number_phrase, unit)
-            .map(|(cardinal, total, unit)| (Quantifier::Subset(cardinal, total), unit)),
-    ))
-    .parse_next(input)
+    separated_pair(quantifier, opt(word(determiner)), maybe_judged_unit)
+        .map(|(quantifier, (judgment, unit))| {
+            let unit = if let Some(judgment) = judgment {
+                unit.with_judgment(judgment)
+            } else {
+                unit.into()
+            };
+            (quantifier, unit)
+        })
+        .parse_next(input)
 }
 
 fn direction(input: &mut &[&str]) -> Result<Direction> {
@@ -1151,7 +1149,7 @@ fn neighboring_verb<'input, 'inner: 'input>(
     .parse_next(input)
 }
 
-fn neighboring_qualifier<'input, 'inner: 'input>(
+fn neighboring_predicate<'input, 'inner: 'input>(
     input: &mut &'input [&'inner str],
 ) -> Result<&'input [&'inner str]> {
     alt((
@@ -1163,12 +1161,6 @@ fn neighboring_qualifier<'input, 'inner: 'input>(
 
 fn be_verb_third_person<'input>(input: &mut &'input str) -> Result<&'input str> {
     alt(("is", "are")).parse_next(input)
-}
-
-fn between(input: &mut &[&str]) -> Result<Unit> {
-    preceded(words(("in", "between")), pair(name_object, "and"))
-        .map(Unit::Between)
-        .parse_next(input)
 }
 
 fn more_or_less(input: &mut &str) -> Result<MoreOrLess> {
