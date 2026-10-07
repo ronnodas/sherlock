@@ -1109,7 +1109,6 @@ fn profession_any(input: &mut &[&str]) -> Result<Profession> {
     .parse_next(input)
 }
 
-// TODO combine the verify and map into a single constructor
 fn profession_singular(input: &mut &str) -> Result<Profession> {
     rest.verify_map(Profession::from_singular).parse_next(input)
 }
