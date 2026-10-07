@@ -43,7 +43,7 @@ pub(crate) enum Sentence {
         intersection: Cardinal,
         judgment: Judgment,
     },
-    // TODO replace with UnitSize?
+    // TODO replace Quantifier with cardinal here
     IntersectionSize([Unit; 2], Quantifier, Judgment),
     EachInUnitHasNNeighbors(Unit, Cardinal, Judgment),
     TotalUnitsSize([Unit; 2], Cardinal, Judgment),
@@ -875,7 +875,13 @@ impl From<Parity> for Quantifier {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+impl From<Number> for Quantifier {
+    fn from(v: Number) -> Self {
+        Self::Simple(v.into())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MoreOrLess {
     More,
     Less,
