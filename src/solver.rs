@@ -686,10 +686,10 @@ mod tests {
                 continue;
             };
             Sentence::parse(hint)
-                .with_context(|| format!("parsing {hint}"))
+                .with_context(|| format!("parsing {hint:?} from {speaker}"))
                 .unwrap()
                 .add_context(lookup.context(speaker))
-                .with_context(|| format!("parsing {hint}"))
+                .with_context(|| format!("parsing {hint:?} from {speaker}"))
                 .unwrap()
                 .into_iter()
                 .for_each(|hint| engine.add_parsed_hint(&hint));
