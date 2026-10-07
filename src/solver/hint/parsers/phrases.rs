@@ -7,7 +7,7 @@ use crate::solver::board::coordinates::{Set, Set1, SetExpr, SetOp};
 use crate::solver::hint::recipes::{
     AddContext, ColumnRecipe, Context, LineRecipe, NameRecipe, RowRecipe,
 };
-use crate::solver::hint::{Cardinal, CardinalOrNot, Comparison, Hint, LineKind, Number, Parity};
+use crate::solver::hint::{Bound, BoundOrNot, Comparison, Hint, LineKind, Number, Parity};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug)]
@@ -16,7 +16,7 @@ pub(crate) enum Sentence {
     HasTrait(NameRecipe, Judgment),
     UnitIsConnected(UnitExpr),
     BiggestInSeries(UnitInSeries, Judgment),
-    IsOneOfNInUnit(Unit, NameRecipe, Cardinal, Judgment),
+    IsOneOfNInUnit(Unit, NameRecipe, Bound, Judgment),
     EqualNumberOfTraitsInUnits([Unit; 2], Judgment),
     UnitBiggerThanUnit {
         big: UnitExpr,
@@ -25,28 +25,27 @@ pub(crate) enum Sentence {
     },
     UnitEquallySplit(Unit),
     MoreTraitsInUnit(Unit, Judgment),
-    UnitSize(UnitExpr, Cardinal),
-    UniqueInUnitHasNNeighbors(Unit, Cardinal, Option<NameRecipe>, Judgment),
+    UnitSize(UnitExpr, Bound),
+    UniqueInUnitHasNNeighbors(Unit, Bound, Option<NameRecipe>, Judgment),
     NInUnitHaveNNeighbors {
         unit: Unit,
-        quantity: Cardinal,
-        neighbors: Cardinal,
+        count: Bound,
+        each: Bound,
         judgment: Judgment,
     },
-    EachUnitInSeriesHasSize(Series, Cardinal, Judgment),
-    UniqueUnitInSeriesHasSize(Series, Cardinal, Judgment),
-    OnlyGivenUnitHasNTraits(UnitInSeries, Cardinal, Judgment),
+    EachUnitInSeriesHasSize(Series, Bound, Judgment),
+    UniqueUnitInSeriesHasSize(Series, Bound, Judgment),
+    OnlyGivenUnitHasNTraits(UnitInSeries, Bound, Judgment),
     UnitAndIntersectionSize {
         total: Number,
-        quantified: Unit,
+        split: Unit,
         other: Unit,
-        intersection: Cardinal,
+        intersection: Bound,
         judgment: Judgment,
     },
-    // TODO replace Quantifier with cardinal here
-    IntersectionSize([Unit; 2], Quantifier, Judgment),
-    EachInUnitHasNNeighbors(Unit, Cardinal, Judgment),
-    TotalUnitsSize([Unit; 2], Cardinal, Judgment),
+    IntersectionSize([Unit; 2], BoundPair, Judgment),
+    EachInUnitHasNNeighbors(Unit, Bound, Judgment),
+    TotalUnitsSize([Unit; 2], Bound, Judgment),
     TraitsInUnitAreInUnit {
         any_all: AnyAll,
         split: Unit,
@@ -63,60 +62,60 @@ impl AddContext for &Sentence {
         let hints: Vec<Hint> = match self {
             Sentence::UnitIsConnected(unit) => unit.members_are_connected(context)?,
             Sentence::BiggestInSeries(unit, judgment) => unit.has_most(*judgment, context)?,
-            Sentence::IsOneOfNInUnit(unit, name, quantity, judgment) => {
-                unit.contains_in_n(name, *quantity, *judgment, context)?
+            Sentence::IsOneOfNInUnit(unit, name, bound, judgment) => {
+                unit.contains_in_n(name, *bound, *judgment, context)?
             }
             Sentence::UnitBiggerThanUnit { big, small, excess } => {
                 big.bigger_than(small, *excess, context)?
             }
-            Sentence::UnitSize(unit, quantity) => {
+            Sentence::UnitSize(unit, bound) => {
                 let (set, mut hints) = unit.add_context(context)?;
                 match set.regular() {
-                    Ok(set) if quantity.matches(set.len()) => {}
-                    Ok(_) => bail!("{unit:?} does not match {quantity:?}"),
-                    Err(set) => hints.push(Hint::Count(set, (*quantity).into())),
+                    Ok(set) if bound.matches(set.len()) => {}
+                    Ok(_) => bail!("{unit:?} does not match {bound:?}"),
+                    Err(set) => hints.push(Hint::Count(set, (*bound).into())),
                 }
                 hints
             }
-            Sentence::TotalUnitsSize(units, quantity, judgment) => {
-                Unit::total_size(units, *quantity, *judgment, context)?
+            Sentence::TotalUnitsSize(units, bound, judgment) => {
+                Unit::total_size(units, *bound, *judgment, context)?
             }
-            Sentence::UniqueInUnitHasNNeighbors(unit, quantity, name, judgment) => {
-                unit.unique_member_has_n_neighbors(*quantity, *judgment, name.as_ref(), context)?
+            Sentence::UniqueInUnitHasNNeighbors(unit, bound, name, judgment) => {
+                unit.unique_member_has_n_neighbors(*bound, *judgment, name.as_ref(), context)?
             }
 
-            &Sentence::UniqueUnitInSeriesHasSize(series, count, judgment) => {
+            &Sentence::UniqueUnitInSeriesHasSize(series, bound, judgment) => {
                 let sets = series
                     .all(context)
                     .into_iter1()
                     .map(|set| set.judged(judgment))
                     .collect1();
-                vec![Hint::UniqueWithCount { sets, count }]
+                vec![Hint::UniqueWithCount { sets, bound }]
             }
-            &Sentence::EachUnitInSeriesHasSize(kind, quantity, judgment) => kind
+            &Sentence::EachUnitInSeriesHasSize(kind, bound, judgment) => kind
                 .all(context)
                 .into_iter()
-                .map(|set| Hint::Count(set.judged(judgment), quantity.into()))
+                .map(|set| Hint::Count(set.judged(judgment), bound.into()))
                 .collect(),
-            Sentence::OnlyGivenUnitHasNTraits(unit, quantity, judgment) => {
-                unit.only_one_with_n_traits(*quantity, *judgment, context)?
+            Sentence::OnlyGivenUnitHasNTraits(unit, bound, judgment) => {
+                unit.only_one_with_n_traits(*bound, *judgment, context)?
             }
             Sentence::UnitAndIntersectionSize {
                 total,
-                quantified,
+                split,
                 other,
                 intersection,
                 judgment,
-            } => quantified.and_intersection(*total, other, *intersection, *judgment, context)?,
-            Sentence::IntersectionSize([a, b], quantity, judgment) => {
-                a.intersection(b, *quantity, *judgment, context)?
+            } => split.and_intersection(*total, other, *intersection, *judgment, context)?,
+            Sentence::IntersectionSize([a, b], bound_pair, judgment) => {
+                a.intersection(b, *bound_pair, *judgment, context)?
             }
             Sentence::EqualNumberOfTraitsInUnits(units, judgment) => {
                 let sets = units.add_context(context)?;
                 match sets.map(Set::non_empty) {
                     [None, None] => Vec::new(),
                     [None, Some(set)] | [Some(set), None] => {
-                        vec![Hint::Count(set.judged(*judgment), CardinalOrNot::Exact(0))]
+                        vec![Hint::Count(set.judged(*judgment), BoundOrNot::Exact(0))]
                     }
                     [Some(a), Some(b)] => {
                         let sets = [a, b].map(|set| set.judged(*judgment));
@@ -138,15 +137,15 @@ impl AddContext for &Sentence {
             Sentence::HasTrait(name, judgment) => {
                 vec![Hint::Judgment(name.add_context(context)?, *judgment)]
             }
-            Sentence::EachInUnitHasNNeighbors(unit, count, judgment) => {
-                unit.members_have_at_most_neighbors(*count, *judgment, context)?
+            Sentence::EachInUnitHasNNeighbors(unit, bound, judgment) => {
+                unit.members_have_at_most_neighbors(*bound, *judgment, context)?
             }
             Sentence::NInUnitHaveNNeighbors {
                 unit,
-                quantity,
-                neighbors,
+                count,
+                each,
                 judgment,
-            } => unit.n_members_have_n_neighbors(*quantity, *neighbors, *judgment, context)?,
+            } => unit.n_members_have_n_neighbors(*count, *each, *judgment, context)?,
             Sentence::TraitsInUnitAreInUnit {
                 any_all,
                 split,
@@ -164,7 +163,7 @@ impl AddContext for &Sentence {
 pub(crate) enum UnitExpr {
     Regular(Unit),
     Shifted(Box<Self>, Direction),
-    Quantified(Box<Self>, Cardinal),
+    Bounded(Box<Self>, Bound),
     Judged(Box<Self>, Judgment),
 }
 
@@ -173,11 +172,11 @@ impl UnitExpr {
         Self::Judged(Box::new(self), judgment)
     }
 
-    pub(crate) fn quantify(self, quantity: impl Into<Cardinal>) -> Self {
+    pub(crate) fn bound(self, bound: impl Into<Bound>) -> Self {
         if let Self::Regular(unit) = self {
-            Self::Regular(unit.quantify(quantity))
+            Self::Regular(unit.bound(bound))
         } else {
-            Self::Quantified(Box::new(self), quantity.into())
+            Self::Bounded(Box::new(self), bound.into())
         }
     }
 
@@ -220,23 +219,21 @@ impl UnitExpr {
                 }
             }
             [Ok(big), Err(small)] => {
-                let count = match compare {
+                let bound = match compare {
                     Comparison::ExactDifference(diff) => {
-                        big.len().checked_sub(diff).map(Cardinal::Exact)
+                        big.len().checked_sub(diff).map(Bound::Exact)
                     }
-                    Comparison::More => big.len().checked_sub(1).map(Cardinal::AtMost),
+                    Comparison::More => big.len().checked_sub(1).map(Bound::AtMost),
                 }
                 .with_context(|| format!("{self:?} cannot be bigger by {compare:?}"))?;
-                hints.push(Hint::Count(small, count.into()));
+                hints.push(Hint::Count(small, bound.into()));
             }
             [Err(big), Ok(small)] => {
-                let count = match compare {
-                    Comparison::ExactDifference(diff) => {
-                        Cardinal::Exact(small.len().strict_add(diff))
-                    }
-                    Comparison::More => Cardinal::AtLeast(small.len().strict_add(1)),
+                let bound = match compare {
+                    Comparison::ExactDifference(diff) => Bound::Exact(small.len().strict_add(diff)),
+                    Comparison::More => Bound::AtLeast(small.len().strict_add(1)),
                 };
-                hints.push(Hint::Count(big, count.into()));
+                hints.push(Hint::Count(big, bound.into()));
             }
             [Err(big), Err(small)] => {
                 hints.push(Hint::CompareSets([big, small], compare));
@@ -260,13 +257,13 @@ impl AddContext for &UnitExpr {
         let set;
         let set: SetExpr = match self {
             UnitExpr::Regular(unit) => unit.add_context(context)?.into(),
-            UnitExpr::Quantified(inner, quantity) => {
+            UnitExpr::Bounded(inner, bound) => {
                 (set, hints) = inner.add_context(context)?;
                 match set.regular() {
-                    Ok(set) if quantity.matches(set.len()) => set.into(),
-                    Ok(_) => bail!("{inner:?} does not have size {quantity:?}"),
+                    Ok(set) if bound.matches(set.len()) => set.into(),
+                    Ok(_) => bail!("{inner:?} does not have size {bound:?}"),
                     Err(set) => {
-                        hints.push(Hint::Count(set.clone(), (*quantity).into()));
+                        hints.push(Hint::Count(set.clone(), (*bound).into()));
                         set.into()
                     }
                 }
@@ -298,13 +295,13 @@ pub(crate) enum Unit {
     Corners,
     All,
     Shifted(Box<Self>, Direction),
-    Quantified(Box<Self>, Cardinal),
+    Bounded(Box<Self>, Bound),
 }
 
 impl Unit {
     fn unique_member_has_n_neighbors(
         &self,
-        count: Cardinal,
+        bound: Bound,
         judgment: Judgment,
         name: Option<&NameRecipe>,
         context: Context<'_>,
@@ -323,16 +320,16 @@ impl Unit {
             }
             let mut hints = vec![Hint::Count(
                 coord.neighbors().judged(judgment),
-                count.into(),
+                bound.into(),
             )];
             if let Some(others) = (set ^ Set1::from_one(coord)).non_empty() {
-                let count = count
+                let bound = bound
                     .not()
-                    .with_context(|| format!("impossible to not have {count:?}"))?;
+                    .with_context(|| format!("impossible to not have size {bound:?}"))?;
                 hints.extend(
                     others
                         .into_iter()
-                        .map(|other| Hint::Count(other.neighbors().judged(judgment), count)),
+                        .map(|other| Hint::Count(other.neighbors().judged(judgment), bound)),
                 );
             }
             hints
@@ -341,7 +338,7 @@ impl Unit {
                 .into_iter1()
                 .map(|coord| coord.neighbors().judged(judgment))
                 .collect1();
-            vec![Hint::UniqueWithCount { sets, count }]
+            vec![Hint::UniqueWithCount { sets, bound }]
         };
         Ok(hints)
     }
@@ -350,7 +347,7 @@ impl Unit {
         &self,
         total: Number,
         other: &Self,
-        intersection: Cardinal,
+        intersection: Bound,
         judgment: Judgment,
         context: Context<'_>,
     ) -> Result<Vec<Hint>> {
@@ -364,7 +361,7 @@ impl Unit {
             }
             Some(self_) => {
                 let self_ = self_.judged(judgment);
-                let mut hints = vec![Hint::Count(self_.clone(), CardinalOrNot::Exact(total))];
+                let mut hints = vec![Hint::Count(self_.clone(), BoundOrNot::Exact(total))];
                 let other = self_.intersect_set(other).judged(judgment);
                 match other {
                     SetOp::Empty => {
@@ -384,7 +381,7 @@ impl Unit {
     fn intersection(
         &self,
         other_unit: &Self,
-        intersection: Quantifier,
+        bound: BoundPair,
         judgment: Judgment,
         context: Context<'_>,
     ) -> Result<Vec<Hint>> {
@@ -392,9 +389,9 @@ impl Unit {
         let set = other & self_;
         match set.non_empty() {
             None => {
-                let forced_non_empty = match intersection {
-                    Quantifier::Simple(cardinal) => !cardinal.matches(0),
-                    Quantifier::Subset(_, total) => total != 0,
+                let forced_non_empty = match bound {
+                    BoundPair::Simple(bound) => !bound.matches(0),
+                    BoundPair::Subset { total, .. } => total != 0,
                 };
                 if forced_non_empty {
                     bail!("{self:?} intersection {other_unit:?} is empty");
@@ -402,9 +399,12 @@ impl Unit {
                 Ok(Vec::new())
             }
             Some(set) => {
-                let intersection = match intersection {
-                    Quantifier::Simple(intersection) => intersection,
-                    Quantifier::Subset(intersection, total) => {
+                let intersection = match bound {
+                    BoundPair::Simple(intersection) => intersection,
+                    BoundPair::Subset {
+                        matching: intersection,
+                        total,
+                    } => {
                         if total != set.len().get() {
                             bail!(
                                 "{self:?} intersection {other_unit:?} does not have size {total}"
@@ -420,44 +420,44 @@ impl Unit {
 
     fn members_have_at_most_neighbors(
         &self,
-        count: Cardinal,
+        bound: Bound,
         judgment: Judgment,
         context: Context<'_>,
     ) -> Result<Vec<Hint>> {
         let set = self.add_context(context)?;
         let hints = set
             .non_empty()
-            .map_or_default(|set| vec![Hint::EachNeighbors(set.into(), count, judgment)]);
+            .map_or_default(|set| vec![Hint::EachNeighbors(set.into(), bound, judgment)]);
         Ok(hints)
     }
 
     fn total_size(
         units: &[Self; 2],
-        quantity: Cardinal,
+        bound: Bound,
         judgment: Judgment,
         context: Context<'_>,
     ) -> Result<Vec<Hint>> {
         let sets = units.add_context(context)?;
         let hints = match sets.map(Set::non_empty) {
             [None, None] => {
-                if !quantity.matches(0) {
-                    bail!("{units:?} are both empty so cannot total to {quantity:?}")
+                if !bound.matches(0) {
+                    bail!("{units:?} are both empty so cannot total to {bound:?}")
                 }
                 Vec::new()
             }
             [None, Some(set)] | [Some(set), None] => {
-                vec![Hint::Count(set.judged(judgment), quantity.into())]
+                vec![Hint::Count(set.judged(judgment), bound.into())]
             }
             [Some(a), Some(b)] => {
                 let sets = [a, b].map(|set| set.judged(judgment));
-                vec![Hint::CountTotal(sets, quantity)]
+                vec![Hint::CountTotal(sets, bound)]
             }
         };
         Ok(hints)
     }
 
-    pub(crate) fn quantify(self, quantity: impl Into<Cardinal>) -> Self {
-        Self::Quantified(Box::new(self), quantity.into())
+    pub(crate) fn bound(self, bound: impl Into<Bound>) -> Self {
+        Self::Bounded(Box::new(self), bound.into())
     }
 
     #[cfg(test)]
@@ -487,8 +487,8 @@ impl Unit {
 
     fn n_members_have_n_neighbors(
         &self,
-        count: Cardinal,
-        each: Cardinal,
+        count: Bound,
+        each: Bound,
         judgment: Judgment,
         context: Context<'_>,
     ) -> Result<Vec<Hint>> {
@@ -522,8 +522,8 @@ impl Unit {
             if !set.len().get().is_multiple_of(2) {
                 bail!("{self:?} cannot be split equally")
             }
-            let count = set.len().get() / 2;
-            let extra = Hint::Count(set.judged(Judgment::Innocent), CardinalOrNot::Exact(count));
+            let half = set.len().get() / 2;
+            let extra = Hint::Count(set.judged(Judgment::Innocent), BoundOrNot::Exact(half));
             vec![extra]
         } else {
             Vec::new()
@@ -534,7 +534,7 @@ impl Unit {
     fn contains_in_n(
         &self,
         name: &NameRecipe,
-        quantity: Cardinal,
+        bound: Bound,
         judgment: Judgment,
         context: Context<'_>,
     ) -> Result<Vec<Hint>> {
@@ -546,7 +546,7 @@ impl Unit {
         set.assert_contains(coord)?;
         Ok(vec![
             Hint::Judgment(coord, judgment),
-            Hint::Count(set.judged(judgment), quantity.into()),
+            Hint::Count(set.judged(judgment), bound.into()),
         ])
     }
 
@@ -562,10 +562,10 @@ impl Unit {
         if let Some(self_) = self_.non_empty() {
             let split = self_.judged(judgment);
             if any_all.is_all() {
-                hints.push(Hint::Count(split.clone(), CardinalOrNot::AtLeast(1)));
+                hints.push(Hint::Count(split.clone(), BoundOrNot::AtLeast(1)));
             }
             let hint = match split.clone().intersect_set(other) {
-                SetOp::Empty => Hint::Count(split, CardinalOrNot::Exact(0)),
+                SetOp::Empty => Hint::Count(split, BoundOrNot::Exact(0)),
                 SetOp::NonEmpty(intersection) => {
                     Hint::CompareSets([split, intersection], Comparison::ExactDifference(0))
                 }
@@ -615,12 +615,12 @@ impl AddContext for &Unit {
                 Set::between([a?, b?])?
             }
             Unit::All => Coord::all().into(),
-            Unit::Quantified(inner, quantity) => {
+            Unit::Bounded(inner, bound) => {
                 let set = inner.add_context(context)?;
-                if quantity.matches(set.len()) {
+                if bound.matches(set.len()) {
                     set
                 } else {
-                    bail!("{inner:?} does not have size {quantity:?}")
+                    bail!("{inner:?} does not have size {bound:?}")
                 }
             }
             Unit::NotName(name) => {
@@ -739,21 +739,21 @@ impl UnitInSeries {
 
     fn only_one_with_n_traits(
         &self,
-        quantity: Cardinal,
+        bound: Bound,
         judgment: Judgment,
         context: Context<'_>,
     ) -> Result<Vec<Hint>> {
         let others = self.others(context)?;
         let this = self.add_context(context)?;
-        let mut hints = vec![Hint::Count(this.judged(judgment), quantity.into())];
+        let mut hints = vec![Hint::Count(this.judged(judgment), bound.into())];
         if !others.is_empty() {
-            let quantity = quantity
+            let bound = bound
                 .not()
-                .with_context(|| format!("impossible to not have {quantity:?}"))?;
+                .with_context(|| format!("impossible to not have {bound:?}"))?;
             hints.extend(
                 others
                     .into_iter()
-                    .map(|other| Hint::Count(other.judged(judgment), quantity)),
+                    .map(|other| Hint::Count(other.judged(judgment), bound)),
             );
         }
         Ok(hints)
@@ -842,40 +842,45 @@ impl From<LineKind> for Series {
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Quantifier {
-    Simple(Cardinal),
-    Subset(Cardinal, Number),
+pub(crate) enum BoundPair {
+    Simple(Bound),
+    Subset { matching: Bound, total: Number },
 }
 
-impl Quantifier {
-    pub(crate) fn to_cardinal(self) -> Option<Cardinal> {
+impl BoundPair {
+    pub(crate) fn to_bound(self) -> Option<Bound> {
         match self {
-            Self::Subset(Cardinal::Exact(exact) | Cardinal::AtLeast(exact), total)
-                if exact == total =>
-            {
-                Some(Cardinal::Exact(exact))
-            }
-            Self::Subset(Cardinal::Parity(Parity::Even), 0) => Some(Cardinal::Exact(0)),
-            Self::Subset(Cardinal::Parity(Parity::Odd), 1) => Some(Cardinal::Exact(1)),
-            Self::Simple(cardinal) => Some(cardinal),
-            Self::Subset(_, _) => None,
+            Self::Subset {
+                matching: Bound::Exact(exact) | Bound::AtLeast(exact),
+                total,
+            } if exact == total => Some(Bound::Exact(exact)),
+            Self::Subset {
+                matching: Bound::Parity(Parity::Even),
+                total: 0,
+            } => Some(Bound::Exact(0)),
+            Self::Subset {
+                matching: Bound::Parity(Parity::Odd),
+                total: 1,
+            } => Some(Bound::Exact(1)),
+            Self::Simple(bound) => Some(bound),
+            Self::Subset { .. } => None,
         }
     }
 }
 
-impl From<Cardinal> for Quantifier {
-    fn from(v: Cardinal) -> Self {
+impl From<Bound> for BoundPair {
+    fn from(v: Bound) -> Self {
         Self::Simple(v)
     }
 }
 
-impl From<Parity> for Quantifier {
+impl From<Parity> for BoundPair {
     fn from(v: Parity) -> Self {
         Self::Simple(v.into())
     }
 }
 
-impl From<Number> for Quantifier {
+impl From<Number> for BoundPair {
     fn from(v: Number) -> Self {
         Self::Simple(v.into())
     }

@@ -19,22 +19,22 @@ pub(crate) enum Hint {
     /// Given coordinate has given judgment
     Judgment(Coord, Judgment),
     /// Given set of coordinates has that many suspects
-    Count(SetOp1, CardinalOrNot),
+    Count(SetOp1, BoundOrNot),
     /// Given set of coordinates in total have that many suspects
-    CountTotal([SetOp1; 2], Cardinal),
+    CountTotal([SetOp1; 2], Bound),
     /// Given set of coordinates is connected
     Connected(SetOp1),
     /// The first set compares with the second set
     CompareSets([SetOp1; 2], Comparison),
-    /// Among the given `sets`, `count` many have `each` suspects
-    UniqueWithCount { sets: Vec1<SetOp1>, count: Cardinal },
+    /// Among the given `sets`, exactly one has count matching `bound`
+    UniqueWithCount { sets: Vec1<SetOp1>, bound: Bound },
     /// Each member of the given set has a given number of neighbors with the given judgment
-    EachNeighbors(SetExpr1, Cardinal, Judgment),
+    EachNeighbors(SetExpr1, Bound, Judgment),
     /// `count` many members of the given set has `each` neighbors with given judgment
     CountWithNeighbors {
         set: SetExpr1,
-        each: Cardinal,
-        count: Cardinal,
+        each: Bound,
+        count: Bound,
         judgment: Judgment,
     },
 }
@@ -43,19 +43,19 @@ impl Hint {
     pub(crate) fn evaluate(&self, solution: &Solution) -> bool {
         match self {
             &Self::Judgment(coord, judgment) => solution[coord] == judgment,
-            Self::Count(set, quantity) => quantity.matches(solution.select(set).len()),
-            Self::CountTotal(sets, quantity) => {
+            Self::Count(set, bound) => bound.matches(solution.select(set).len()),
+            Self::CountTotal(sets, bound) => {
                 let total = sets.iter().map(|set| solution.select(set).len()).sum();
-                quantity.matches(total)
+                bound.matches(total)
             }
             Self::Connected(set) => solution.select(set).connected(),
             Self::CompareSets(sets, comparison) => {
                 let [lhs, rhs] = sets.each_ref().map(|set| solution.select(set).len());
                 comparison.compare(lhs, rhs)
             }
-            Self::UniqueWithCount { sets, count } => {
+            Self::UniqueWithCount { sets, bound } => {
                 sets.iter()
-                    .filter(|&set| count.matches(solution.select(set).len()))
+                    .filter(|&set| bound.matches(solution.select(set).len()))
                     .count()
                     == 1
             }
@@ -76,10 +76,10 @@ impl Hint {
                     .len();
                 count.matches(counted)
             }
-            Self::EachNeighbors(set, cardinal, judgment) => {
+            Self::EachNeighbors(set, bound, judgment) => {
                 solution.select(set).into_iter().all(|coord| {
                     let neighbors = solution.select(&coord.neighbors().judged(*judgment)).len();
-                    cardinal.matches(neighbors)
+                    bound.matches(neighbors)
                 })
             }
         }
@@ -158,14 +158,14 @@ impl LineKind {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum Cardinal {
+pub(crate) enum Bound {
     Exact(Number),
     AtLeast(Number),
     AtMost(Number),
     Parity(Parity),
 }
 
-impl Cardinal {
+impl Bound {
     pub(crate) fn matches(self, len: Number) -> bool {
         match self {
             Self::Exact(value) => len == value,
@@ -175,25 +175,25 @@ impl Cardinal {
         }
     }
 
-    pub(crate) fn not(self) -> Option<CardinalOrNot> {
-        let count = match self {
-            Self::Exact(0) => CardinalOrNot::AtLeast(1),
-            Self::Exact(value) => CardinalOrNot::NotExact(value),
-            Self::AtLeast(value) => CardinalOrNot::AtMost(value.checked_sub(1)?),
-            Self::AtMost(value) => CardinalOrNot::AtLeast(value.strict_add(1)),
-            Self::Parity(parity) => CardinalOrNot::Parity(!parity),
+    pub(crate) fn not(self) -> Option<BoundOrNot> {
+        let bound = match self {
+            Self::Exact(0) => BoundOrNot::AtLeast(1),
+            Self::Exact(value) => BoundOrNot::NotExact(value),
+            Self::AtLeast(value) => BoundOrNot::AtMost(value.checked_sub(1)?),
+            Self::AtMost(value) => BoundOrNot::AtLeast(value.strict_add(1)),
+            Self::Parity(parity) => BoundOrNot::Parity(!parity),
         };
-        Some(count)
+        Some(bound)
     }
 }
 
-impl From<Parity> for Cardinal {
+impl From<Parity> for Bound {
     fn from(v: Parity) -> Self {
         Self::Parity(v)
     }
 }
 
-impl From<Number> for Cardinal {
+impl From<Number> for Bound {
     fn from(value: Number) -> Self {
         Self::Exact(value)
     }
@@ -239,7 +239,7 @@ impl BitXor for Parity {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum CardinalOrNot {
+pub(crate) enum BoundOrNot {
     Exact(Number),
     AtLeast(Number),
     AtMost(Number),
@@ -247,7 +247,7 @@ pub(crate) enum CardinalOrNot {
     Parity(Parity),
 }
 
-impl CardinalOrNot {
+impl BoundOrNot {
     pub(crate) fn matches(self, len: Number) -> bool {
         match self {
             Self::Exact(value) => len == value,
@@ -259,18 +259,18 @@ impl CardinalOrNot {
     }
 }
 
-impl From<Cardinal> for CardinalOrNot {
-    fn from(value: Cardinal) -> Self {
+impl From<Bound> for BoundOrNot {
+    fn from(value: Bound) -> Self {
         match value {
-            Cardinal::Exact(value) => Self::Exact(value),
-            Cardinal::AtLeast(value) => Self::AtLeast(value),
-            Cardinal::AtMost(value) => Self::AtMost(value),
-            Cardinal::Parity(parity) => Self::Parity(parity),
+            Bound::Exact(value) => Self::Exact(value),
+            Bound::AtLeast(value) => Self::AtLeast(value),
+            Bound::AtMost(value) => Self::AtMost(value),
+            Bound::Parity(parity) => Self::Parity(parity),
         }
     }
 }
 
-impl From<Parity> for CardinalOrNot {
+impl From<Parity> for BoundOrNot {
     fn from(v: Parity) -> Self {
         Self::Parity(v)
     }

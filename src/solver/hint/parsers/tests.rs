@@ -5,9 +5,9 @@ use winnow::error::ParserError;
 use winnow::stream::{Stream, StreamIsPartial};
 
 use crate::models::{Column, Direction, Judgment, Row};
-use crate::solver::hint::parsers::phrases::{AnyAll, Quantifier};
+use crate::solver::hint::parsers::phrases::{AnyAll, BoundPair};
 use crate::solver::hint::recipes::{ColumnRecipe, NameRecipe as Name};
-use crate::solver::hint::{Cardinal, LineKind, Parity};
+use crate::solver::hint::{Bound, LineKind, Parity};
 
 use super::{Sentence, Series, Unit, UnitInSeries};
 
@@ -55,7 +55,7 @@ fn gary_2025_05_04() {
         "the only innocent below Austin is one of Kevin's neighbors",
         &Sentence::UnitAndIntersectionSize {
             total: 1,
-            quantified: Unit::direction(Direction::Below, "Austin"),
+            split: Unit::direction(Direction::Below, "Austin"),
             other: Unit::neighbor("Kevin"),
             intersection: 1.into(),
             judgment: Judgment::Innocent,
@@ -81,7 +81,7 @@ fn rose_2025_05_09() {
         "the only innocent above Olivia is not Amy",
         &Sentence::UnitAndIntersectionSize {
             total: 1,
-            quantified: Unit::direction(Direction::Above, "Olivia"),
+            split: Unit::direction(Direction::Above, "Olivia"),
             other: Unit::not_name("Amy"),
             intersection: 1.into(),
             judgment: Judgment::Innocent,
@@ -95,7 +95,7 @@ fn david_2025_05_10() {
         "Tyler's only innocent neighbor is to the left of him",
         &Sentence::UnitAndIntersectionSize {
             total: 1,
-            quantified: Unit::neighbor("Tyler"),
+            split: Unit::neighbor("Tyler"),
             other: Unit::direction(Direction::Left, "Tyler"),
             intersection: 1.into(),
             judgment: Judgment::Innocent,
@@ -153,7 +153,7 @@ fn will_2025_06_07() {
         "There is no column with only innocents",
         &Sentence::EachUnitInSeriesHasSize(
             LineKind::Column.into(),
-            Cardinal::AtLeast(1),
+            Bound::AtLeast(1),
             Judgment::Criminal,
         ),
     );
@@ -178,7 +178,7 @@ fn isaac_2025_06_14() {
         "Not everyone below Adam is a criminal",
         &Sentence::UnitSize(
             Unit::direction(Direction::Below, "Adam").with_judgment(Judgment::Innocent),
-            Cardinal::AtLeast(1),
+            Bound::AtLeast(1),
         ),
     );
 }
@@ -206,7 +206,7 @@ fn austin_2025_07_29() {
         &Sentence::IsOneOfNInUnit(
             Unit::direction(Direction::Left, "Zed"),
             "Vicky".into(),
-            Cardinal::AtLeast(2),
+            Bound::AtLeast(2),
             Judgment::Criminal,
         ),
     );
@@ -267,7 +267,7 @@ fn ryan_2026_01_12() {
         "exactly 1 of the 2 painters has an innocent directly to the left of them",
         &Sentence::UnitSize(
             Unit::profession("painter")
-                .quantify(2)
+                .bound(2)
                 .shift(Direction::Left)
                 .with_judgment(Judgment::Innocent),
             1.into(),
@@ -294,7 +294,7 @@ fn janet_2026_01_13() {
         "exactly 2 of Stella's 6 innocent neighbors also neighbor Gabe",
         &Sentence::UnitAndIntersectionSize {
             total: 6,
-            quantified: Unit::neighbor("Stella"),
+            split: Unit::neighbor("Stella"),
             other: Unit::neighbor("Gabe"),
             intersection: 2.into(),
             judgment: Judgment::Innocent,
@@ -314,11 +314,7 @@ fn xena_2026_01_15() {
 fn salil_2026_01_15() {
     sentence(
         "No one in row 4 has more than 2 criminal neighbors",
-        &Sentence::EachInUnitHasNNeighbors(
-            Row::Four.into(),
-            Cardinal::AtMost(2),
-            Judgment::Criminal,
-        ),
+        &Sentence::EachInUnitHasNNeighbors(Row::Four.into(), Bound::AtMost(2), Judgment::Criminal),
     );
 }
 
@@ -328,7 +324,7 @@ fn uma_2026_01_31() {
         "2 out of the 3 teachers have a criminal directly below them",
         &Sentence::UnitSize(
             Unit::profession("teacher")
-                .quantify(3)
+                .bound(3)
                 .shift(Direction::Below)
                 .with_judgment(Judgment::Criminal),
             2.into(),
@@ -340,11 +336,7 @@ fn uma_2026_01_31() {
 fn zara_2026_01_31() {
     sentence(
         "Everyone has at least one innocent neighbor",
-        &Sentence::EachUnitInSeriesHasSize(
-            Series::Neighbor,
-            Cardinal::AtLeast(1),
-            Judgment::Innocent,
-        ),
+        &Sentence::EachUnitInSeriesHasSize(Series::Neighbor, Bound::AtLeast(1), Judgment::Innocent),
     );
 }
 
@@ -403,7 +395,7 @@ fn chuck_2026_02_05() {
         "exactly 2 of the 4 innocents neighboring Gary are in row\u{a0}1",
         &Sentence::UnitAndIntersectionSize {
             total: 4,
-            quantified: Unit::neighbor("Gary"),
+            split: Unit::neighbor("Gary"),
             other: Row::One.into(),
             intersection: 2.into(),
             judgment: Judgment::Innocent,
@@ -468,7 +460,7 @@ fn tina_2026_02_05() {
         &Sentence::UnitIsConnected(
             Unit::direction(Direction::Above, "Xavi")
                 .with_judgment(Judgment::Criminal)
-                .quantify(2),
+                .bound(2),
         ),
     );
 }
@@ -479,7 +471,7 @@ fn vera_2026_02_05() {
         "Each column has at least 3 innocents",
         &Sentence::EachUnitInSeriesHasSize(
             LineKind::Column.into(),
-            Cardinal::AtLeast(3),
+            Bound::AtLeast(3),
             Judgment::Innocent,
         ),
     );
@@ -490,7 +482,7 @@ fn freya_2026_02_06() {
     sentence(
         "only one of us 2 singers has exactly 2 criminal neighbors",
         &Sentence::UniqueInUnitHasNNeighbors(
-            Unit::profession("singer").quantify(2),
+            Unit::profession("singer").bound(2),
             2.into(),
             None,
             Judgment::Criminal,
@@ -573,7 +565,7 @@ fn gary_2026_02_07() {
         "only 1 of the 2 innocents in column\u{a0}C is Zara's neighbor",
         &Sentence::UnitAndIntersectionSize {
             total: 2,
-            quantified: Column::C.into(),
+            split: Column::C.into(),
             other: Unit::neighbor("Zara"),
             intersection: 1.into(),
             judgment: Judgment::Innocent,
@@ -587,7 +579,7 @@ fn uma_2026_02_07() {
         "only 1 of the 3 innocents neighboring me is to the right of Kay",
         &Sentence::UnitAndIntersectionSize {
             total: 3,
-            quantified: Unit::Neighbor(Name::Me),
+            split: Unit::Neighbor(Name::Me),
             other: Unit::direction(Direction::Right, "Kay"),
             intersection: 1.into(),
             judgment: Judgment::Innocent,
@@ -633,7 +625,7 @@ fn kumar_2026_02_09() {
         "exactly 2 of the 3 innocents in row 5 are Susan's neighbors",
         &Sentence::UnitAndIntersectionSize {
             total: 3,
-            quantified: Row::Five.into(),
+            split: Row::Five.into(),
             other: Unit::neighbor("Susan"),
             intersection: 2.into(),
             judgment: Judgment::Innocent,
@@ -670,7 +662,7 @@ fn gabe_2026_02_09() {
         "There are at least 10 innocents on the edges",
         &Sentence::UnitSize(
             Unit::Edges.with_judgment(Judgment::Innocent),
-            Cardinal::AtLeast(10),
+            Bound::AtLeast(10),
         ),
     );
 }
@@ -714,7 +706,7 @@ fn will_2026_02_10() {
         "2 of us 3 singers have an innocent directly to the left of us",
         &Sentence::UnitSize(
             Unit::profession("singer")
-                .quantify(3)
+                .bound(3)
                 .shift(Direction::Left)
                 .with_judgment(Judgment::Innocent),
             2.into(),
@@ -808,9 +800,9 @@ fn flora_2026_04_05() {
     sentence(
         "2 of the 3 guards have 3 innocent neighbors",
         &Sentence::NInUnitHaveNNeighbors {
-            unit: Unit::profession("guard").quantify(3),
-            quantity: 2.into(),
-            neighbors: 3.into(),
+            unit: Unit::profession("guard").bound(3),
+            count: 2.into(),
+            each: 3.into(),
             judgment: Judgment::Innocent,
         },
     );
@@ -860,7 +852,7 @@ fn bobby_2026_04_14() {
         "exactly 1 of us 3 mechs has an innocent directly below them",
         &Sentence::UnitSize(
             Unit::profession("mech")
-                .quantify(3)
+                .bound(3)
                 .shift(Direction::Below)
                 .with_judgment(Judgment::Innocent),
             1.into(),
@@ -899,7 +891,7 @@ fn xena_2026_05_12() {
         "There is at least one innocent in each profession",
         &Sentence::EachUnitInSeriesHasSize(
             Series::Profession,
-            Cardinal::AtLeast(1),
+            Bound::AtLeast(1),
             Judgment::Innocent,
         ),
     );
@@ -925,7 +917,7 @@ fn mary_2026_06_24() {
         "only 1 of the 3 criminals in row 1 doesn't neighbor Emily",
         &Sentence::UnitAndIntersectionSize {
             total: 3,
-            quantified: Row::One.into(),
+            split: Row::One.into(),
             other: Unit::not_neighbor("Emily"),
             intersection: 1.into(),
             judgment: Judgment::Criminal,
@@ -936,7 +928,7 @@ fn mary_2026_06_24() {
         "only 1 of the 3 criminals in row 1 neighbors Emily",
         &Sentence::UnitAndIntersectionSize {
             total: 3,
-            quantified: Row::One.into(),
+            split: Row::One.into(),
             other: Unit::neighbor("Emily"),
             intersection: 1.into(),
             judgment: Judgment::Criminal,
@@ -989,7 +981,7 @@ fn kumar_2026_08_04() {
         "There is at least one criminal among each profession",
         &Sentence::EachUnitInSeriesHasSize(
             Series::Profession,
-            Cardinal::AtLeast(1),
+            Bound::AtLeast(1),
             Judgment::Criminal,
         ),
     );
@@ -1035,7 +1027,7 @@ fn bunty_2026_08_25() {
         "an odd number of us 3 painters are innocent",
         &Sentence::UnitSize(
             Unit::profession("painter")
-                .quantify(3)
+                .bound(3)
                 .with_judgment(Judgment::Innocent),
             Parity::Odd.into(),
         ),
@@ -1048,7 +1040,10 @@ fn bobby_2026_08_26() {
         "1 of the 2 coders neighboring Xola is innocent",
         &Sentence::IntersectionSize(
             [Unit::profession("coder"), Unit::neighbor("Xola")],
-            Quantifier::Subset(1.into(), 2),
+            BoundPair::Subset {
+                matching: 1.into(),
+                total: 2,
+            },
             Judgment::Innocent,
         ),
     );
@@ -1070,11 +1065,7 @@ fn gus_2026_10_06() {
 fn hal_2026_10_06() {
     sentence(
         "Everyone in column D has at least 2 innocent neighbors",
-        &Sentence::EachInUnitHasNNeighbors(
-            Column::D.into(),
-            Cardinal::AtLeast(2),
-            Judgment::Innocent,
-        ),
+        &Sentence::EachInUnitHasNNeighbors(Column::D.into(), Bound::AtLeast(2), Judgment::Innocent),
     );
 }
 
@@ -1179,7 +1170,7 @@ fn julie_puzzle_pack_1_1() {
         &Sentence::IsOneOfNInUnit(
             Unit::Edges,
             "Terry".into(),
-            Cardinal::AtLeast(2),
+            Bound::AtLeast(2),
             Judgment::Innocent,
         ),
     );
@@ -1191,7 +1182,7 @@ fn olof_puzzle_pack_1_1() {
         "the only criminal below Julie is Terry's neighbor",
         &Sentence::UnitAndIntersectionSize {
             total: 1,
-            quantified: Unit::direction(Direction::Below, "Julie"),
+            split: Unit::direction(Direction::Below, "Julie"),
             other: Unit::neighbor("Terry"),
             intersection: 1.into(),
             judgment: Judgment::Criminal,
@@ -1205,7 +1196,7 @@ fn flora_puzzle_pack_1_2() {
         "Nicole's only innocent neighbor is Martin's neighbor",
         &Sentence::UnitAndIntersectionSize {
             total: 1,
-            quantified: Unit::neighbor("Nicole"),
+            split: Unit::neighbor("Nicole"),
             other: Unit::neighbor("Martin"),
             intersection: 1.into(),
             judgment: Judgment::Innocent,
@@ -1243,7 +1234,7 @@ fn frank_puzzle_pack_1_5() {
         "Alice's only innocent neighbor is to the left of Helen",
         &Sentence::UnitAndIntersectionSize {
             total: 1,
-            quantified: Unit::neighbor("Alice"),
+            split: Unit::neighbor("Alice"),
             other: Unit::direction(Direction::Left, "Helen"),
             intersection: 1.into(),
             judgment: Judgment::Innocent,
@@ -1257,7 +1248,7 @@ fn katie_puzzle_pack_1_6() {
         "both innocents in row 4 are Laura's neighbors",
         &Sentence::UnitAndIntersectionSize {
             total: 2,
-            quantified: Row::Four.into(),
+            split: Row::Four.into(),
             other: Unit::neighbor("Laura"),
             intersection: 2.into(),
             judgment: Judgment::Innocent,
@@ -1271,7 +1262,7 @@ fn zara_puzzle_pack_1_6() {
         "neither of the 2 innocents neighboring Olive are to the left of Noah",
         &Sentence::UnitAndIntersectionSize {
             total: 2,
-            quantified: Unit::neighbor("Olive"),
+            split: Unit::neighbor("Olive"),
             other: Unit::direction(Direction::Left, "Noah"),
             intersection: 0.into(),
             judgment: Judgment::Innocent,
@@ -1285,7 +1276,7 @@ fn bonnie_puzzle_pack_1_13() {
         "none of the 7 criminals on the edges is a painter",
         &Sentence::UnitAndIntersectionSize {
             total: 7,
-            quantified: Unit::Edges,
+            split: Unit::Edges,
             other: Unit::profession("painter"),
             intersection: 0.into(),
             judgment: Judgment::Criminal,
@@ -1372,7 +1363,7 @@ fn eve_puzzle_pack_1_49() {
         "Katie shares neither of her 2 innocent neighbors with Laura",
         &Sentence::UnitAndIntersectionSize {
             total: 2,
-            quantified: Unit::neighbor("Katie"),
+            split: Unit::neighbor("Katie"),
             other: Unit::neighbor("Laura"),
             intersection: 0.into(),
             judgment: Judgment::Innocent,
@@ -1384,11 +1375,7 @@ fn eve_puzzle_pack_1_49() {
 fn debra_community_49f3f1_9eb600102931a676() {
     sentence(
         "No one in row 1 has more than one criminal neighbor",
-        &Sentence::EachInUnitHasNNeighbors(
-            Row::One.into(),
-            Cardinal::AtMost(1),
-            Judgment::Criminal,
-        ),
+        &Sentence::EachInUnitHasNNeighbors(Row::One.into(), Bound::AtMost(1), Judgment::Criminal),
     );
 }
 
@@ -1399,7 +1386,7 @@ fn linda_community_6eebae_909beebb44a88201() {
         &Sentence::UnitIsConnected(
             Unit::neighbor("Noah")
                 .with_judgment(Judgment::Criminal)
-                .quantify(Cardinal::AtLeast(1)),
+                .bound(Bound::AtLeast(1)),
         ),
     );
 }
