@@ -809,36 +809,12 @@ mod tests {
         solver.engine.verify_only_solution(solution);
     }
 
-    #[test]
-    fn parse_all_samples() {
-        let read_dir = match fs::read_dir("samples") {
-            Ok(read_dir) => read_dir,
-            Err(e)
-                if e.kind() == io::ErrorKind::NotFound
-                    || e.kind() == io::ErrorKind::NotADirectory =>
-            {
-                return;
-            }
-            Err(e) => panic!("error reading `samples` directory: {e}"),
-        };
-        for entry in read_dir {
-            let entry = entry.unwrap();
-            #[expect(
-                clippy::filetype_is_file,
-                reason = "actual tests should be plain files"
-            )]
-            if !entry.file_type().unwrap().is_file() {
-                continue;
-            }
-            let path = entry.path();
-            let contents = fs::read_to_string(&path).unwrap();
-            let board = ParsedBoard::from_html(&contents, None, PuzzleId::Custom)
-                .with_context(|| format!("parsing {}", path.to_string_lossy()))
-                .unwrap();
-            if matches!(board.metadata.id, PuzzleId::Custom) && board.metadata.difficulty.is_none()
-            {
-                eprintln!("no metadata parsed in {}", path.display());
-            }
+    test_each_file! { in "./samples" as contents => sample}
+
+    fn sample(sample: &str) {
+        let board = ParsedBoard::from_html(sample, None, PuzzleId::Custom).unwrap();
+        if matches!(board.metadata.id, PuzzleId::Custom) && board.metadata.difficulty.is_none() {
+            eprintln!("no metadata parsed");
         }
     }
 }
