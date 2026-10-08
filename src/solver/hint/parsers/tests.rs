@@ -194,7 +194,7 @@ fn gary_2025_07_07() {
 #[test]
 fn austin_2025_07_16() {
     sentence(
-        "Isaac is one of the innocents in row 3",
+        "Isaac is one of the innocents in row 3",
         &Sentence::IsInUnit(Row::Three.into(), "Isaac".into(), Judgment::Innocent),
     );
 }
@@ -358,7 +358,7 @@ fn xena_2026_01_15() {
 #[test]
 fn salil_2026_01_15() {
     sentence(
-        "No one in row 4 has more than 2 criminal neighbors",
+        "No one in row 4 has more than 2 criminal neighbors",
         &Sentence::EachInUnitHasNNeighbors(Row::Four.into(), Bound::AtMost(2), Judgment::Criminal),
     );
 }
@@ -576,7 +576,7 @@ fn logan_2026_02_06() {
 #[test]
 fn ivan_2026_02_06() {
     sentence(
-        "row 5 has more innocents than any other row",
+        "row 5 has more innocents than any other row",
         &Sentence::BiggestInSeries(Row::Five.into(), Judgment::Innocent),
     );
 }
@@ -655,7 +655,7 @@ fn hank_2026_02_08() {
 #[test]
 fn tina_2026_02_09() {
     sentence(
-        "exactly 2 innocents in column C are neighboring me",
+        "exactly 2 innocents in column C are neighboring me",
         &Sentence::IntersectionSize(
             [Column::C.into(), Unit::Neighbor(Name::Me)],
             2.into(),
@@ -667,7 +667,7 @@ fn tina_2026_02_09() {
 #[test]
 fn kumar_2026_02_09() {
     sentence(
-        "exactly 2 of the 3 innocents in row 5 are Susan's neighbors",
+        "exactly 2 of the 3 innocents in row 5 are Susan's neighbors",
         &Sentence::UnitAndIntersectionSize {
             total: 3,
             split: Row::Five.into(),
@@ -681,7 +681,7 @@ fn kumar_2026_02_09() {
 #[test]
 fn xavi_2026_02_09() {
     sentence(
-        "There are more innocents in row 3 than row 5",
+        "There are more innocents in row 3 than row 5",
         &Sentence::UnitBiggerThanUnit {
             big: Unit::from(Row::Three).with_judgment(Judgment::Innocent),
             small: Unit::from(Row::Five).with_judgment(Judgment::Innocent),
@@ -770,7 +770,7 @@ fn noah_2026_02_11() {
 #[test]
 fn ollie_2026_02_12() {
     sentence(
-        "There's an odd number of innocents neighboring Celia in row 2",
+        "There's an odd number of innocents neighboring Celia in row 2",
         &Sentence::IntersectionSize(
             [Unit::neighbor("Celia"), Row::Two.into()],
             Parity::Odd.into(),
@@ -856,7 +856,7 @@ fn flora_2026_04_05() {
 #[test]
 fn sofia_2026_04_11() {
     sentence(
-        "one innocent in column A has an innocent directly to the right of them",
+        "one innocent in column A has an innocent directly to the right of them",
         &Sentence::UnitSize(
             Unit::from(Column::A)
                 .with_judgment(Judgment::Innocent)
@@ -870,7 +870,7 @@ fn sofia_2026_04_11() {
 #[test]
 fn xavi_2026_04_11() {
     sentence(
-        "2 persons in column D have an innocent directly above them",
+        "2 persons in column D have an innocent directly above them",
         &Sentence::UnitSize(
             Unit::from(Column::D)
                 .shift(Direction::Above)
@@ -959,7 +959,7 @@ fn nancy_2026_06_23() {
 #[test]
 fn mary_2026_06_24() {
     sentence(
-        "only 1 of the 3 criminals in row 1 doesn't neighbor Emily",
+        "only 1 of the 3 criminals in row 1 doesn't neighbor Emily",
         &Sentence::UnitAndIntersectionSize {
             total: 3,
             split: Row::One.into(),
@@ -970,7 +970,7 @@ fn mary_2026_06_24() {
     );
 
     sentence(
-        "only 1 of the 3 criminals in row 1 neighbors Emily",
+        "only 1 of the 3 criminals in row 1 neighbors Emily",
         &Sentence::UnitAndIntersectionSize {
             total: 3,
             split: Row::One.into(),
@@ -1097,7 +1097,7 @@ fn bobby_2026_08_26() {
 #[test]
 fn gus_2026_10_06() {
     sentence(
-        "There are more innocents in row 2 than in column A",
+        "There are more innocents in row 2 than in column A",
         &Sentence::UnitBiggerThanUnit {
             big: Unit::from(Row::Two).with_judgment(Judgment::Innocent),
             small: Unit::from(Column::A).with_judgment(Judgment::Innocent),
@@ -1109,7 +1109,7 @@ fn gus_2026_10_06() {
 #[test]
 fn hal_2026_10_06() {
     sentence(
-        "Everyone in column D has at least 2 innocent neighbors",
+        "Everyone in column D has at least 2 innocent neighbors",
         &Sentence::EachInUnitHasNNeighbors(Column::D.into(), Bound::AtLeast(2), Judgment::Innocent),
     );
 }
@@ -1290,7 +1290,7 @@ fn frank_puzzle_pack_1_5() {
 #[test]
 fn katie_puzzle_pack_1_6() {
     sentence(
-        "both innocents in row 4 are Laura's neighbors",
+        "both innocents in row 4 are Laura's neighbors",
         &Sentence::UnitAndIntersectionSize {
             total: 2,
             split: Row::Four.into(),
@@ -1419,7 +1419,7 @@ fn eve_puzzle_pack_1_49() {
 #[test]
 fn debra_community_49f3f1_9eb600102931a676() {
     sentence(
-        "No one in row 1 has more than one criminal neighbor",
+        "No one in row 1 has more than one criminal neighbor",
         &Sentence::EachInUnitHasNNeighbors(Row::One.into(), Bound::AtMost(1), Judgment::Criminal),
     );
 }

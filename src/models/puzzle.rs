@@ -2,6 +2,7 @@ use std::borrow::Cow;
 
 use anyhow::{Result, bail};
 use jiff::civil::Date;
+use lazy_regex::regex_replace_all;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumDiscriminants, EnumString, VariantArray};
 
@@ -84,6 +85,23 @@ impl HintText {
             None
         }
     }
+
+    fn normalize_spaces(&self) -> Self {
+        match self {
+            Self::Flavor => Self::Flavor,
+            Self::Logical(text) => {
+                let text = regex_replace_all!("(row) ([1-5])"i, text, |_, label, row| format!(
+                    "{label} {row}"
+                ));
+                let text = regex_replace_all!(
+                    "(column) ([A-D])"i,
+                    text.as_ref(),
+                    |_, label, col| format!("{label} {col}")
+                );
+                Self::Logical(text.into_owned())
+            }
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -100,7 +118,7 @@ impl From<Card> for Flattened {
             name: card.front.name,
             profession: card.front.profession,
             judgment: card.judgment,
-            hint: card.hint,
+            hint: card.hint.normalize_spaces(),
         }
     }
 }
