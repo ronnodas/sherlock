@@ -262,6 +262,17 @@ fn steve_2025_08_20() {
 }
 
 #[test]
+fn tyler_2025_08_22() {
+    sentence(
+        "If Logan is a criminal, then so is Hilda",
+        &Sentence::IfThen([
+            ("Logan".into(), Judgment::Criminal),
+            ("Hilda".into(), Judgment::Criminal),
+        ]),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",

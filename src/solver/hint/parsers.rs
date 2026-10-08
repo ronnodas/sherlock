@@ -67,10 +67,9 @@ impl Sentence {
                 terminated(Self::at_most_n_traits_in_neighbors_in_unit, eof),
                 terminated(Self::total_number_of_traits_in_units, eof),
             )),
-            alt((
-                terminated(Self::all_traits_in_unit_are_in_unit, eof),
-                terminated(Self::is_one_of_traits_in_unit, eof),
-            )),
+            terminated(Self::all_traits_in_unit_are_in_unit, eof),
+            terminated(Self::is_one_of_traits_in_unit, eof),
+            terminated(Self::if_then, eof),
         ))
         .parse_next(input)
     }
@@ -752,6 +751,18 @@ impl Sentence {
         )
         .parse_next(input)
     }
+
+    fn if_then(input: &mut &[&str]) -> Result<Self> {
+        seq!(
+            _: word("If"),
+            name_is,
+            judgment_predicate_comma,
+            _: words(("then", "so")),
+            is_name
+        )
+        .map(|(name_p, judgment, name_c)| Self::IfThen([(name_p, judgment), (name_c, judgment)]))
+        .parse_next(input)
+    }
 }
 
 fn unit_pair(input: &mut &[&str]) -> Result<[Unit; 2]> {
@@ -967,6 +978,14 @@ fn judgment_predicate_singular(input: &mut &[&str]) -> Result<Judgment> {
     .parse_next(input)
 }
 
+fn judgment_predicate_comma(input: &mut &[&str]) -> Result<Judgment> {
+    alt((
+        word_or_comma_terminated("innocent").value(Judgment::Innocent),
+        (word("a"), word_or_comma_terminated("criminal")).value(Judgment::Criminal),
+    ))
+    .parse_next(input)
+}
+
 fn judgment_any(input: &mut &str) -> Result<Judgment> {
     alt((judgment_plural, judgment_singular)).parse_next(input)
 }
@@ -1015,6 +1034,14 @@ fn name_is(input: &mut &[&str]) -> Result<NameRecipe> {
         word("I'm").value(NameRecipe::Me),
         words(("I", "am")).value(NameRecipe::Me),
         terminated(word(raw_name), word("is")).map(NameRecipe::from),
+    ))
+    .parse_next(input)
+}
+
+fn is_name(input: &mut &[&str]) -> Result<NameRecipe> {
+    alt((
+        words(("am", "I")).value(NameRecipe::Me),
+        preceded(word("is"), word(raw_name)).map(NameRecipe::from),
     ))
     .parse_next(input)
 }
@@ -1289,6 +1316,17 @@ fn pair<
     sep: &'static str,
 ) -> impl Parser<&'input [&'inner str], [T; 2], E> {
     separated_pair(word(inner), word(sep), word(inner)).map(Into::into)
+}
+
+fn word_or_comma_terminated<
+    'input,
+    'inner: 'input,
+    O,
+    E: ParserError<&'input [&'inner str]> + ParserError<&'inner str>,
+>(
+    inner: impl Parser<&'inner str, O, E>,
+) -> impl Parser<&'input [&'inner str], O, E> {
+    any.and_then(terminated(inner, (opt(','), eof)))
 }
 
 fn word<

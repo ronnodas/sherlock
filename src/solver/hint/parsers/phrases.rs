@@ -53,6 +53,7 @@ pub(crate) enum Sentence {
         other: Unit,
     },
     IsInUnit(Unit, NameRecipe, Judgment),
+    IfThen([(NameRecipe, Judgment); 2]),
 }
 
 impl AddContext for &Sentence {
@@ -153,6 +154,10 @@ impl AddContext for &Sentence {
                 other,
             } => split.traits_are_in_unit(*any_all, *judgment, other, context)?,
             Sentence::IsInUnit(unit, name, judgment) => unit.contains(name, *judgment, context)?,
+            Sentence::IfThen([(name_p, judgment_p), (name_c, judgment_c)]) => vec![Hint::IfThen([
+                (name_p.add_context(context)?, *judgment_p),
+                (name_c.add_context(context)?, *judgment_c),
+            ])],
         };
         Ok(hints)
     }

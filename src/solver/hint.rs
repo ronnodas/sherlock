@@ -27,7 +27,10 @@ pub(crate) enum Hint {
     /// The first set compares with the second set
     CompareSets([SetOp1; 2], Comparison),
     /// Among the given `sets`, exactly one has count matching `bound`
-    UniqueWithCount { sets: Vec1<SetOp1>, bound: Bound },
+    UniqueWithCount {
+        sets: Vec1<SetOp1>,
+        bound: Bound,
+    },
     /// Each member of the given set has a given number of neighbors with the given judgment
     EachNeighbors(SetExpr1, Bound, Judgment),
     /// `count` many members of the given set has `each` neighbors with given judgment
@@ -37,6 +40,7 @@ pub(crate) enum Hint {
         count: Bound,
         judgment: Judgment,
     },
+    IfThen([(Coord, Judgment); 2]),
 }
 
 impl Hint {
@@ -81,6 +85,11 @@ impl Hint {
                     let neighbors = solution.select(&coord.neighbors().judged(*judgment)).len();
                     bound.matches(neighbors)
                 })
+            }
+            Self::IfThen(clauses) => {
+                let [premise, consequence] =
+                    clauses.map(|(coord, judgment)| solution[coord] == judgment);
+                !premise || consequence
             }
         }
     }
