@@ -18,28 +18,41 @@ mod phrases;
 
 pub(crate) use phrases::{Sentence, Series, Unit, UnitInSeries};
 
+const PUNCTUATION: [char; 3] = ['.', '!', ':'];
+
 impl Sentence {
     pub(crate) fn parse(hint: &str) -> anyhow::Result<Self> {
+        Self::parse_entire(hint)
+            .or_else(|err| {
+                hint.split(PUNCTUATION)
+                    .find_map(|segment| Self::parse_entire(segment).ok())
+                    .ok_or(err)
+            })
+            .map_err(|_err| anyhow!("parsing {hint:?}"))
+    }
+
+    fn parse_entire(hint: &str) -> anyhow::Result<Self> {
         let words: Vec<_> = hint
             .split_ascii_whitespace()
             .filter(|word| !word.is_empty())
             .collect();
-        Self::parse_cased(&words)
-            .or_else(move |e| {
-                if let Some(&word) = words.first() {
-                    let mut word = word.to_owned();
-                    if let Some(first_char) = word.get_mut(..1) {
-                        first_char.make_ascii_lowercase();
-                        let words: Vec<_> = once(&*word).chain(words.into_iter().skip(1)).collect();
-                        return Self::parse_cased(&words);
-                    }
-                }
-                Err(e)
-            })
-            .map_err(|_err| anyhow!("\"{hint}\""))
+        Self::parse_exact(&words).or_else(|err| {
+            if let Some((&first_word, rest)) = words.split_first()
+                && let first_word = first_word.to_owned()
+                && let mut chars = first_word.chars()
+                && let Some(first_char) = chars.next()
+                && !first_char.is_lowercase()
+            {
+                let first_word: String = first_char.to_lowercase().chain(chars).collect();
+                let words: Vec<_> = once(&*first_word).chain(rest.iter().copied()).collect();
+                Self::parse_exact(&words).map_err(|_err| err)
+            } else {
+                Err(err)
+            }
+        })
     }
 
-    fn parse_cased(hint: &[&str]) -> anyhow::Result<Self> {
+    fn parse_exact(hint: &[&str]) -> anyhow::Result<Self> {
         Self::any.parse(hint).map_err(|e| anyhow!("{e:?}"))
     }
 

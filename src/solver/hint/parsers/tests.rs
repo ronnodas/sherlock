@@ -1,9 +1,3 @@
-use std::fmt;
-
-use winnow::Parser;
-use winnow::error::ParserError;
-use winnow::stream::{Stream, StreamIsPartial};
-
 use crate::models::{Column, Direction, Judgment, Row};
 use crate::solver::hint::parsers::phrases::{AnyAll, BoundPair};
 use crate::solver::hint::recipes::{ColumnRecipe, NameRecipe as Name};
@@ -1456,21 +1450,22 @@ fn flora_community_6eebae_d5d5560b65d3f7ba() {
     );
 }
 
-fn sentence(input: &str, sentence: &Sentence) {
-    let input: Vec<_> = input.split(' ').filter(|s| !s.is_empty()).collect();
-    parser(&Sentence::any, &input, sentence);
-}
-
-fn parser<
-    I: Stream + StreamIsPartial,
-    P: Parser<I, T, E>,
-    T: PartialEq + fmt::Debug,
-    E: ParserError<I, Inner: fmt::Debug + ParserError<I>>,
->(
-    mut parser: P,
-    input: I,
-    expected: &T,
-) {
-    let output = parser.parse(input).unwrap();
+fn sentence(input: &str, expected: &Sentence) {
+    let output = Sentence::parse(input).unwrap();
     assert_eq!(&output, expected);
 }
+
+// for debugging sub parsers
+// fn parser<
+//     I: Stream + StreamIsPartial,
+//     P: Parser<I, T, E>,
+//     T: PartialEq + fmt::Debug,
+//     E: ParserError<I, Inner: fmt::Debug + ParserError<I>>,
+// >(
+//     mut parser: P,
+//     input: I,
+//     expected: &T,
+// ) {
+//     let output = parser.parse(input).unwrap();
+//     assert_eq!(&output, expected);
+// }
