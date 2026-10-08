@@ -857,6 +857,23 @@ fn pair_bounded_judged_unit(input: &mut &[&str]) -> Result<(BoundPair, Judgment,
             word(judgment_any),
             unit,
         ),
+        seq!(
+            _: words(("neither", "of")),
+            word(name_possessive),
+            _: opt(word("2")),
+            word(judgment_adjective),
+            _: word("neighbors")
+        )
+        .map(|(name, judgment)| {
+            (
+                BoundPair::Subset {
+                    matching: Bound::Exact(0),
+                    total: 2,
+                },
+                judgment,
+                Unit::Neighbor(name),
+            )
+        }),
     ))
     .parse_next(input)
 }

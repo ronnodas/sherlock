@@ -273,6 +273,20 @@ fn tyler_2025_08_22() {
 }
 
 #[test]
+fn karen_2025_08_31() {
+    sentence(
+        "neither of Rose's 2 innocent neighbors are above Xia",
+        &Sentence::UnitAndIntersectionSize {
+            total: 2,
+            split: Unit::neighbor("Rose"),
+            other: Unit::direction(Direction::Above, "Xia"),
+            intersection: 0.into(),
+            judgment: Judgment::Innocent,
+        },
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",
