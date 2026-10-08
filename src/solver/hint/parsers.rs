@@ -567,6 +567,16 @@ impl Sentence {
                 line,
             )
             .map(|(bound, judgment, line)| ([Unit::Edges, line.into()], judgment, bound.into())),
+            seq!(
+                _: word("All"),
+                word(profession_plural),
+                unit,
+                _: word("are"),
+                word(judgment_adjective)
+            )
+            .map(|(profession, unit, judgment)| {
+                ([Unit::Profession(profession), unit], !judgment, 0.into())
+            }),
         ))
         .map(|(units, judgment, bound_pair)| Self::IntersectionSize(units, bound_pair, judgment))
         .parse_next(input)

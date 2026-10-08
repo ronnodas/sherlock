@@ -295,6 +295,18 @@ fn vince_2025_09_26() {
 }
 
 #[test]
+fn phil_2025_09_29() {
+    sentence(
+        "All coders in a corner are criminal",
+        &Sentence::IntersectionSize(
+            [Unit::profession("coder"), Unit::Corners],
+            0.into(),
+            Judgment::Innocent,
+        ),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",
