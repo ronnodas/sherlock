@@ -287,6 +287,14 @@ fn karen_2025_08_31() {
 }
 
 #[test]
+fn vince_2025_09_26() {
+    sentence(
+        "There are more innocents in row 1 than in any other row",
+        &Sentence::BiggestInSeries(Row::One.into(), Judgment::Innocent),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "exactly 1 of the 2 painters has an innocent directly to the left of them",

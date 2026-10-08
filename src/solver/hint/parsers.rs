@@ -98,15 +98,26 @@ impl Sentence {
 
     fn has_most_traits(input: &mut &[&str]) -> Result<Self> {
         alt((
-            seq!(
-                line,
-                _: words(("has", "more")),
-                word(judgment_plural),
-                _: words(("than", "any", "other")),
-                word(line_kind),
-            )
-            .verify(|&(line, _, kind)| line.kind() == kind)
-            .map(|(line, judgment, _)| (line.into(), judgment)),
+            alt((
+                seq!(
+                    line,
+                    _: words(("has", "more")),
+                    word(judgment_plural),
+                    _: words(("than", "any", "other")),
+                    word(line_kind),
+                )
+                .map(|(line, judgment, kind)| (judgment, line, kind)),
+                seq!(
+                    _: words(("There", "are", "more")),
+                    word(judgment_plural),
+                    _: word("in"),
+                    line,
+                    _: words(("than", "in", "any", "other")),
+                    word(line_kind)
+                ),
+            ))
+            .verify(|&(_, line, kind)| line.kind() == kind)
+            .map(|(judgment, line, _)| (line.into(), judgment)),
             seq!(
                 _: words(("There", "are", "more")),
                 word(judgment_plural),
