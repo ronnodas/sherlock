@@ -348,6 +348,17 @@ fn eve_2025_11_03() {
 }
 
 #[test]
+fn lisa_2025_11_03() {
+    sentence(
+        "Column D has exactly 4 innocents",
+        &Sentence::UnitSize(
+            Unit::from(Column::D).with_judgment(Judgment::Innocent),
+            4.into(),
+        ),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "Exactly 1 of the 2 painters has an innocent directly to the left of them",

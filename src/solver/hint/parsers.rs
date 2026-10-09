@@ -306,6 +306,8 @@ impl Sentence {
                 judgment_predicate_singular,
             )
             .map(|(unit, judgment)| (Bound::AtLeast(1), !judgment, unit.into())),
+            seq!(line, _: word("has"), bound, word(judgment_any))
+                .map(|(line, bound, judgment)| (bound, judgment, line.into())),
         ))
         .map(|(bound, judgment, unit)| Self::UnitSize(unit.with_judgment(judgment), bound))
         .parse_next(input)

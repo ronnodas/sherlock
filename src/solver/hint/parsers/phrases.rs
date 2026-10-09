@@ -248,6 +248,12 @@ impl From<Unit> for UnitExpr {
     }
 }
 
+impl From<LineRecipe> for UnitExpr {
+    fn from(line: LineRecipe) -> Self {
+        Self::Regular(line.into())
+    }
+}
+
 impl AddContext for &UnitExpr {
     type Output = (SetExpr, Vec<Hint>);
 
