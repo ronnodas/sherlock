@@ -164,6 +164,13 @@ impl LineKind {
             Self::Column => Column::ALL.map(Line::Column).into_iter1().collect1(),
         }
     }
+
+    fn of(self, coord: Coord) -> Line {
+        match self {
+            Self::Row => Line::Row(coord.row),
+            Self::Column => Line::Column(coord.col),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

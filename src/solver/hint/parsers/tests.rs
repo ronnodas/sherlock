@@ -340,6 +340,14 @@ fn vince_2025_10_20() {
 }
 
 #[test]
+fn eve_2025_11_03() {
+    sentence(
+        "Joyce is the only criminal in her row",
+        &Sentence::OnlyTraitInSeries("Joyce".into(), LineKind::Row.into(), Judgment::Criminal),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "Exactly 1 of the 2 painters has an innocent directly to the left of them",

@@ -10,7 +10,9 @@ use winnow::token::{any, rest};
 use winnow::{Parser, Result};
 
 use crate::models::{Column, Direction, Judgment, Profession, Row};
-use crate::solver::hint::parsers::phrases::{AnyAll, BoundPair, MoreOrLess, UnitExpr};
+use crate::solver::hint::parsers::phrases::{
+    AnyAll, BoundPair, DisjointSeries, MoreOrLess, UnitExpr,
+};
 use crate::solver::hint::recipes::{ColumnRecipe, LineRecipe, NameRecipe, RowRecipe};
 use crate::solver::hint::{Bound, LineKind, Number, Parity};
 
@@ -83,6 +85,7 @@ impl Sentence {
             terminated(Self::all_traits_in_unit_are_in_unit, eof),
             terminated(Self::is_one_of_traits_in_unit, eof),
             terminated(Self::if_then, eof),
+            terminated(Self::only_trait_in_series, eof),
         ))
         .parse_next(input)
     }
@@ -644,7 +647,7 @@ impl Sentence {
         alt((
             seq!(
                 _: word("Each"),
-                word(series),
+                word(disjoint_series).map(Series::from),
                 _: word("has"),
                 bound,
                 word(judgment_any),
@@ -654,7 +657,7 @@ impl Sentence {
                 bound,
                 word(judgment_any),
                 _: words((alt(("in", "among")), "each")),
-                word(series),
+                word(disjoint_series).map(Series::from),
             )
             .map(|(bound, judgment, series)| (series, bound, judgment)),
             seq!(
@@ -666,7 +669,7 @@ impl Sentence {
             .map(|(bound, judgment)| (Series::Neighbor, bound, judgment)),
             seq!(
                 _: words(("There", "is", "no")),
-                word(series),
+                word(disjoint_series).map(Series::from),
                 _: words(("with", "only")),
                 word(judgment_plural),
             )
@@ -831,6 +834,18 @@ impl Sentence {
         .map(Self::IfThen)
         .parse_next(input)
     }
+
+    fn only_trait_in_series(input: &mut &[&str]) -> Result<Self> {
+        seq!(
+            name_is,
+            _: words(("the", "only")),
+            word(judgment_singular),
+            _: words(("in", pronoun_possessive_singular)),
+            word(disjoint_series)
+        )
+        .map(|(name, judgment, series)| Self::OnlyTraitInSeries(name, series, judgment))
+        .parse_next(input)
+    }
 }
 
 fn unit_pair(input: &mut &[&str]) -> Result<[Unit; 2]> {
@@ -972,7 +987,7 @@ fn bound_pair(input: &mut &[&str]) -> Result<BoundPair> {
             word("neither"),
             opt((
                 word("of"),
-                opt(words((alt((determiner, pronoun_possessive)), "2"))),
+                opt(words((alt((determiner, pronoun_possessive_singular)), "2"))),
             )),
         )
             .value(BoundPair::Subset {
@@ -985,7 +1000,7 @@ fn bound_pair(input: &mut &[&str]) -> Result<BoundPair> {
                 opt(words(("out", "of"))),
                 alt((
                     word(determiner).void(),
-                    word(pronoun_possessive).void(),
+                    word(pronoun_possessive_singular).void(),
                     empty,
                 )),
             ),
@@ -1221,8 +1236,8 @@ fn indefinite_article<'input>(input: &mut &'input str) -> Result<&'input str> {
     alt(("a", "an")).parse_next(input)
 }
 
-fn pronoun_possessive<'input>(input: &mut &'input str) -> Result<&'input str> {
-    alt(("her", "his")).parse_next(input)
+fn pronoun_possessive_singular<'input>(input: &mut &'input str) -> Result<&'input str> {
+    alt(("her", "his", "my", "their")).parse_next(input)
 }
 
 fn determiner<'input>(input: &mut &'input str) -> Result<&'input str> {
@@ -1307,10 +1322,10 @@ fn any_all(input: &mut &str) -> Result<AnyAll> {
     alt(("all".value(AnyAll::All), "any".value(AnyAll::Any))).parse_next(input)
 }
 
-fn series(input: &mut &str) -> Result<Series> {
+fn disjoint_series(input: &mut &str) -> Result<DisjointSeries> {
     alt((
-        line_kind.map(Series::from),
-        "profession".value(Series::Profession),
+        line_kind.map(DisjointSeries::from),
+        "profession".value(DisjointSeries::Profession),
     ))
     .parse_next(input)
 }

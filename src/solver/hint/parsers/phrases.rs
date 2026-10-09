@@ -54,6 +54,7 @@ pub(crate) enum Sentence {
     },
     IsInUnit(Unit, NameRecipe, Judgment),
     IfThen([(NameRecipe, Judgment); 2]),
+    OnlyTraitInSeries(NameRecipe, DisjointSeries, Judgment),
 }
 
 impl AddContext for &Sentence {
@@ -112,19 +113,9 @@ impl AddContext for &Sentence {
                 a.intersection(b, *bound_pair, *judgment, context)?
             }
             Sentence::EqualNumberOfTraitsInUnits(units, judgment) => {
-                let sets = units.add_context(context)?;
-                match sets.map(Set::non_empty) {
-                    [None, None] => Vec::new(),
-                    [None, Some(set)] | [Some(set), None] => {
-                        vec![Hint::Count(set.judged(*judgment), BoundOrNot::Exact(0))]
-                    }
-                    [Some(a), Some(b)] => {
-                        let sets = [a, b].map(|set| set.judged(*judgment));
-                        vec![Hint::CompareSets(sets, Comparison::ExactDifference(0))]
-                    }
-                }
+                Unit::equal_traits(units, *judgment, context)?
             }
-            Sentence::UnitEquallySplit(unit) => unit.equal_traits(context)?,
+            Sentence::UnitEquallySplit(unit) => unit.equally_split(context)?,
             Sentence::MoreTraitsInUnit(unit, judgment) => {
                 let set = unit.add_context(context)?;
                 let Some(set) = set.non_empty() else {
@@ -158,6 +149,9 @@ impl AddContext for &Sentence {
                 (name_p.add_context(context)?, *judgment_p),
                 (name_c.add_context(context)?, *judgment_c),
             ])],
+            Sentence::OnlyTraitInSeries(name, series, judgment) => {
+                series.only_trait(name, *judgment, context)?
+            }
         };
         Ok(hints)
     }
@@ -521,7 +515,7 @@ impl Unit {
         Self::Shifted(Box::new(self), direction)
     }
 
-    fn equal_traits(&self, context: Context<'_>) -> Result<Vec<Hint>> {
+    fn equally_split(&self, context: Context<'_>) -> Result<Vec<Hint>> {
         let set = self.add_context(context)?;
         let hints = if let Some(set) = set.non_empty() {
             if !set.len().get().is_multiple_of(2) {
@@ -595,6 +589,25 @@ impl Unit {
         };
         set.assert_contains(coord)?;
         Ok(vec![Hint::Judgment(coord, judgment)])
+    }
+
+    fn equal_traits(
+        units: &[Self; 2],
+        judgment: Judgment,
+        context: Context<'_>,
+    ) -> Result<Vec<Hint>> {
+        let sets = units.add_context(context)?;
+        let hints = match sets.map(Set::non_empty) {
+            [None, None] => Vec::new(),
+            [None, Some(set)] | [Some(set), None] => {
+                vec![Hint::Count(set.judged(judgment), BoundOrNot::Exact(0))]
+            }
+            [Some(a), Some(b)] => {
+                let sets = [a, b].map(|set| set.judged(judgment));
+                vec![Hint::CompareSets(sets, Comparison::ExactDifference(0))]
+            }
+        };
+        Ok(hints)
     }
 }
 
@@ -842,6 +855,56 @@ impl Series {
 impl From<LineKind> for Series {
     fn from(kind: LineKind) -> Self {
         Self::Line(kind)
+    }
+}
+
+impl From<DisjointSeries> for Series {
+    fn from(series: DisjointSeries) -> Self {
+        match series {
+            DisjointSeries::Line(kind) => Self::Line(kind),
+            DisjointSeries::Profession => Self::Profession,
+        }
+    }
+}
+
+/// Series whose sets are disjoint, in particular, given a `Coord`, determines a `UnitInSeries`
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DisjointSeries {
+    Line(LineKind),
+    Profession,
+}
+
+impl DisjointSeries {
+    fn add_context(self, coord: Coord, context: Context<'_>) -> Set1 {
+        match self {
+            Self::Line(kind) => kind.of(coord).into(),
+            Self::Profession => *context
+                .by_profession
+                .as_btree_map()
+                .values()
+                .find(|set| set.contains(coord))
+                .expect("partition of coordinates"),
+        }
+    }
+
+    fn only_trait(
+        self,
+        name: &NameRecipe,
+        judgment: Judgment,
+        context: Context<'_>,
+    ) -> Result<Vec<Hint>> {
+        let coord = name.add_context(context)?;
+        let set = self.add_context(coord, context).judged(judgment);
+        Ok(vec![
+            Hint::Judgment(coord, judgment),
+            Hint::Count(set, BoundOrNot::Exact(1)),
+        ])
+    }
+}
+
+impl From<LineKind> for DisjointSeries {
+    fn from(v: LineKind) -> Self {
+        Self::Line(v)
     }
 }
 
