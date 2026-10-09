@@ -796,14 +796,25 @@ impl Sentence {
     }
 
     fn if_then(input: &mut &[&str]) -> Result<Self> {
-        seq!(
-            _: word("If"),
-            name_is,
-            judgment_predicate_comma,
-            _: words(("then", "so")),
-            is_name
-        )
-        .map(|(name_p, judgment, name_c)| Self::IfThen([(name_p, judgment), (name_c, judgment)]))
+        alt((
+            seq!(
+                _: word("If"),
+                name_is,
+                judgment_predicate_comma,
+                _: words(("then", "so")),
+                is_name
+            )
+            .map(|(name_p, judgment, name_c)| {
+                Self::IfThen([(name_p, judgment), (name_c, judgment)])
+            }),
+            seq!(
+                _: word("If"),
+                (name_is, judgment_predicate_comma),
+                _: word("then"),
+                (name_is, judgment_predicate_singular)
+            )
+            .map(|clauses| Self::IfThen(clauses.into())),
+        ))
         .parse_next(input)
     }
 }
@@ -1034,6 +1045,7 @@ fn judgment_predicate_singular(input: &mut &[&str]) -> Result<Judgment> {
     alt((
         word("innocent").value(Judgment::Innocent),
         words(("a", "criminal")).value(Judgment::Criminal),
+        words(("not", "innocent")).value(Judgment::Criminal),
     ))
     .parse_next(input)
 }
@@ -1042,6 +1054,7 @@ fn judgment_predicate_comma(input: &mut &[&str]) -> Result<Judgment> {
     alt((
         word_or_comma_terminated("innocent").value(Judgment::Innocent),
         (word("a"), word_or_comma_terminated("criminal")).value(Judgment::Criminal),
+        (word("not"), word_or_comma_terminated("innocent")).value(Judgment::Criminal),
     ))
     .parse_next(input)
 }
