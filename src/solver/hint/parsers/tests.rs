@@ -301,6 +301,18 @@ fn phil_2025_09_29() {
 }
 
 #[test]
+fn sofia_2025_10_13() {
+    sentence(
+        "Each cook neighboring me is innocent",
+        &Sentence::IntersectionSize(
+            [Unit::profession("cook"), Unit::Neighbor(Name::Me)],
+            0.into(),
+            Judgment::Criminal,
+        ),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "Exactly 1 of the 2 painters has an innocent directly to the left of them",

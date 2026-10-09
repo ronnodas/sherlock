@@ -580,13 +580,22 @@ impl Sentence {
                 line,
             )
             .map(|(bound, judgment, line)| ([Unit::Edges, line.into()], judgment, bound.into())),
-            seq!(
-                _: word("All"),
-                word(profession_plural),
-                unit,
-                _: word("are"),
-                word(judgment_adjective)
-            )
+            alt((
+                seq!(
+                    _: word("All"),
+                    word(profession_plural),
+                    unit,
+                    _: word("are"),
+                    word(judgment_adjective)
+                ),
+                seq!(
+                    _: word("Each"),
+                    word(profession_singular),
+                    unit,
+                    _: word("is"),
+                    judgment_predicate_singular
+                ),
+            ))
             .map(|(profession, unit, judgment)| {
                 ([Unit::Profession(profession), unit], !judgment, 0.into())
             }),
