@@ -46,7 +46,7 @@ fn julie_2025_05_02() {
 #[test]
 fn gary_2025_05_04() {
     sentence(
-        "the only innocent below Austin is one of Kevin's neighbors",
+        "The only innocent below Austin is one of Kevin's neighbors",
         &Sentence::UnitAndIntersectionSize {
             total: 1,
             split: Unit::direction(Direction::Below, "Austin"),
@@ -72,7 +72,7 @@ fn betty_2025_05_05() {
 #[test]
 fn rose_2025_05_09() {
     sentence(
-        "the only innocent above Olivia is not Amy",
+        "The only innocent above Olivia is not Amy",
         &Sentence::UnitAndIntersectionSize {
             total: 1,
             split: Unit::direction(Direction::Above, "Olivia"),
@@ -156,7 +156,7 @@ fn will_2025_06_07() {
 #[test]
 fn hal_2025_06_08() {
     sentence(
-        "all criminals below Maria are in row 5",
+        "All criminals below Maria are in row 5",
         &Sentence::TraitsInUnitAreInUnit {
             any_all: AnyAll::All,
             split: Unit::direction(Direction::Below, "Maria"),
@@ -180,7 +180,7 @@ fn isaac_2025_06_14() {
 #[test]
 fn gary_2025_07_07() {
     sentence(
-        "coder is the profession with the most innocents",
+        "Coder is the profession with the most innocents",
         &Sentence::BiggestInSeries(UnitInSeries::profession("coder"), Judgment::Innocent),
     );
 }
@@ -209,7 +209,7 @@ fn austin_2025_07_29() {
 #[test]
 fn rose_2025_08_02() {
     sentence(
-        "any innocent in row 2 is neighboring Carol",
+        "Any innocent in row 2 is neighboring Carol",
         &Sentence::TraitsInUnitAreInUnit {
             any_all: AnyAll::Any,
             split: Row::Two.into(),
@@ -269,7 +269,7 @@ fn tyler_2025_08_22() {
 #[test]
 fn karen_2025_08_31() {
     sentence(
-        "neither of Rose's 2 innocent neighbors are above Xia",
+        "Neither of Rose's 2 innocent neighbors are above Xia",
         &Sentence::UnitAndIntersectionSize {
             total: 2,
             split: Unit::neighbor("Rose"),
@@ -303,7 +303,7 @@ fn phil_2025_09_29() {
 #[test]
 fn ryan_2026_01_12() {
     sentence(
-        "exactly 1 of the 2 painters has an innocent directly to the left of them",
+        "Exactly 1 of the 2 painters has an innocent directly to the left of them",
         &Sentence::UnitSize(
             Unit::profession("painter")
                 .bound(2)
@@ -330,7 +330,7 @@ fn wanda_2026_01_12() {
 #[test]
 fn janet_2026_01_13() {
     sentence(
-        "exactly 2 of Stella's 6 innocent neighbors also neighbor Gabe",
+        "Exactly 2 of Stella's 6 innocent neighbors also neighbor Gabe",
         &Sentence::UnitAndIntersectionSize {
             total: 6,
             split: Unit::neighbor("Stella"),
@@ -394,7 +394,7 @@ fn katie_2026_02_03() {
 #[test]
 fn uma_2026_02_03() {
     sentence(
-        "exactly 1 judge has an innocent directly above them",
+        "Exactly 1 judge has an innocent directly above them",
         &Sentence::UnitSize(
             Unit::profession("judge")
                 .shift(Direction::Above)
@@ -431,7 +431,7 @@ fn alice_2026_02_05() {
 #[test]
 fn chuck_2026_02_05() {
     sentence(
-        "exactly 2 of the 4 innocents neighboring Gary are in row\u{a0}1",
+        "Exactly 2 of the 4 innocents neighboring Gary are in row\u{a0}1",
         &Sentence::UnitAndIntersectionSize {
             total: 4,
             split: Unit::neighbor("Gary"),
@@ -445,7 +445,7 @@ fn chuck_2026_02_05() {
 #[test]
 fn ethan_2026_02_05() {
     sentence(
-        "an odd number of innocents on the edges neighbor Gary",
+        "An odd number of innocents on the edges neighbor Gary",
         &Sentence::IntersectionSize(
             [Unit::Edges, Unit::neighbor("Gary")],
             Parity::Odd.into(),
@@ -457,7 +457,7 @@ fn ethan_2026_02_05() {
 #[test]
 fn gary_2026_02_05() {
     sentence(
-        "exactly 1 innocent in row\u{a0}4 is neighboring Xavi",
+        "Exactly 1 innocent in row\u{a0}4 is neighboring Xavi",
         &Sentence::IntersectionSize(
             [Row::Four.into(), Unit::neighbor("Xavi")],
             1.into(),
@@ -480,7 +480,7 @@ fn ike_2026_02_05() {
 #[test]
 fn kyle_2026_02_05() {
     sentence(
-        "an odd number of innocents above Zara neighbor Gary",
+        "An odd number of innocents above Zara neighbor Gary",
         &Sentence::IntersectionSize(
             [
                 Unit::direction(Direction::Above, "Zara"),
@@ -495,7 +495,7 @@ fn kyle_2026_02_05() {
 #[test]
 fn tina_2026_02_05() {
     sentence(
-        "both criminals above Xavi are connected",
+        "Both criminals above Xavi are connected",
         &Sentence::UnitIsConnected(
             Unit::direction(Direction::Above, "Xavi")
                 .with_judgment(Judgment::Criminal)
@@ -519,7 +519,7 @@ fn vera_2026_02_05() {
 #[test]
 fn freya_2026_02_06() {
     sentence(
-        "only one of us 2 singers has exactly 2 criminal neighbors",
+        "Only one of us 2 singers has exactly 2 criminal neighbors",
         &Sentence::UniqueInUnitHasNNeighbors(
             Unit::profession("singer").bound(2),
             2.into(),
@@ -557,7 +557,7 @@ fn jason_2026_02_06() {
 #[test]
 fn logan_2026_02_06() {
     sentence(
-        "exactly 1 farmer has a criminal directly above them",
+        "Exactly 1 farmer has a criminal directly above them",
         &Sentence::UnitSize(
             Unit::profession("farmer")
                 .shift(Direction::Above)
@@ -570,7 +570,7 @@ fn logan_2026_02_06() {
 #[test]
 fn ivan_2026_02_06() {
     sentence(
-        "row 5 has more innocents than any other row",
+        "Row 5 has more innocents than any other row",
         &Sentence::BiggestInSeries(Row::Five.into(), Judgment::Innocent),
     );
 }
@@ -601,7 +601,7 @@ fn vera_2026_02_06() {
 #[test]
 fn gary_2026_02_07() {
     sentence(
-        "only 1 of the 2 innocents in column\u{a0}C is Zara's neighbor",
+        "Only 1 of the 2 innocents in column\u{a0}C is Zara's neighbor",
         &Sentence::UnitAndIntersectionSize {
             total: 2,
             split: Column::C.into(),
@@ -615,7 +615,7 @@ fn gary_2026_02_07() {
 #[test]
 fn uma_2026_02_07() {
     sentence(
-        "only 1 of the 3 innocents neighboring me is to the right of Kay",
+        "Only 1 of the 3 innocents neighboring me is to the right of Kay",
         &Sentence::UnitAndIntersectionSize {
             total: 3,
             split: Unit::Neighbor(Name::Me),
@@ -649,7 +649,7 @@ fn hank_2026_02_08() {
 #[test]
 fn tina_2026_02_09() {
     sentence(
-        "exactly 2 innocents in column C are neighboring me",
+        "Exactly 2 innocents in column C are neighboring me",
         &Sentence::IntersectionSize(
             [Column::C.into(), Unit::Neighbor(Name::Me)],
             2.into(),
@@ -661,7 +661,7 @@ fn tina_2026_02_09() {
 #[test]
 fn kumar_2026_02_09() {
     sentence(
-        "exactly 2 of the 3 innocents in row 5 are Susan's neighbors",
+        "Exactly 2 of the 3 innocents in row 5 are Susan's neighbors",
         &Sentence::UnitAndIntersectionSize {
             total: 3,
             split: Row::Five.into(),
@@ -730,7 +730,7 @@ fn janet_2026_02_10() {
 #[test]
 fn lisa_2026_02_10() {
     sentence(
-        "exactly 1 innocent on the edges is a farmer",
+        "Exactly 1 innocent on the edges is a farmer",
         &Sentence::IntersectionSize(
             [Unit::Edges, Unit::profession("farmer")],
             1.into(),
@@ -812,7 +812,7 @@ fn vince_2026_03_24() {
 #[test]
 fn nicole_2026_03_24() {
     sentence(
-        "an odd number of us innocents on the edges neighbor Igor",
+        "An odd number of us innocents on the edges neighbor Igor",
         &Sentence::IntersectionSize(
             [Unit::Edges, Unit::neighbor("Igor")],
             Parity::Odd.into(),
@@ -850,7 +850,7 @@ fn flora_2026_04_05() {
 #[test]
 fn sofia_2026_04_11() {
     sentence(
-        "one innocent in column A has an innocent directly to the right of them",
+        "One innocent in column A has an innocent directly to the right of them",
         &Sentence::UnitSize(
             Unit::from(Column::A)
                 .with_judgment(Judgment::Innocent)
@@ -888,7 +888,7 @@ fn janet_2026_04_13() {
 #[test]
 fn bobby_2026_04_14() {
     sentence(
-        "exactly 1 of us 3 mechs has an innocent directly below them",
+        "Exactly 1 of us 3 mechs has an innocent directly below them",
         &Sentence::UnitSize(
             Unit::profession("mech")
                 .bound(3)
@@ -913,7 +913,7 @@ fn martin_2026_04_14() {
 #[test]
 fn umar_2026_04_25() {
     sentence(
-        "one innocent in the corners has a criminal directly to the right of them",
+        "One innocent in the corners has a criminal directly to the right of them",
         &Sentence::UnitSize(
             Unit::Corners
                 .with_judgment(Judgment::Innocent)
@@ -953,7 +953,7 @@ fn nancy_2026_06_23() {
 #[test]
 fn mary_2026_06_24() {
     sentence(
-        "only 1 of the 3 criminals in row 1 doesn't neighbor Emily",
+        "Only 1 of the 3 criminals in row 1 doesn't neighbor Emily",
         &Sentence::UnitAndIntersectionSize {
             total: 3,
             split: Row::One.into(),
@@ -964,7 +964,7 @@ fn mary_2026_06_24() {
     );
 
     sentence(
-        "only 1 of the 3 criminals in row 1 neighbors Emily",
+        "Only 1 of the 3 criminals in row 1 neighbors Emily",
         &Sentence::UnitAndIntersectionSize {
             total: 3,
             split: Row::One.into(),
@@ -1029,7 +1029,7 @@ fn kumar_2026_08_04() {
 #[test]
 fn lisa_2026_08_04() {
     sentence(
-        "only one person in a corner has a criminal directly below them",
+        "Only one person in a corner has a criminal directly below them",
         &Sentence::UnitSize(
             Unit::Corners
                 .shift(Direction::Below)
@@ -1063,7 +1063,7 @@ fn steve_2026_08_15() {
 #[test]
 fn bunty_2026_08_25() {
     sentence(
-        "an odd number of us 3 painters are innocent",
+        "An odd number of us 3 painters are innocent",
         &Sentence::UnitSize(
             Unit::profession("painter")
                 .bound(3)
@@ -1218,7 +1218,7 @@ fn julie_puzzle_pack_1_1() {
 #[test]
 fn olof_puzzle_pack_1_1() {
     sentence(
-        "the only criminal below Julie is Terry's neighbor",
+        "The only criminal below Julie is Terry's neighbor",
         &Sentence::UnitAndIntersectionSize {
             total: 1,
             split: Unit::direction(Direction::Below, "Julie"),
@@ -1284,7 +1284,7 @@ fn frank_puzzle_pack_1_5() {
 #[test]
 fn katie_puzzle_pack_1_6() {
     sentence(
-        "both innocents in row 4 are Laura's neighbors",
+        "Both innocents in row 4 are Laura's neighbors",
         &Sentence::UnitAndIntersectionSize {
             total: 2,
             split: Row::Four.into(),
@@ -1298,7 +1298,7 @@ fn katie_puzzle_pack_1_6() {
 #[test]
 fn zara_puzzle_pack_1_6() {
     sentence(
-        "neither of the 2 innocents neighboring Olive are to the left of Noah",
+        "Neither of the 2 innocents neighboring Olive are to the left of Noah",
         &Sentence::UnitAndIntersectionSize {
             total: 2,
             split: Unit::neighbor("Olive"),
@@ -1312,7 +1312,7 @@ fn zara_puzzle_pack_1_6() {
 #[test]
 fn bonnie_puzzle_pack_1_13() {
     sentence(
-        "none of the 7 criminals on the edges is a painter",
+        "None of the 7 criminals on the edges is a painter",
         &Sentence::UnitAndIntersectionSize {
             total: 7,
             split: Unit::Edges,
@@ -1387,7 +1387,7 @@ fn cheryl_puzzle_pack_1_27() {
 #[test]
 fn freya_puzzle_pack_1_45() {
     sentence(
-        "exactly 1 innocent neighboring Wally is builder",
+        "Exactly 1 innocent neighboring Wally is builder",
         &Sentence::IntersectionSize(
             [Unit::neighbor("Wally"), Unit::profession("builder")],
             1.into(),
@@ -1433,7 +1433,7 @@ fn linda_community_6eebae_909beebb44a88201() {
 #[test]
 fn helen_community_6eebae_d5d5560b65d3f7ba() {
     sentence(
-        "builder is the only profession with exactly one innocent",
+        "Builder is the only profession with exactly one innocent",
         &Sentence::OnlyGivenUnitHasNTraits(
             UnitInSeries::profession("builder"),
             1.into(),
