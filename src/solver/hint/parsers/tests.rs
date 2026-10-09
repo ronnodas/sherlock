@@ -313,6 +313,21 @@ fn sofia_2025_10_13() {
 }
 
 #[test]
+fn vince_2025_10_20() {
+    sentence(
+        "There is no innocent above Wally who neighbors Keith",
+        &Sentence::IntersectionSize(
+            [
+                Unit::direction(Direction::Above, "Wally"),
+                Unit::neighbor("Keith"),
+            ],
+            0.into(),
+            Judgment::Innocent,
+        ),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "Exactly 1 of the 2 painters has an innocent directly to the left of them",

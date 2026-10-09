@@ -1267,6 +1267,7 @@ fn neighboring_predicate<'input, 'inner: 'input>(
     input: &mut &'input [&'inner str],
 ) -> Result<&'input [&'inner str]> {
     alt((
+        words(("who", "neighbors")).take(),
         words(("who", "neighbor")).take(),
         word("neighboring").take(),
     ))
