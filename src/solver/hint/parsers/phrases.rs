@@ -612,7 +612,7 @@ impl AddContext for &Unit {
             Unit::NotNeighbor(name) => {
                 Set::from(name.add_context(context)?.neighbors()).complement()
             }
-            Unit::Profession(profession) => (*context.profession_as_set(profession)?).into(),
+            Unit::Profession(profession) => context.profession_as_set(profession)?.into(),
             Unit::Edges => Set1::edges().into(),
             Unit::Corners => Set1::corners().into(),
             Unit::Between(names) => {
@@ -713,13 +713,16 @@ impl UnitInSeries {
                 .into_iter()
                 .map(Set1::from)
                 .collect(),
-            Self::Profession(profession) => context
-                .by_profession
-                .as_btree_map()
-                .iter()
-                .filter(move |&(other, _)| other != profession)
-                .map(|(_, &set)| set)
-                .collect(),
+            Self::Profession(profession) => {
+                let profession = context.normalize_profession(profession)?;
+                context
+                    .by_profession
+                    .as_btree_map()
+                    .iter()
+                    .filter(move |&(other, _)| other != profession)
+                    .map(|(_, &set)| set)
+                    .collect()
+            }
             Self::Neighbor(name) => {
                 let coord = name.add_context(context)?;
                 Coord::all()
@@ -771,10 +774,7 @@ impl AddContext for &UnitInSeries {
     fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
         let set = match self {
             UnitInSeries::Line(line) => line.add_context(context)?.into(),
-            UnitInSeries::Profession(profession) => *context
-                .by_profession
-                .get(profession)
-                .with_context(|| format!("{profession} not in puzzle"))?,
+            UnitInSeries::Profession(profession) => context.profession_as_set(profession)?,
             UnitInSeries::Neighbor(suspect) => suspect.add_context(context)?.neighbors(),
         };
         Ok(set)

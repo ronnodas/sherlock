@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fmt;
 use std::ops::Not;
 use std::rc::Rc;
@@ -62,6 +63,10 @@ impl Profession {
     pub(crate) fn from_plural(value: &str) -> Option<Self> {
         Self::from_singular(value.strip_suffix('s')?)
     }
+
+    pub(crate) fn strip_suffix(&self, suffix: char) -> Option<&str> {
+        self.0.strip_suffix(suffix)
+    }
 }
 
 impl fmt::Debug for Profession {
@@ -85,6 +90,12 @@ impl From<String> for Profession {
 impl From<&str> for Profession {
     fn from(value: &str) -> Self {
         Self(value.into())
+    }
+}
+
+impl Borrow<str> for Profession {
+    fn borrow(&self) -> &str {
+        self.0.borrow()
     }
 }
 

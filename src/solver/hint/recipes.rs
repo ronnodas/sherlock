@@ -32,9 +32,21 @@ impl Context<'_> {
             .ok_or_else(|| anyhow!("{name} not in puzzle"))
     }
 
-    pub(crate) fn profession_as_set(&self, profession: &Profession) -> Result<&Set1> {
+    pub(crate) fn profession_as_set(&self, profession: &Profession) -> Result<Set1> {
+        Ok(*self.profession_key_value(profession)?.1)
+    }
+
+    pub(crate) fn normalize_profession(&self, profession: &Profession) -> Result<&Profession> {
+        Ok(self.profession_key_value(profession)?.0)
+    }
+
+    fn profession_key_value(&self, profession: &Profession) -> Result<(&Profession, &Set1)> {
         self.by_profession
-            .get(profession)
+            .get_key_value(profession)
+            .or_else(|| {
+                self.by_profession
+                    .get_key_value(profession.strip_suffix('e')?)
+            })
             .ok_or_else(|| anyhow!("{profession} not in puzzle"))
     }
 }
