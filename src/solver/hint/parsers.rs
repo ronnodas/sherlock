@@ -804,17 +804,23 @@ impl Sentence {
                 _: words(("then", "so")),
                 is_name
             )
-            .map(|(name_p, judgment, name_c)| {
-                Self::IfThen([(name_p, judgment), (name_c, judgment)])
-            }),
+            .map(|(name_p, judgment, name_c)| [(name_p, judgment), (name_c, judgment)]),
             seq!(
                 _: word("If"),
                 (name_is, judgment_predicate_comma),
                 _: word("then"),
                 (name_is, judgment_predicate_singular)
             )
-            .map(|clauses| Self::IfThen(clauses.into())),
+            .map(<[_; 2]>::from),
+            seq!(
+                (name_is, judgment_predicate_singular),
+                _: word("unless"),
+                name_is,
+                judgment_predicate_singular,
+            )
+            .map(|(conclusion, name_p, not_judgment_p)| [(name_p, !not_judgment_p), conclusion]),
         ))
+        .map(Self::IfThen)
         .parse_next(input)
     }
 }
