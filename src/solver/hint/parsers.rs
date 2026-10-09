@@ -563,6 +563,14 @@ impl Sentence {
                 ([Unit::Neighbor(name), unit], judgment, bound.into())
             }),
             seq!(
+                name_doesnt_have,
+                _: word("any"),
+                word(judgment_adjective),
+                _: word("neighbors"),
+                unit,
+            )
+            .map(|(name, judgment, unit)| ([Unit::Neighbor(name), unit], judgment, 0.into())),
+            seq!(
                 pair_bounded_profession,
                 _: neighboring_predicate,
                 word(name_object),
@@ -1104,6 +1112,14 @@ fn name_has(input: &mut &[&str]) -> Result<NameRecipe> {
     alt((
         words(("I", "have")).value(NameRecipe::Me),
         terminated(word(raw_name), word("has")).map(NameRecipe::from),
+    ))
+    .parse_next(input)
+}
+
+fn name_doesnt_have(input: &mut &[&str]) -> Result<NameRecipe> {
+    alt((
+        words(("I", "don't", "have")).value(NameRecipe::Me),
+        terminated(word(raw_name), words(("doesn't", "have"))).map(NameRecipe::from),
     ))
     .parse_next(input)
 }

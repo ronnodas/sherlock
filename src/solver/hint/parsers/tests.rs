@@ -313,6 +313,18 @@ fn sofia_2025_10_13() {
 }
 
 #[test]
+fn wanda_2025_10_16() {
+    sentence(
+        "Kyle doesn't have any innocent neighbors in row 3",
+        &Sentence::IntersectionSize(
+            [Unit::neighbor("Kyle"), Row::Three.into()],
+            0.into(),
+            Judgment::Innocent,
+        ),
+    );
+}
+
+#[test]
 fn vince_2025_10_20() {
     sentence(
         "There is no innocent above Wally who neighbors Keith",
