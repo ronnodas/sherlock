@@ -359,6 +359,14 @@ fn lisa_2025_11_03() {
 }
 
 #[test]
+fn kevin_2025_11_05() {
+    sentence(
+        "One row has no criminals",
+        &Sentence::UniqueUnitInSeriesHasSize(LineKind::Row.into(), 0.into(), Judgment::Criminal),
+    );
+}
+
+#[test]
 fn ryan_2026_01_12() {
     sentence(
         "Exactly 1 of the 2 painters has an innocent directly to the left of them",

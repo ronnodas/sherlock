@@ -378,7 +378,7 @@ impl Sentence {
     fn only_one_unit_in_series_has_exactly_n_traits(input: &mut &[&str]) -> Result<Self> {
         alt((
             seq!(
-                _: words(("Only", "one")),
+                _: (opt(word("only")), word("one")),
                 word(line_kind).map(Series::Line),
                 _: word("has"),
                 bound,
