@@ -1,4 +1,11 @@
+use std::fmt;
+
+use winnow::Parser;
+use winnow::error::ParserError;
+use winnow::stream::{Stream, StreamIsPartial};
+
 use crate::models::{Column, Direction, Judgment, Row};
+use crate::solver::hint::parsers::judgment_predicate_singular;
 use crate::solver::hint::parsers::phrases::{AnyAll, BoundPair};
 use crate::solver::hint::recipes::{ColumnRecipe, NameRecipe as Name};
 use crate::solver::hint::{Bound, LineKind, Parity};
@@ -363,6 +370,14 @@ fn kevin_2025_11_05() {
     sentence(
         "One row has no criminals",
         &Sentence::UniqueUnitInSeriesHasSize(LineKind::Row.into(), 0.into(), Judgment::Criminal),
+    );
+}
+
+#[test]
+fn steve_2025_11_16() {
+    sentence(
+        "Nova is not a criminal",
+        &Sentence::HasTrait("Nova".into(), Judgment::Innocent),
     );
 }
 
@@ -1516,22 +1531,58 @@ fn flora_community_6eebae_d5d5560b65d3f7ba() {
     );
 }
 
+#[test]
+fn has_trait() {
+    parser(
+        Sentence::has_trait,
+        &["Nova", "is", "not", "a", "criminal"],
+        &Sentence::HasTrait("Nova".into(), Judgment::Innocent),
+    );
+}
+
+#[test]
+fn judgment_predicate_singular_exhaustive() {
+    parser(
+        judgment_predicate_singular,
+        &["innocent"],
+        &Judgment::Innocent,
+    );
+
+    parser(
+        judgment_predicate_singular,
+        &["a", "criminal"],
+        &Judgment::Criminal,
+    );
+
+    parser(
+        judgment_predicate_singular,
+        &["not", "innocent"],
+        &Judgment::Criminal,
+    );
+
+    parser(
+        judgment_predicate_singular,
+        &["not", "a", "criminal"],
+        &Judgment::Innocent,
+    );
+}
+
 fn sentence(input: &str, expected: &Sentence) {
     let output = Sentence::parse(input).unwrap();
     assert_eq!(&output, expected);
 }
 
-// for debugging sub parsers
-// fn parser<
-//     I: Stream + StreamIsPartial,
-//     P: Parser<I, T, E>,
-//     T: PartialEq + fmt::Debug,
-//     E: ParserError<I, Inner: fmt::Debug + ParserError<I>>,
-// >(
-//     mut parser: P,
-//     input: I,
-//     expected: &T,
-// ) {
-//     let output = parser.parse(input).unwrap();
-//     assert_eq!(&output, expected);
-// }
+/// helper for debugging sub parsers
+fn parser<
+    I: Stream + StreamIsPartial,
+    P: Parser<I, T, E>,
+    T: PartialEq + fmt::Debug,
+    E: ParserError<I, Inner: fmt::Debug + ParserError<I>>,
+>(
+    mut parser: P,
+    input: I,
+    expected: &T,
+) {
+    let output = parser.parse(input).unwrap();
+    assert_eq!(&output, expected);
+}

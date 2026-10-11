@@ -387,7 +387,7 @@ impl Sentence {
             seq!(
                 _: words(("Only", "one", "person", "has")),
                 bound,
-                word(judgment_any),
+                word(judgment_adjective),
                 _: word(neighbor_any),
             )
             .map(|(bound, judgment)| (Series::Neighbor, bound, judgment)),
@@ -1077,6 +1077,7 @@ fn judgment_predicate_singular(input: &mut &[&str]) -> Result<Judgment> {
         word("innocent").value(Judgment::Innocent),
         words(("a", "criminal")).value(Judgment::Criminal),
         words(("not", "innocent")).value(Judgment::Criminal),
+        words(("not", "a", "criminal")).value(Judgment::Innocent),
     ))
     .parse_next(input)
 }
@@ -1086,6 +1087,7 @@ fn judgment_predicate_comma(input: &mut &[&str]) -> Result<Judgment> {
         word_or_comma_terminated("innocent").value(Judgment::Innocent),
         (word("a"), word_or_comma_terminated("criminal")).value(Judgment::Criminal),
         (word("not"), word_or_comma_terminated("innocent")).value(Judgment::Criminal),
+        (words(("not", "a")), word_or_comma_terminated("criminal")).value(Judgment::Innocent),
     ))
     .parse_next(input)
 }
