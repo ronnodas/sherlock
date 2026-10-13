@@ -5,8 +5,8 @@ use winnow::error::ParserError;
 use winnow::stream::{Stream, StreamIsPartial};
 
 use crate::models::{Column, Direction, Judgment, Row};
-use crate::solver::hint::parsers::judgment_predicate_singular;
 use crate::solver::hint::parsers::phrases::{AnyAll, BoundPair};
+use crate::solver::hint::parsers::{bound, judgment_predicate_singular};
 use crate::solver::hint::recipes::{ColumnRecipe, NameRecipe as Name};
 use crate::solver::hint::{Bound, LineKind, Parity};
 
@@ -1182,6 +1182,18 @@ fn gus_2026_10_06() {
 }
 
 #[test]
+fn nancy_2026_10_13() {
+    sentence(
+        "Only one column has more than 1 innocent",
+        &Sentence::UniqueUnitInSeriesHasSize(
+            LineKind::Column.into(),
+            Bound::AtLeast(2),
+            Judgment::Innocent,
+        ),
+    );
+}
+
+#[test]
 fn hal_2026_10_06() {
     sentence(
         "Everyone in column D has at least 2 innocent neighbors",
@@ -1565,6 +1577,11 @@ fn judgment_predicate_singular_exhaustive() {
         &["not", "a", "criminal"],
         &Judgment::Innocent,
     );
+}
+
+#[test]
+fn more_than_one() {
+    parser(bound, &["more", "than", "1"], &Bound::AtLeast(2));
 }
 
 fn sentence(input: &str, expected: &Sentence) {

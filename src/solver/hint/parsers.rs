@@ -1025,16 +1025,18 @@ fn bound(input: &mut &[&str]) -> Result<Bound> {
     alt((
         word("no").value(Bound::Exact(0)),
         terminated(word(number), words(("or", "more"))).map(Bound::AtLeast),
-        terminated(number_phrase, opt(word("of"))).map(Bound::Exact),
+        delimited(
+            opt(word(alt(("exactly", "only")))),
+            word(number).map(Bound::Exact),
+            opt(word("of")),
+        ),
         preceded(words(("at", "least")), word(number)).map(Bound::AtLeast),
-        delimited(word("an"), parity, words(("number", "of"))).map(Bound::Parity),
+        delimited(word("an"), word(parity), words(("number", "of"))).map(Bound::Parity),
         word("multiple").value(Bound::AtLeast(2)),
+        preceded(words(("more", "than")), word(number))
+            .map(|number| Bound::AtLeast(number.strict_add(1))),
     ))
     .parse_next(input)
-}
-
-fn number_phrase(input: &mut &[&str]) -> Result<Number> {
-    preceded(opt(word(alt(("exactly", "only")))), word(number)).parse_next(input)
 }
 
 fn number(input: &mut &str) -> Result<Number> {
@@ -1048,12 +1050,8 @@ fn number(input: &mut &str) -> Result<Number> {
     .parse_next(input)
 }
 
-fn parity(input: &mut &[&str]) -> Result<Parity> {
-    alt((
-        word("even").value(Parity::Even),
-        word("odd").value(Parity::Odd),
-    ))
-    .parse_next(input)
+fn parity(input: &mut &str) -> Result<Parity> {
+    alt(("even".value(Parity::Even), "odd".value(Parity::Odd))).parse_next(input)
 }
 
 fn a_judgment(input: &mut &[&str]) -> Result<Judgment> {
