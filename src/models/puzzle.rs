@@ -205,7 +205,7 @@ impl PuzzleId {
         match self {
             Self::Daily(date) => Cow::Owned(date.to_string()),
             Self::Archive(id) => Cow::Borrowed(id.as_str()),
-            Self::PuzzlePack { pack, puzzle } => Cow::Owned(format!("puzzle-pack-{pack}-{puzzle}")),
+            Self::PuzzlePack { pack, puzzle } => Cow::Owned(format!("puzzle-pack-{pack}-{puzzle:02}")),
             Self::Custom => Cow::Owned(String::new()),
             Self::Community { user, id } => Cow::Owned(format!("community-{user}-{id}")),
         }
