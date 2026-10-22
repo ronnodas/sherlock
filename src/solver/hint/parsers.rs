@@ -297,6 +297,12 @@ impl Sentence {
                 .map(|(profession, judgment, direction)| {
                     (Unit::Profession(profession).shift(direction), judgment)
                 }),
+                seq!(
+                    _: word("All"),
+                    word(profession_plural).map(Unit::Profession),
+                    _: word("are"),
+                    word(judgment_adjective)
+                ),
             ))
             .map(|(unit, judgment)| (Bound::Exact(0), !judgment, unit.into())),
             seq!(

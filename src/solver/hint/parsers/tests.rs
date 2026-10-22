@@ -439,6 +439,17 @@ fn salil_2026_01_15() {
 }
 
 #[test]
+fn zach_2026_01_21() {
+    sentence(
+        "All teachers are criminal",
+        &Sentence::UnitSize(
+            Unit::profession("teacher").with_judgment(Judgment::Innocent),
+            0.into(),
+        ),
+    );
+}
+
+#[test]
 fn uma_2026_01_31() {
     sentence(
         "2 out of the 3 teachers have a criminal directly below them",
@@ -1577,6 +1588,18 @@ fn only_given_unit_has_exactly_n_traits() {
             "innocents",
         ],
         &Sentence::OnlyGivenUnitHasNTraits(Row::Three.into(), Bound::AtMost(1), Judgment::Innocent),
+    );
+}
+
+#[test]
+fn unit_size() {
+    parser(
+        Sentence::unit_size,
+        &["All", "teachers", "are", "criminal"],
+        &Sentence::UnitSize(
+            Unit::profession("teacher").with_judgment(Judgment::Innocent),
+            0.into(),
+        ),
     );
 }
 
