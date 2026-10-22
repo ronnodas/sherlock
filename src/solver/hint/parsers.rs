@@ -1035,6 +1035,8 @@ fn bound(input: &mut &[&str]) -> Result<Bound> {
         word("multiple").value(Bound::AtLeast(2)),
         preceded(words(("more", "than")), word(number))
             .map(|number| Bound::AtLeast(number.strict_add(1))),
+        preceded(words(("fewer", "than")), word(number))
+            .verify_map(|number| number.checked_sub(1).map(Bound::AtMost)),
     ))
     .parse_next(input)
 }

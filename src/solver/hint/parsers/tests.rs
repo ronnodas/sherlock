@@ -1,7 +1,7 @@
 use std::fmt;
 
 use winnow::Parser;
-use winnow::error::ParserError;
+use winnow::error::ContextError;
 use winnow::stream::{Stream, StreamIsPartial};
 
 use crate::models::{Column, Direction, Judgment, Row};
@@ -1202,6 +1202,14 @@ fn hal_2026_10_06() {
 }
 
 #[test]
+fn sue_2026_10_22() {
+    sentence(
+        "Row 3 is the only row with fewer than 2 innocents",
+        &Sentence::OnlyGivenUnitHasNTraits(Row::Three.into(), Bound::AtMost(1), Judgment::Innocent),
+    );
+}
+
+#[test]
 fn diane_0cf47a07fe08() {
     sentence(
         "Xavi has more criminal neighbors than Ben",
@@ -1553,6 +1561,26 @@ fn has_trait() {
 }
 
 #[test]
+fn only_given_unit_has_exactly_n_traits() {
+    parser(
+        Sentence::only_given_unit_has_exactly_n_traits,
+        &[
+            "row 3",
+            "is",
+            "the",
+            "only",
+            "row",
+            "with",
+            "fewer",
+            "than",
+            "2",
+            "innocents",
+        ],
+        &Sentence::OnlyGivenUnitHasNTraits(Row::Three.into(), Bound::AtMost(1), Judgment::Innocent),
+    );
+}
+
+#[test]
 fn judgment_predicate_singular_exhaustive() {
     parser(
         judgment_predicate_singular,
@@ -1584,18 +1612,18 @@ fn more_than_one() {
     parser(bound, &["more", "than", "1"], &Bound::AtLeast(2));
 }
 
+#[test]
+fn fewer_than() {
+    parser(bound, &["fewer", "than", "2"], &Bound::AtMost(1));
+}
+
 fn sentence(input: &str, expected: &Sentence) {
     let output = Sentence::parse(input).unwrap();
     assert_eq!(&output, expected);
 }
 
 /// helper for debugging sub parsers
-fn parser<
-    I: Stream + StreamIsPartial,
-    P: Parser<I, T, E>,
-    T: PartialEq + fmt::Debug,
-    E: ParserError<I, Inner: fmt::Debug + ParserError<I>>,
->(
+fn parser<I: Stream + StreamIsPartial, P: Parser<I, T, ContextError>, T: PartialEq + fmt::Debug>(
     mut parser: P,
     input: I,
     expected: &T,
