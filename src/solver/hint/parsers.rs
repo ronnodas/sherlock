@@ -257,7 +257,7 @@ impl Sentence {
                 _: word(has_have),
                 a_judgment,
                 directly_direction,
-                _: word(pronoun_object_plural)
+                _: opt(word(pronoun_object_plural))
             )
             .map(|((bound, unit), judgment, direction)| {
                 let (bound, unit) = match bound {

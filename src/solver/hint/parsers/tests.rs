@@ -1221,6 +1221,20 @@ fn sue_2026_10_22() {
 }
 
 #[test]
+fn xia_2026_11_01() {
+    sentence(
+        "Only 1 innocent in column C has a criminal directly to the left",
+        &Sentence::UnitSize(
+            Unit::from(Column::C)
+                .with_judgment(Judgment::Innocent)
+                .shift(Direction::Left)
+                .with_judgment(Judgment::Criminal),
+            1.into(),
+        ),
+    );
+}
+
+#[test]
 fn diane_0cf47a07fe08() {
     sentence(
         "Xavi has more criminal neighbors than Ben",
