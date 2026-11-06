@@ -185,7 +185,11 @@ impl Board {
 
     pub(crate) fn parse_all_hints(&self) -> Result<Vec<Hint>> {
         self.hints_by_coord()
-            .map(|(speaker, hint)| Sentence::parse(hint)?.add_context(self.context(speaker)))
+            .map(|(speaker, hint)| {
+                Sentence::parse(hint)
+                    .with_context(|| format!("parsing {}'s clue", self.fronts[speaker].name))?
+                    .add_context(self.context(speaker))
+            })
             .flatten_ok()
             .collect()
     }
