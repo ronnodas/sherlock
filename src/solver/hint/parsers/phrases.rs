@@ -982,6 +982,8 @@ impl MoreOrLess {
     }
 }
 
+
+/// "All" implies at least one, but "any" does not
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AnyAll {
     Any,
