@@ -754,9 +754,12 @@ impl Sentence {
             seq!(
                 _: words(("No", "one")),
                 unit,
-                _: words(("has", "more", "than")),
-                word(number).map(Bound::AtMost),
-                word(judgment_singular),
+                _: word("has"),
+                alt((
+                    preceded(words(("more", "than")), word(number).map(Bound::AtMost)),
+                    word("a").value(Bound::Exact(0)),
+                )),
+                word(judgment_adjective),
                 _: word(neighbor_any)
             ),
             seq!(

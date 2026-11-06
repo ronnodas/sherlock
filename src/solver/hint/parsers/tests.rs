@@ -927,6 +927,14 @@ fn flora_2026_03_24() {
 }
 
 #[test]
+fn thor_2026_04_01() {
+    sentence(
+        "No one in column D has a criminal neighbor",
+        &Sentence::EachInUnitHasNNeighbors(Column::D.into(), Bound::Exact(0), Judgment::Criminal),
+    );
+}
+
+#[test]
 fn flora_2026_04_05() {
     sentence(
         "2 of the 3 guards have 3 innocent neighbors",
