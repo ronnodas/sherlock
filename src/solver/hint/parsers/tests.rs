@@ -1,18 +1,9 @@
 use std::fmt;
 
-use winnow::Parser;
 use winnow::error::ContextError;
 use winnow::stream::{Stream, StreamIsPartial};
 
-use crate::models::{Column, Direction, Judgment, Row};
-use crate::solver::hint::parsers::phrases::{AnyAll, BoundPair};
-use crate::solver::hint::parsers::{
-    bound, judgment_predicate_singular, maybe_judged_unit, pair_bounded_unit_expr,
-};
-use crate::solver::hint::recipes::{ColumnRecipe, NameRecipe as Name};
-use crate::solver::hint::{Bound, LineKind, Parity};
-
-use super::{Sentence, Series, Unit, UnitInSeries};
+use super::*;
 
 #[test]
 fn zed_2025_05_01() {
@@ -118,7 +109,7 @@ fn daniel_2025_05_14() {
 fn barb_2025_05_15() {
     sentence(
         "I have less innocent than criminal neighbors",
-        &Sentence::MoreTraitsInUnit(Unit::Neighbor(Name::Me), Judgment::Criminal),
+        &Sentence::MoreTraitsInUnit(Unit::Neighbor(NameRecipe::Me), Judgment::Criminal),
     );
 }
 
@@ -127,8 +118,10 @@ fn gus_2025_05_15() {
     sentence(
         "I have more innocents to the right than to the left of me",
         &Sentence::UnitBiggerThanUnit {
-            big: Unit::Direction(Direction::Right, Name::Me).with_judgment(Judgment::Innocent),
-            small: Unit::Direction(Direction::Left, Name::Me).with_judgment(Judgment::Innocent),
+            big: Unit::Direction(Direction::Right, NameRecipe::Me)
+                .with_judgment(Judgment::Innocent),
+            small: Unit::Direction(Direction::Left, NameRecipe::Me)
+                .with_judgment(Judgment::Innocent),
             excess: None,
         },
     );
@@ -233,7 +226,7 @@ fn gus_2025_08_18() {
     sentence(
         "Bonnie and I have an odd number of criminal common neighbors",
         &Sentence::IntersectionSize(
-            ["Bonnie".into(), Name::Me].map(Unit::Neighbor),
+            ["Bonnie".into(), NameRecipe::Me].map(Unit::Neighbor),
             Parity::Odd.into(),
             Judgment::Criminal,
         ),
@@ -314,7 +307,7 @@ fn sofia_2025_10_13() {
     sentence(
         "Each cook neighboring me is innocent",
         &Sentence::IntersectionSize(
-            [Unit::profession("cook"), Unit::Neighbor(Name::Me)],
+            [Unit::profession("cook"), Unit::Neighbor(NameRecipe::Me)],
             0.into(),
             Judgment::Criminal,
         ),
@@ -478,7 +471,7 @@ fn katie_2026_02_03() {
     sentence(
         "Ryan and I have no innocent neighbors in common",
         &Sentence::IntersectionSize(
-            [Unit::neighbor("Ryan"), Unit::Neighbor(Name::Me)],
+            [Unit::neighbor("Ryan"), Unit::Neighbor(NameRecipe::Me)],
             0.into(),
             Judgment::Innocent,
         ),
@@ -641,7 +634,7 @@ fn jason_2026_02_06() {
     sentence(
         "Ellie and Noah have only one innocent neighbor in common",
         &Sentence::IntersectionSize(
-            ["Ellie", "Noah"].map(Name::from).map(Unit::Neighbor),
+            ["Ellie", "Noah"].map(NameRecipe::from).map(Unit::Neighbor),
             1.into(),
             Judgment::Innocent,
         ),
@@ -712,7 +705,7 @@ fn uma_2026_02_07() {
         "Only 1 of the 3 innocents neighboring me is to the right of Kay",
         &Sentence::UnitAndIntersectionSize {
             total: 3,
-            split: Unit::Neighbor(Name::Me),
+            split: Unit::Neighbor(NameRecipe::Me),
             other: Unit::direction(Direction::Right, "Kay"),
             intersection: 1.into(),
             judgment: Judgment::Innocent,
@@ -745,7 +738,7 @@ fn tina_2026_02_09() {
     sentence(
         "Exactly 2 innocents in column C are neighboring me",
         &Sentence::IntersectionSize(
-            [Column::C.into(), Unit::Neighbor(Name::Me)],
+            [Column::C.into(), Unit::Neighbor(NameRecipe::Me)],
             2.into(),
             Judgment::Innocent,
         ),
@@ -805,7 +798,7 @@ fn gary_2026_02_10() {
     sentence(
         "Ryan is one of 2 innocents in between Betty and Vicky",
         &Sentence::IsOneOfNInUnit(
-            Unit::Between(["Betty", "Vicky"].map(Name::from)),
+            Unit::between(["Betty", "Vicky"]),
             "Ryan".into(),
             2.into(),
             Judgment::Innocent,
@@ -872,7 +865,7 @@ fn olive_2026_02_13() {
     sentence(
         "2 of my neighbors on the edges are innocent",
         &Sentence::IntersectionSize(
-            [Unit::Neighbor(Name::Me), Unit::Edges],
+            [Unit::Neighbor(NameRecipe::Me), Unit::Edges],
             2.into(),
             Judgment::Innocent,
         ),
@@ -1109,7 +1102,7 @@ fn terry_2026_07_21() {
         "I'm one of 2 innocents to the right of Quita",
         &Sentence::IsOneOfNInUnit(
             Unit::Direction(Direction::Right, "Quita".into()),
-            Name::Me,
+            NameRecipe::Me,
             2.into(),
             Judgment::Innocent,
         ),
@@ -1122,7 +1115,7 @@ fn tina_2026_07_28() {
         "I'm the only innocent to the right of Quita",
         &Sentence::IsOneOfNInUnit(
             Unit::Direction(Direction::Right, "Quita".into()),
-            Name::Me,
+            NameRecipe::Me,
             1.into(),
             Judgment::Innocent,
         ),
@@ -1274,7 +1267,7 @@ fn hal_0cf47a07fe08() {
     sentence(
         "Emily and Tom have an equal number of criminal neighbors",
         &Sentence::EqualNumberOfTraitsInUnits(
-            ["Emily", "Tom"].map(Name::from).map(Unit::Neighbor),
+            ["Emily", "Tom"].map(NameRecipe::from).map(Unit::Neighbor),
             Judgment::Criminal,
         ),
     );
@@ -1309,7 +1302,7 @@ fn jose_879da349c27d() {
     sentence(
         "I have exactly 5 innocent neighbors",
         &Sentence::UnitSize(
-            Unit::Neighbor(Name::Me).with_judgment(Judgment::Innocent),
+            Unit::Neighbor(NameRecipe::Me).with_judgment(Judgment::Innocent),
             5.into(),
         ),
     );
@@ -1397,7 +1390,7 @@ fn xia_puzzle_pack_1_2() {
     sentence(
         "I have more innocent neighbors than Olivia",
         &Sentence::UnitBiggerThanUnit {
-            big: Unit::Neighbor(Name::Me).with_judgment(Judgment::Innocent),
+            big: Unit::Neighbor(NameRecipe::Me).with_judgment(Judgment::Innocent),
             small: Unit::neighbor("Olivia").with_judgment(Judgment::Innocent),
             excess: None,
         },
@@ -1409,7 +1402,7 @@ fn flora_puzzle_pack_1_3() {
     sentence(
         "Emily and I share an odd number of innocent neighbors",
         &Sentence::IntersectionSize(
-            [Unit::neighbor("Emily"), Unit::Neighbor(Name::Me)],
+            [Unit::neighbor("Emily"), Unit::Neighbor(NameRecipe::Me)],
             Parity::Odd.into(),
             Judgment::Innocent,
         ),
@@ -1514,7 +1507,7 @@ fn will_puzzle_pack_1_17() {
         "I am one of Xia's 4 criminal neighbors",
         &Sentence::IsOneOfNInUnit(
             Unit::neighbor("Xia"),
-            Name::Me,
+            NameRecipe::Me,
             4.into(),
             Judgment::Criminal,
         ),

@@ -615,6 +615,11 @@ impl Unit {
         };
         Ok(hints)
     }
+
+    #[cfg(test)]
+    pub(crate) fn between(names: [impl Into<NameRecipe>; 2]) -> Self {
+        Self::Between(names.map(Into::into))
+    }
 }
 
 impl AddContext for &Unit {
@@ -981,7 +986,6 @@ impl MoreOrLess {
         }
     }
 }
-
 
 /// "All" implies at least one, but "any" does not
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
