@@ -908,6 +908,8 @@ fn maybe_judged_unit(input: &mut &[&str]) -> Result<(Option<Judgment>, Unit)> {
                 words(("on", "the", "edges")).value(Unit::Edges),
                 words(("in", "a", "corner")).value(Unit::Corners),
                 preceded(word("in"), line.map(Unit::Line)),
+                (direction, word(name_object))
+                    .map(|(direction, name)| Unit::Direction(direction, name)),
             )),
         )
         .map(|unit| (None, unit)),

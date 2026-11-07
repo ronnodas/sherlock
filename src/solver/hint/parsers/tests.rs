@@ -6,7 +6,9 @@ use winnow::stream::{Stream, StreamIsPartial};
 
 use crate::models::{Column, Direction, Judgment, Row};
 use crate::solver::hint::parsers::phrases::{AnyAll, BoundPair};
-use crate::solver::hint::parsers::{bound, judgment_predicate_singular};
+use crate::solver::hint::parsers::{
+    bound, judgment_predicate_singular, maybe_judged_unit, pair_bounded_unit_expr,
+};
 use crate::solver::hint::recipes::{ColumnRecipe, NameRecipe as Name};
 use crate::solver::hint::{Bound, LineKind, Parity};
 
@@ -948,6 +950,19 @@ fn flora_2026_04_05() {
 }
 
 #[test]
+fn wally_2026_04_07() {
+    sentence(
+        "Only one person above Rohan has an innocent directly to the right of them",
+        &Sentence::UnitSize(
+            Unit::direction(Direction::Above, "Rohan")
+                .shift(Direction::Right)
+                .with_judgment(Judgment::Innocent),
+            1.into(),
+        ),
+    );
+}
+
+#[test]
 fn sofia_2026_04_11() {
     sentence(
         "One innocent in column A has an innocent directly to the right of them",
@@ -1622,6 +1637,24 @@ fn unit_size() {
             Unit::profession("teacher").with_judgment(Judgment::Innocent),
             0.into(),
         ),
+    );
+}
+
+#[test]
+fn pair_bounded_unit_expr_regression() {
+    parser(
+        pair_bounded_unit_expr,
+        &["only", "one", "person", "above", "Rohan"],
+        &(1.into(), Unit::direction(Direction::Above, "Rohan").into()),
+    );
+}
+
+#[test]
+fn maybe_judged_unit_regression() {
+    parser(
+        maybe_judged_unit,
+        &["person", "above", "Rohan"],
+        &(None, Unit::direction(Direction::Above, "Rohan")),
     );
 }
 
