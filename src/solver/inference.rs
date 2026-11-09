@@ -24,7 +24,7 @@ use crate::solver::inference::split::{ByJudgment, SetSimplify};
 mod count;
 mod split;
 
-const MAX_BIFURCATION_DEPTH: u8 = 2;
+const MAX_BIFURCATION_DEPTH: u8 = 1;
 
 #[derive(Debug, Default, Clone)]
 struct InferenceSolver {
