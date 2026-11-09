@@ -517,7 +517,7 @@ impl InferenceSolver {
             Some(SetSimplify::Variable(variable)) => (variable, count),
             Some(SetSimplify::Split(variable, fixed)) => {
                 let count =
-                    count::reduce_cardinal(count, fixed.len().get()).ok_or(Contradiction)?;
+                    count::reduce_bound_or_not(count, fixed.len().get()).ok_or(Contradiction)?;
                 (variable, count)
             }
             None => (set.clone(), count),
@@ -1017,7 +1017,7 @@ impl TriState {
             Some(SetSimplify::Variable(set)) => (set, count),
             Some(SetSimplify::Fixed(set)) => return count.matches(set.len().get()).into(),
             Some(SetSimplify::Split(variable, fixed)) => {
-                let Some(count) = count::reduce_cardinal(count, fixed.len().get()) else {
+                let Some(count) = count::reduce_bound_or_not(count, fixed.len().get()) else {
                     return Self::No;
                 };
                 (variable, count)

@@ -10,7 +10,7 @@ use crate::solver::board::coordinates::Set1;
 use crate::solver::hint::{BoundOrNot, Number, Parity};
 use crate::solver::inference::Contradiction;
 
-pub(crate) fn reduce_cardinal(count: BoundOrNot, rhs: Number) -> Option<BoundOrNot> {
+pub(crate) fn reduce_bound_or_not(count: BoundOrNot, rhs: Number) -> Option<BoundOrNot> {
     let count = match count {
         BoundOrNot::Exact(count) => BoundOrNot::Exact(count.checked_sub(rhs)?),
         BoundOrNot::AtLeast(count) => BoundOrNot::AtLeast(count.saturating_sub(rhs)),
