@@ -2,7 +2,7 @@ use anyhow::{Context as _, Result, bail};
 use mitsein::iter1::IntoIterator1 as _;
 use mitsein::vec1::Vec1;
 
-use crate::models::{Column, Coord, Direction, Judgment, Profession, Row};
+use crate::models::{Column, Coord, Direction, Judgment, Name, Profession, Row};
 use crate::solver::board::coordinates::{Set, Set1, SetExpr, SetOp};
 use crate::solver::hint::recipes::{
     AddContext, ColumnRecipe, Context, LineRecipe, NameRecipe, RowRecipe,
@@ -12,8 +12,7 @@ use crate::solver::hint::{Bound, BoundOrNot, Comparison, Hint, LineKind, Number,
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug)]
 pub(crate) enum Sentence {
-    // This I think can't actually be "Me"
-    HasTrait(NameRecipe, Judgment),
+    HasTrait(Name, Judgment),
     UnitIsConnected(UnitExpr),
     BiggestInSeries(UnitInSeries, Judgment),
     IsOneOfNInUnit(Unit, NameRecipe, Bound, Judgment),
@@ -127,7 +126,7 @@ impl AddContext for &Sentence {
                 vec![hint]
             }
             Sentence::HasTrait(name, judgment) => {
-                vec![Hint::Judgment(name.add_context(context)?, *judgment)]
+                vec![Hint::Judgment(context.coord(name)?, *judgment)]
             }
             Sentence::EachInUnitHasNNeighbors(unit, bound, judgment) => {
                 unit.members_have_at_most_neighbors(*bound, *judgment, context)?

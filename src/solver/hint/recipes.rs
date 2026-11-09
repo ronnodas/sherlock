@@ -25,7 +25,7 @@ pub(crate) struct Context<'ctx> {
 }
 
 impl Context<'_> {
-    fn coord(&self, name: &Name) -> Result<Coord> {
+    pub(crate) fn coord(&self, name: &Name) -> Result<Coord> {
         self.coordinates
             .get(name)
             .copied()

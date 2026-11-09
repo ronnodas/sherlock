@@ -746,7 +746,7 @@ impl Sentence {
 
     fn has_trait(input: &mut &[&str]) -> Result<Self> {
         separated_pair(word(raw_name), word("is"), judgment_predicate_singular)
-            .map(|(name, judgment)| Self::HasTrait(NameRecipe::Explicit(name.into()), judgment))
+            .map(|(name, judgment)| Self::HasTrait(name.into(), judgment))
             .parse_next(input)
     }
 
