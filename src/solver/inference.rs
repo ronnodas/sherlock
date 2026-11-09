@@ -65,6 +65,7 @@ impl InferenceSolver {
                 Tactic::SimplifyCriminalCounts,
                 Self::simplify_criminal_counts,
             )?
+            || self.update_phase(Tactic::SimplifySums, Self::simplify_sums)?
             || self.update_phase(Tactic::SimplifyDifferences, Self::simplify_differences)?
             || self.update_phase(Tactic::SimplifyConnected, Self::simplify_connected)?
             || self.update_phase(Tactic::CountsFromDifferences, Self::counts_from_differences)?
@@ -154,6 +155,52 @@ impl InferenceSolver {
         let updated = !discard.is_empty();
         for index in discard.into_iter().rev() {
             assert_matches!(self.difference.swap_remove_index(index), Some(_));
+        }
+        Ok(updated | self.add_theorems(new)?)
+    }
+
+    fn simplify_sums(&mut self) -> Result<bool, Contradiction> {
+        let mut discard = BTreeSet::new();
+        let mut new = Vec::new();
+        for (index, (sets, sum)) in self.sum.iter().enumerate() {
+            let [[a_var, a_fixed], [b_var, b_fixed]] =
+                sets.map(|set| ByJudgment::split(set, &self.known).only(Judgment::Criminal));
+            let sum = sum
+                .checked_sub(a_fixed.len())
+                .and_then(|sum| sum.checked_sub(b_fixed.len()))
+                .ok_or(Contradiction)?;
+            match [a_var, b_var].map(Set::non_empty) {
+                [None, None] => {
+                    if !sum.matches(&0) {
+                        return Err(Contradiction);
+                    }
+                }
+                [None, Some(set)] | [Some(set), None] => {
+                    new.push(Theorem::CriminalCount(set, sum.into()));
+                }
+                [Some(a_var), Some(b_var)] => {
+                    if &[a_var, b_var] == sets
+                        && (a_var & b_var).non_empty().is_none_or(|intersection| {
+                            self.criminal_count
+                                .get(&intersection)
+                                .is_none_or(|(intersection, _)| !intersection.is_exact())
+                        })
+                    {
+                        continue;
+                    }
+                    let sets = [a_var, b_var];
+                    let [a_len, b_len] = sets.map(|set| set.len().get());
+                    let sum = sum
+                        .intersection(Interval::zero_to(b_len.strict_add(a_len)))
+                        .ok_or(Contradiction)?;
+                    new.push(Theorem::CriminalSum(sets, sum));
+                }
+            }
+            _ = discard.insert(index);
+        }
+        let updated = !discard.is_empty();
+        for index in discard.into_iter().rev() {
+            assert_matches!(self.sum.swap_remove_index(index), Some(_));
         }
         Ok(updated | self.add_theorems(new)?)
     }
@@ -1009,6 +1056,7 @@ enum Tactic {
     ProcessGenericHints,
     ExtractTightCounts,
     SimplifyCriminalCounts,
+    SimplifySums,
     SimplifyDifferences,
     SimplifyConnected,
     CountsFromDifferences,
@@ -1023,6 +1071,7 @@ impl Tactic {
             Self::ProcessGenericHints => "processing hints",
             Self::ExtractTightCounts => "finding tight counts",
             Self::SimplifyCriminalCounts => "simplifying counts",
+            Self::SimplifySums => "simplifying sums",
             Self::SimplifyDifferences => "simplifying differences",
             Self::SimplifyConnected => "simplifying connected hints",
             Self::CountsFromDifferences => "inferring counts from differences",
