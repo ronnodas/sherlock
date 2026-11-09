@@ -7,7 +7,7 @@ use itertools::Itertools as _;
 use mitsein::iter1::{IntoIterator1, Iterator1};
 
 use crate::solver::board::coordinates::Set1;
-use crate::solver::hint::{BoundOrNot, Number, Parity};
+use crate::solver::hint::{Bound, BoundOrNot, Number, Parity};
 use crate::solver::inference::Contradiction;
 
 pub(crate) fn reduce_bound_or_not(count: BoundOrNot, rhs: Number) -> Option<BoundOrNot> {
@@ -19,6 +19,16 @@ pub(crate) fn reduce_bound_or_not(count: BoundOrNot, rhs: Number) -> Option<Boun
         BoundOrNot::NotExact(count) => count
             .checked_sub(rhs)
             .map_or(BoundOrNot::AtLeast(0), BoundOrNot::NotExact),
+    };
+    Some(count)
+}
+
+pub(crate) fn reduce_bound(count: Bound, rhs: Number) -> Option<Bound> {
+    let count = match count {
+        Bound::Exact(count) => Bound::Exact(count.checked_sub(rhs)?),
+        Bound::AtLeast(count) => Bound::AtLeast(count.saturating_sub(rhs)),
+        Bound::AtMost(count) => Bound::AtMost(count.checked_sub(rhs)?),
+        Bound::Parity(parity) => Bound::Parity(parity ^ Parity::of(rhs)),
     };
     Some(count)
 }

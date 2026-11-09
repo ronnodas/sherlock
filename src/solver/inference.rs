@@ -605,6 +605,58 @@ impl InferenceSolver {
         self.try_add_hint(Hint::Judgment(coord, judgment))
     }
 
+    fn add_count_with_neighbors(
+        &mut self,
+        each: Bound,
+        count: Bound,
+        judgment: Judgment,
+        set: Set1,
+    ) -> Result<bool, Contradiction> {
+        let mut yes = Set::empty();
+        let mut maybe = Set::empty();
+        for coord in set {
+            match TriState::has_size_1_op(
+                &coord.neighbors().judged(judgment),
+                each.into(),
+                &self.known,
+            ) {
+                TriState::No => {}
+                TriState::Maybe => maybe |= coord,
+                TriState::Yes => yes |= coord,
+            }
+        }
+
+        let count = count::reduce_bound(count, yes.len()).ok_or(Contradiction)?;
+        if matches!(count, Bound::AtMost(0) | Bound::Exact(0)) {
+            let not_bound = each.not().ok_or(Contradiction)?;
+            for coord in maybe {
+                _ =
+                    self.try_add_hint(Hint::Count(coord.neighbors().judged(judgment), not_bound))?;
+            }
+            Ok(true)
+        } else if let Bound::AtLeast(min) | Bound::Exact(min) = count
+            && min == maybe.len()
+        {
+            for coord in maybe {
+                _ = self
+                    .try_add_hint(Hint::Count(coord.neighbors().judged(judgment), each.into()))?;
+            }
+            Ok(true)
+        } else if let Some(maybe) = maybe.non_empty() {
+            self.generic.push(Hint::CountWithNeighbors {
+                set: SetExpr1::Regular(maybe),
+                each,
+                count,
+                judgment,
+            });
+            Ok(maybe != set)
+        } else if count.matches(0) {
+            Ok(false)
+        } else {
+            Err(Contradiction)
+        }
+    }
+
     fn add_theorem(&mut self, thm: Theorem) -> Result<bool, Contradiction> {
         let updated = match thm {
             Theorem::CriminalCount(set, count) => self
@@ -777,7 +829,18 @@ impl InferenceSolver {
                 })?,
                 SetExpr1::Op(_) => todo!(),
             },
-            Hint::CountWithNeighbors { .. } => todo!(),
+            Hint::CountWithNeighbors {
+                set,
+                each,
+                count,
+                judgment,
+            } => {
+                if let SetExpr1::Regular(set) = set {
+                    self.add_count_with_neighbors(each, count, judgment, set)?
+                } else {
+                    todo!()
+                }
+            }
             Hint::IfThen(clauses) => self.add_if_then(clauses)?,
         };
         Ok(updated)
