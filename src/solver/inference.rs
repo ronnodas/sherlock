@@ -227,6 +227,9 @@ impl InferenceSolver {
                     if let Some(unique) = (unique | fixed).non_empty() {
                         new.push(Theorem::All(unique, judgment));
                     }
+                    if let Some(complement) = variable.difference(unique).non_empty() {
+                        new.push(Theorem::All(complement, !judgment));
+                    }
                 } else {
                     if possibilities.len().get() == matches_count {
                         discard.push(index);
