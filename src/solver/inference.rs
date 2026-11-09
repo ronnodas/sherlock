@@ -506,6 +506,9 @@ impl InferenceSolver {
         set: &SetOp1,
         count: BoundOrNot,
     ) -> Result<bool, Contradiction> {
+        if matches!(count, BoundOrNot::AtLeast(0)) {
+            return Ok(false);
+        }
         let (set, count) = match SetSimplify::split(set, &self.known) {
             Some(SetSimplify::Fixed(fixed)) if count.matches(fixed.len().get()) => {
                 return Ok(false);
