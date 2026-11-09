@@ -586,6 +586,25 @@ impl InferenceSolver {
         Ok(updated)
     }
 
+    fn add_if_then(&mut self, clauses: [(Coord, Judgment); 2]) -> Result<bool, Contradiction> {
+        let (coord, judgment) = match clauses
+            .map(|(coord, judgment)| self.known[coord].map(|known| known == judgment))
+        {
+            [None, None] => {
+                self.generic.push(Hint::IfThen(clauses));
+                return Ok(false);
+            }
+            [_, Some(true)] | [Some(false), _] => return Ok(false),
+            [None, Some(false)] => {
+                let [(coord, judgment), _] = clauses;
+                (coord, !judgment)
+            }
+            [Some(true), None] => clauses[1],
+            [Some(true), Some(false)] => return Err(Contradiction),
+        };
+        self.try_add_hint(Hint::Judgment(coord, judgment))
+    }
+
     fn add_theorem(&mut self, thm: Theorem) -> Result<bool, Contradiction> {
         let updated = match thm {
             Theorem::CriminalCount(set, count) => self
@@ -759,7 +778,7 @@ impl InferenceSolver {
                 SetExpr1::Op(_) => todo!(),
             },
             Hint::CountWithNeighbors { .. } => todo!(),
-            Hint::IfThen(_) => todo!(),
+            Hint::IfThen(clauses) => self.add_if_then(clauses)?,
         };
         Ok(updated)
     }
