@@ -291,6 +291,15 @@ impl CountSet {
             .into_iter()
             .step_by(if parity.is_some() { 2 } else { 1 })
     }
+
+    #[must_use]
+    pub(crate) fn exact(self) -> Option<Number> {
+        if let Self::Exact(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
 }
 
 impl BitAnd for CountSet {
@@ -402,6 +411,12 @@ impl Interval<Number> {
 
     pub(crate) fn checked_div_2(self) -> Option<Self> {
         Self::range(self.range.start.div_ceil(2), self.range.last / 2)
+    }
+
+    pub(crate) fn checked_sub(self, rhs: Number) -> Option<Self> {
+        let range =
+            (self.range.start.saturating_sub(rhs)..=self.range.last.checked_sub(rhs)?).into();
+        Some(Self { range })
     }
 }
 

@@ -487,15 +487,30 @@ impl InferenceSolver {
         if sets[0] == sets[1] {
             let count = sum.checked_div_2().ok_or(Contradiction)?;
             self.add_theorem(Theorem::CriminalCount(sets[0], count.into()))
-        } else if (sets[0] & sets[1]).is_empty() {
+        } else if let Some(intersection) = (sets[0] & sets[1]).non_empty() {
+            if let Some(intersection) = self.gather_criminal_count(intersection)?.exact() {
+                let sum = sum
+                    .checked_sub(intersection.strict_mul(2))
+                    .ok_or(Contradiction)?;
+                let set = sets[0] ^ sets[1];
+                #[expect(clippy::option_if_let_else, reason = "both arms non-trivial")]
+                if let Some(set) = set.non_empty() {
+                    self.add_theorem(Theorem::CriminalCount(set, sum.into()))
+                } else if sum.matches(&0) {
+                    Ok(false)
+                } else {
+                    Err(Contradiction)
+                }
+            } else {
+                let total_len = sets[0].len().get().strict_add(sets[1].len().get());
+                self.sum
+                    .entry(sets)
+                    .or_insert(Interval::zero_to(total_len))
+                    .intersect(sum)
+            }
+        } else {
             let set = sets[0] | sets[1];
             self.add_theorem(Theorem::CriminalCount(set, sum.into()))
-        } else {
-            let total_len = sets[0].len().get().strict_add(sets[1].len().get());
-            self.sum
-                .entry(sets)
-                .or_insert(Interval::zero_to(total_len))
-                .intersect(sum)
         }
     }
 
