@@ -69,7 +69,7 @@ impl InferenceSolver {
             || self.update_phase(Tactic::SimplifyConnected, Self::simplify_connected)?
             || self.update_phase(Tactic::CountsFromDifferences, Self::counts_from_differences)?
             || self.update_phase(Tactic::CombineCriminalCounts, Self::combine_criminal_counts)?
-            // || self.update_phase(Tactic::InclusionExclusion, Self::inclusion_exclusion_bounds)?
+            || self.update_phase(Tactic::InclusionExclusion, Self::inclusion_exclusion_bounds)?
             || self.update_phase(Tactic::Bifurcate, Self::bifurcate)?;
         Ok(updated)
     }
@@ -278,6 +278,8 @@ impl InferenceSolver {
         self.add_theorems(new)
     }
 
+    /// This is quite a conservative version, only propagating the bounds if there are already known
+    /// bounds for both the union and the intersection
     fn inclusion_exclusion_bounds(&mut self) -> Result<bool, Contradiction> {
         let mut new = Vec::new();
         for [(&a, (a_count, _)), (&b, (b_count, _))] in self
@@ -289,17 +291,22 @@ impl InferenceSolver {
             let union = a | b;
             let sum = a_count.strict_add(*b_count);
             if let Some(intersection) = (a & b).non_empty() {
-                new.push(Theorem::CriminalCount(
-                    union,
-                    sum.checked_sub(self.gather_criminal_count(intersection)?)
-                        .ok_or(Contradiction)?,
-                ));
-                new.push(Theorem::CriminalCount(
-                    intersection,
-                    sum.checked_sub(self.gather_criminal_count(union)?)
-                        .ok_or(Contradiction)?,
-                ));
-            } else if !a_count.is_exact() && !b_count.is_exact() {
+                if let Some(&(union_bound, _)) = self.criminal_count.get(&union)
+                    && let Some(&(intersection_bound, _)) = self.criminal_count.get(&intersection)
+                {
+                    new.push(Theorem::CriminalCount(
+                        union,
+                        sum.checked_sub(intersection_bound).ok_or(Contradiction)?,
+                    ));
+                    new.push(Theorem::CriminalCount(
+                        intersection,
+                        sum.checked_sub(union_bound).ok_or(Contradiction)?,
+                    ));
+                }
+            } else if !a_count.is_exact()
+                && !b_count.is_exact()
+                && self.criminal_count.contains_key(&union)
+            {
                 new.push(Theorem::CriminalCount(union, sum));
             }
         }
