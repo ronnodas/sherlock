@@ -108,6 +108,13 @@ impl Comparison {
             Self::More => lhs > rhs,
         }
     }
+
+    pub(crate) fn exact(self) -> Option<Number> {
+        match self {
+            Self::ExactDifference(exact) => Some(exact),
+            Self::More => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumDiscriminants)]
@@ -200,6 +207,15 @@ impl Bound {
             Self::Parity(parity) => BoundOrNot::Parity(!parity),
         };
         Some(bound)
+    }
+
+    pub(crate) fn parity(self) -> Option<Parity> {
+        match self {
+            Self::Exact(value) => Some(Parity::of(value)),
+            Self::AtMost(0) => Some(Parity::Even),
+            Self::Parity(parity) => Some(parity),
+            Self::AtLeast(_) | Self::AtMost(_) => None,
+        }
     }
 }
 
