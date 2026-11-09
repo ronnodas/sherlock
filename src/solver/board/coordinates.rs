@@ -79,6 +79,10 @@ impl Set {
     pub(crate) fn is_empty(self) -> bool {
         self.0 == 0
     }
+
+    pub(crate) fn contains(self, coord: Coord) -> bool {
+        self.0 & (1 << coord.to_index()) != 0
+    }
 }
 
 impl Default for Set {

@@ -194,6 +194,23 @@ impl InferenceSolver {
                     if let Some(difference) = difference.non_empty() {
                         new.push(Theorem::All(difference, !judgment));
                     }
+                    for a_judgment in [Judgment::Innocent, Judgment::Criminal] {
+                        for b_judgment in [Judgment::Innocent, Judgment::Criminal] {
+                            let a_matches = a_judgment == judgment;
+                            let b_matches = b_judgment == judgment;
+
+                            for [a, b] in any.difference(all).into_iter().array_combinations() {
+                                if possibilities.iter().all(|&possibility| {
+                                    possibility.contains(a) != a_matches
+                                        || possibility.contains(b) == b_matches
+                                }) {
+                                    new.push(
+                                        Hint::IfThen([(a, a_judgment), (b, b_judgment)]).into(),
+                                    );
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
                 discard.push(index);
