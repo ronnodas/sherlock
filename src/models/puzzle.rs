@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::fmt;
 
 use anyhow::{Result, bail};
 use jiff::civil::Date;
@@ -177,6 +178,29 @@ impl From<Date> for Metadata {
     }
 }
 
+impl fmt::Display for Metadata {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Daily {
+                date,
+                difficulty: Some(difficulty),
+            } => write!(f, "{date} ({difficulty})"),
+            Self::Daily {
+                date,
+                difficulty: None,
+            } => write!(f, "{date} (unrated)"),
+            Self::Archive { id, difficulty } => write!(f, "{id} ({difficulty})"),
+            Self::PuzzlePack {
+                pack,
+                puzzle,
+                difficulty,
+            } => write!(f, "Puzzle Pack {pack}-{puzzle:02} ({difficulty})"),
+            Self::Community { user, id } => write!(f, "Community puzzle {user}/{id}"),
+            Self::Custom => write!(f, "Custom puzzle"),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct PartialMetadata {
     pub id: PuzzleId,
@@ -205,7 +229,9 @@ impl PuzzleId {
         match self {
             Self::Daily(date) => Cow::Owned(date.to_string()),
             Self::Archive(id) => Cow::Borrowed(id.as_str()),
-            Self::PuzzlePack { pack, puzzle } => Cow::Owned(format!("puzzle-pack-{pack}-{puzzle:02}")),
+            Self::PuzzlePack { pack, puzzle } => {
+                Cow::Owned(format!("puzzle-pack-{pack}-{puzzle:02}"))
+            }
             Self::Custom => Cow::Owned(String::new()),
             Self::Community { user, id } => Cow::Owned(format!("community-{user}-{id}")),
         }
