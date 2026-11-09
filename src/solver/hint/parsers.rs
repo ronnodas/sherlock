@@ -24,7 +24,8 @@ const PUNCTUATION: [char; 3] = ['.', '!', ':'];
 
 impl Sentence {
     pub(crate) fn parse(hint: &str) -> anyhow::Result<Self> {
-        Self::parse_entire(hint)
+        let hint = hint.replace(' ', " ");
+        Self::parse_entire(&hint)
             .or_else(|err| {
                 hint.split(PUNCTUATION)
                     .find_map(|segment| Self::parse_entire(segment).ok())
@@ -1355,50 +1356,20 @@ fn line_kind(input: &mut &str) -> Result<LineKind> {
 
 fn line_pair(input: &mut &[&str]) -> Result<[LineRecipe; 2]> {
     alt((
-        separated_pair(line_prefixed("rows", row_bare), word("and"), word(row_bare)).map(|rows| {
-            <[Row; 2]>::from(rows)
-                .map(RowRecipe::Explicit)
-                .map(LineRecipe::Row)
-        }),
-        separated_pair(
-            line_prefixed("columns", column_bare),
-            word("and"),
-            word(column_bare),
-        )
-        .map(|cols| {
-            <[Column; 2]>::from(cols)
-                .map(ColumnRecipe::Explicit)
-                .map(LineRecipe::Column)
-        }),
+        preceded(word("rows"), pair(row_bare, "and"))
+            .map(|rows| rows.map(RowRecipe::Explicit).map(LineRecipe::Row)),
+        preceded(word("columns"), pair(column_bare, "and"))
+            .map(|cols| cols.map(ColumnRecipe::Explicit).map(LineRecipe::Column)),
     ))
     .parse_next(input)
 }
 
 fn row(input: &mut &[&str]) -> Result<RowRecipe> {
     alt((
-        line_prefixed("row", row_bare).map(RowRecipe::Explicit),
+        preceded(word("row"), word(row_bare)).map(RowRecipe::Explicit),
         words(("my", "row")).value(RowRecipe::Me),
     ))
     .parse_next(input)
-}
-
-fn line_prefixed<'input, 'inner, T, E>(
-    prefix: &'static str,
-    inner: impl Parser<&'inner str, T, E>,
-) -> impl Parser<&'input [&'inner str], T, E>
-where
-    'inner: 'input,
-    E: ParserError<&'input [&'inner str]> + ParserError<&'inner str>,
-{
-    alt((
-        preceded(word(prefix), any),
-        any.verify_map(move |s: &str| {
-            let rest = s.strip_prefix(prefix)?;
-            rest.strip_prefix("\u{A0}")
-                .or_else(|| rest.strip_prefix("&nbsp;"))
-        }),
-    ))
-    .and_then(inner)
 }
 
 fn row_bare(input: &mut &str) -> Result<Row> {
@@ -1415,7 +1386,7 @@ fn row_bare(input: &mut &str) -> Result<Row> {
 
 fn column(input: &mut &[&str]) -> Result<ColumnRecipe> {
     alt((
-        line_prefixed("column", column_bare).map(ColumnRecipe::Explicit),
+        preceded(word("column"), word(column_bare)).map(ColumnRecipe::Explicit),
         words(("my", "column")).value(ColumnRecipe::Me),
     ))
     .parse_next(input)

@@ -1517,7 +1517,7 @@ fn will_puzzle_pack_1_17() {
 #[test]
 fn cheryl_puzzle_pack_1_27() {
     sentence(
-        "2 of Isaac's innocent neighbors are in row&nbsp;3",
+        "2 of Isaac's innocent neighbors are in row 3",
         &Sentence::IntersectionSize(
             [Unit::neighbor("Isaac"), Row::Three.into()],
             2.into(),
@@ -1598,26 +1598,6 @@ fn has_trait() {
         Sentence::has_trait,
         &["Nova", "is", "not", "a", "criminal"],
         &Sentence::HasTrait("Nova".into(), Judgment::Innocent),
-    );
-}
-
-#[test]
-fn only_given_unit_has_exactly_n_traits() {
-    parser(
-        Sentence::only_given_unit_has_exactly_n_traits,
-        &[
-            "row 3",
-            "is",
-            "the",
-            "only",
-            "row",
-            "with",
-            "fewer",
-            "than",
-            "2",
-            "innocents",
-        ],
-        &Sentence::OnlyGivenUnitHasNTraits(Row::Three.into(), Bound::AtMost(1), Judgment::Innocent),
     );
 }
 

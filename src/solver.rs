@@ -758,10 +758,7 @@ mod tests {
                 "Emma",
                 "Only 1 of the 2 innocents neighboring Betsy is Donna's neighbor",
             ),
-            (
-                "Floyd",
-                "Row&nbsp;5 is the only row with exactly 2 criminals",
-            ),
+            ("Floyd", "Row 5 is the only row with exactly 2 criminals"),
             (
                 "Isaac",
                 "Only 1 of the 3 innocents neighboring Gabe is Donna's neighbor",
@@ -776,7 +773,7 @@ mod tests {
             ),
             (
                 "Nick",
-                "Exactly 2 of the 3 innocents neighboring Ruth are in row&nbsp;5",
+                "Exactly 2 of the 3 innocents neighboring Ruth are in row 5",
             ),
             (
                 "Oscar",
