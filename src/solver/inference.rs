@@ -34,6 +34,7 @@ struct InferenceSolver {
     connected: IndexSet<(Set1, Judgment)>,
     difference: IndexMap<[Set1; 2], Interval<i8>>,
     sum: IndexMap<[Set1; 2], Interval<Number>>,
+    disjunctions: IndexSet<[(Coord, Judgment); 2]>,
     generic: Vec<Hint>,
     allowed_depth: Option<u8>,
     #[cfg(test)]
@@ -60,6 +61,7 @@ impl InferenceSolver {
     fn update_theorems_or_contradict(&mut self) -> Result<bool, Contradiction> {
         let updated = self
             .update_phase(Tactic::ProcessGenericHints, Self::process_generic_hints)?
+            || self.update_phase(Tactic::SimplifyDisjunctions, Self::simplify_disjunctions)?
             || self.update_phase(Tactic::ExtractTightCounts, Self::extract_tight_counts)?
             || self.update_phase(
                 Tactic::SimplifyCriminalCounts,
@@ -81,6 +83,14 @@ impl InferenceSolver {
             false,
             |updated, hint| Ok(updated | self.try_add_hint(hint)?),
         )
+    }
+
+    fn simplify_disjunctions(&mut self) -> Result<bool, Contradiction> {
+        mem::take(&mut self.disjunctions)
+            .into_iter()
+            .try_fold(false, |updated, clauses| {
+                Ok(updated | self.add_disjunction(clauses)?)
+            })
     }
 
     fn simplify_criminal_counts(&mut self) -> Result<bool, Contradiction> {
@@ -679,22 +689,39 @@ impl InferenceSolver {
     }
 
     fn add_if_then(&mut self, clauses: [(Coord, Judgment); 2]) -> Result<bool, Contradiction> {
-        let (coord, judgment) = match clauses
-            .map(|(coord, judgment)| self.known[coord].map(|known| known == judgment))
+        let [(p_coord, p_judgment), conclusion] = clauses;
+        self.add_disjunction([(p_coord, !p_judgment), conclusion])
+    }
+
+    fn add_disjunction(
+        &mut self,
+        mut clauses: [(Coord, Judgment); 2],
+    ) -> Result<bool, Contradiction> {
+        clauses.sort_unstable_by_key(|&(coord, _)| coord);
+        let [left, right] = clauses;
+        let new = if left == right {
+            Some(left)
+        } else {
+            if left.0 == right.0 {
+                return Err(Contradiction);
+            }
+            match clauses.map(|(coord, judgment)| self.known[coord].map(|known| known == judgment))
         {
             [None, None] => {
-                self.generic.push(Hint::IfThen(clauses));
-                return Ok(false);
+                    _ = self.disjunctions.insert(clauses);
+                    None
             }
-            [_, Some(true)] | [Some(false), _] => return Ok(false),
-            [None, Some(false)] => {
-                let [(coord, judgment), _] = clauses;
-                (coord, !judgment)
+                [Some(true), _] | [_, Some(true)] => None,
+                [None, Some(false)] => Some(left),
+                [Some(false), None] => Some(right),
+                [Some(false), Some(false)] => return Err(Contradiction),
             }
-            [Some(true), None] => clauses[1],
-            [Some(true), Some(false)] => return Err(Contradiction),
         };
-        self.try_add_hint(Hint::Judgment(coord, judgment))
+        if let Some((coord, judgment)) = new {
+            self.add_theorem(Hint::Judgment(coord, judgment).into())
+        } else {
+            Ok(false)
+        }
     }
 
     fn add_count_with_neighbors(
@@ -767,6 +794,7 @@ impl InferenceSolver {
             }
             Theorem::CriminalSum(sets, sum) => self.add_sum(sets, sum)?,
             Theorem::Connected(set, judgment) => self.connected.insert((set, judgment)),
+            Theorem::Disjunction(clauses) => self.add_disjunction(clauses)?,
             Theorem::Generic(hint) => self.try_add_hint(hint)?,
             Theorem::True => false,
             Theorem::False => return Err(Contradiction),
@@ -1037,6 +1065,11 @@ impl InferenceSolver {
                     .iter()
                     .map(|(&sets, &sum)| Theorem::CriminalSum(sets, sum)),
             )
+            .chain(
+                self.disjunctions
+                    .iter()
+                    .map(|&clauses| Theorem::Disjunction(clauses)),
+            )
             .chain(self.generic.iter().cloned().map(Theorem::Generic))
             .chain(
                 self.known
@@ -1057,6 +1090,7 @@ impl InferenceSolver {
 #[derive(Clone, Copy, Debug)]
 enum Tactic {
     ProcessGenericHints,
+    SimplifyDisjunctions,
     ExtractTightCounts,
     SimplifyCriminalCounts,
     SimplifySums,
@@ -1072,6 +1106,7 @@ impl Tactic {
     fn name(self) -> &'static str {
         match self {
             Self::ProcessGenericHints => "processing hints",
+            Self::SimplifyDisjunctions => "simplifying or clauses",
             Self::ExtractTightCounts => "finding tight counts",
             Self::SimplifyCriminalCounts => "simplifying counts",
             Self::SimplifySums => "simplifying sums",
@@ -1091,6 +1126,7 @@ enum Theorem {
     CriminalCount(Set1, CountSet),
     CriminalDifference([Set1; 2], Interval<i8>),
     CriminalSum([Set1; 2], Interval<Number>),
+    Disjunction([(Coord, Judgment); 2]),
     Generic(Hint),
     True,
     False,
@@ -1123,6 +1159,9 @@ impl Theorem {
                 .filter(|&coord| solution[coord] == *judgment)
                 .collect::<Set>()
                 .connected(),
+            Self::Disjunction(clauses) => clauses
+                .iter()
+                .any(|&(coord, judgment)| solution[coord] == judgment),
             Self::True => true,
             Self::False => false,
         }
