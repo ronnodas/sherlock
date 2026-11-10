@@ -14,7 +14,7 @@ use mitsein::vec1::Vec1;
 use crate::grid::Grid;
 #[cfg(test)]
 use crate::models::Solution;
-use crate::models::{Coord, Judgment};
+use crate::models::{Coord, Direction, Judgment};
 use crate::solver::Engine;
 use crate::solver::board::coordinates::{Set, Set1, SetExpr1, SetOp, SetOp1};
 use crate::solver::hint::{Bound, BoundOrNot, Comparison, Hint, Number, Parity};
@@ -468,6 +468,26 @@ impl InferenceSolver {
         }
     }
 
+    fn count_judged_with_known(
+        &self,
+        set: Set1,
+        judgment: Judgment,
+    ) -> Result<CountSet, Contradiction> {
+        let [variable, fixed] = ByJudgment::split(set, &self.known).only(judgment);
+        let variable_count = if let Some(variable) = variable.non_empty() {
+            let criminal_count = self.gather_criminal_count(variable)?;
+            match judgment {
+                Judgment::Criminal => criminal_count,
+                Judgment::Innocent => CountSet::Exact(variable.len().get())
+                    .checked_sub(criminal_count)
+                    .ok_or(Contradiction)?,
+            }
+        } else {
+            CountSet::Exact(0)
+        };
+        Ok(variable_count.strict_add(CountSet::Exact(fixed.len())))
+    }
+
     fn max_criminals(&self, set: Set1) -> Number {
         self.criminal_count
             .iter()
@@ -638,25 +658,40 @@ impl InferenceSolver {
                     return self.add_criminal_count(set, *judgment, count);
                 }
                 SetExpr1::Op(inner) => {
-                    let minimum = count.minimum();
-                    let updated = (minimum > 0)
-                        && self.simplify_and_add_count(inner, BoundOrNot::AtLeast(minimum))?;
+                    let min_count = count.minimum();
+                    let implied = if min_count > 0
+                        && let SetOp1::Shift(source, direction) = inner
+                        && let SetOp1::Judged(source, source_judgment) = source.as_ref()
+                        && let &SetExpr1::Regular(source) = source.as_ref()
+                    {
+                        self.add_shifted_count_implications(
+                            source,
+                            *direction,
+                            *source_judgment,
+                            *judgment,
+                            min_count,
+                        )?
+                    } else {
+                        false
+                    };
+                    let updated = (min_count > 0)
+                        && self.simplify_and_add_count(inner, BoundOrNot::AtLeast(min_count))?;
                     self.generic.push(Hint::Count(set, count));
-                    updated
+                    updated | implied
                 }
             },
             SetOp1::Shift(inner, direction) => {
-                let minimum = count.minimum();
-                let updated = (minimum > 0) && {
+                let min_count = count.minimum();
+                let updated = (min_count > 0) && {
                     match SetExpr1::Regular(Set1::all())
                         .shift(direction.flip())
                         .intersect1(inner.as_ref().clone())
                         .regular()
                     {
                         Err(pre_shift) => {
-                            self.simplify_and_add_count(&pre_shift, BoundOrNot::AtLeast(minimum))?
+                            self.simplify_and_add_count(&pre_shift, BoundOrNot::AtLeast(min_count))?
                         }
-                        Ok(pre_shift) if pre_shift.len() >= minimum => false,
+                        Ok(pre_shift) if pre_shift.len() >= min_count => false,
                         Ok(_) => return Err(Contradiction),
                     }
                 };
@@ -664,21 +699,21 @@ impl InferenceSolver {
                 updated
             }
             SetOp1::Intersection(vec, fixed) => {
-                let minimum = count.minimum();
+                let min_count = count.minimum();
                 if let Some(fixed) = fixed
-                    && fixed.len().get() < minimum
+                    && fixed.len().get() < min_count
                 {
                     return Err(Contradiction);
                 }
                 if let Some(fixed) = fixed
-                    && fixed.len().get() < minimum
+                    && fixed.len().get() < min_count
                 {
                     return Err(Contradiction);
                 }
-                let updated = (minimum > 0)
+                let updated = (min_count > 0)
                     && vec.iter().try_fold(false, |updated, set| {
                         Ok(updated
-                            | self.simplify_and_add_count(set, BoundOrNot::AtLeast(minimum))?)
+                            | self.simplify_and_add_count(set, BoundOrNot::AtLeast(min_count))?)
                     })?;
                 self.generic.push(Hint::Count(set, count));
                 updated
@@ -686,6 +721,45 @@ impl InferenceSolver {
         };
 
         Ok(updated)
+    }
+
+    fn add_shifted_count_implications(
+        &mut self,
+        source: Set1,
+        direction: Direction,
+        source_judgment: Judgment,
+        target_judgment: Judgment,
+        min_count: Number,
+    ) -> Result<bool, Contradiction> {
+        let source = (source & Set1::shift_preimage(direction))
+            .non_empty()
+            .ok_or(Contradiction)?;
+        let source_count = self.count_judged_with_known(source, source_judgment)?;
+        let target = source.shift(direction).non_empty().ok_or(Contradiction)?;
+        let target_count = self.count_judged_with_known(target, target_judgment)?;
+        if min_count > source_count.maximum() || min_count > target_count.maximum() {
+            return Err(Contradiction);
+        }
+        let source_matches = min_count >= source_count.maximum();
+        let target_matches = min_count >= target_count.maximum();
+        if !source_matches && !target_matches {
+            return Ok(false);
+        }
+
+        let mut new = Vec::new();
+        for source_coord in source {
+            if let Some(target_coord) = source_coord.step(direction) {
+                let source = (source_coord, source_judgment);
+                let target = (target_coord, target_judgment);
+                if source_matches {
+                    new.push(Hint::IfThen([source, target]).into());
+                }
+                if target_matches {
+                    new.push(Hint::IfThen([target, source]).into());
+                }
+            }
+        }
+        self.add_theorems(new)
     }
 
     fn add_if_then(&mut self, clauses: [(Coord, Judgment); 2]) -> Result<bool, Contradiction> {
@@ -706,11 +780,11 @@ impl InferenceSolver {
                 return Err(Contradiction);
             }
             match clauses.map(|(coord, judgment)| self.known[coord].map(|known| known == judgment))
-        {
-            [None, None] => {
+            {
+                [None, None] => {
                     _ = self.disjunctions.insert(clauses);
                     None
-            }
+                }
                 [Some(true), _] | [_, Some(true)] => None,
                 [None, Some(false)] => Some(left),
                 [Some(false), None] => Some(right),
