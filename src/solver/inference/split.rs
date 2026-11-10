@@ -53,7 +53,7 @@ impl Triple {
                 Some(Self { variable, in_, out })
             }
             SetOp1::Shift(inner, dir) => Some(Self::split(inner, known)?.shift(*dir)),
-            SetOp1::Intersection(..) => todo!(),
+            SetOp1::Intersection(..) => unimplemented!("splitting an intersection"),
         }
     }
 
@@ -88,26 +88,6 @@ impl SetSimplify {
             (SetOp::NonEmpty(variable), Some(fixed)) => Self::Split(variable, fixed),
         };
         Some(split)
-    }
-
-    pub(crate) fn from_pair(variable: SetOp, fixed: Set) -> Self {
-        match (variable, fixed.non_empty()) {
-            (SetOp::Empty, None) => Self::Empty,
-            (SetOp::NonEmpty(variable), None) => Self::Variable(variable),
-            (SetOp::Empty, Some(fixed)) => Self::Fixed(fixed),
-            (SetOp::NonEmpty(variable), Some(fixed)) => Self::Split(variable, fixed),
-        }
-    }
-
-    pub(crate) fn shift(self, direction: Direction) -> Self {
-        match self {
-            Self::Fixed(set) => set.shift(direction).into(),
-            Self::Variable(inner) => inner.shift(direction).into(),
-            Self::Split(variable, fixed) => {
-                Self::from_pair(variable.shift(direction), fixed.shift(direction))
-            }
-            Self::Empty => Self::Empty,
-        }
     }
 }
 
@@ -147,17 +127,6 @@ impl ByJudgment {
 
     pub(crate) fn only(self, judgment: Judgment) -> [Set; 2] {
         [self.variable, self.fixed[judgment]]
-    }
-
-    pub(crate) fn judgment(self, judgment: Judgment) -> Set {
-        self.fixed[judgment]
-    }
-
-    fn empty() -> Self {
-        Self {
-            variable: Set::empty(),
-            fixed: StaticCopyMap::default(),
-        }
     }
 }
 

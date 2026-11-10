@@ -1,5 +1,3 @@
-#![allow(dead_code, clippy::todo, reason = "in progress")]
-
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::ops::BitAnd;
@@ -45,9 +43,11 @@ pub(super) struct InferenceSolver {
 impl InferenceSolver {
     fn update_phase(
         &mut self,
-        tactic: Tactic,
+        #[cfg(test)] tactic: Tactic,
+        #[cfg(not(test))] _tactic: Tactic,
         update: impl FnOnce(&mut Self) -> Result<bool, Contradiction>,
     ) -> Result<bool, Contradiction> {
+        #[cfg(test)]
         if self.allowed_depth.is_none() {
             eprintln!("{}", tactic.name());
         }
@@ -461,11 +461,6 @@ impl InferenceSolver {
 
     fn update_until_stuck(&mut self) -> Result<(), Contradiction> {
         while self.update_theorems_or_contradict()? {}
-        Ok(())
-    }
-
-    fn update_until_stuck_or_new_knowledge(&mut self) -> Result<(), Contradiction> {
-        while self.new_knowledge.is_empty() && self.update_theorems_or_contradict()? {}
         Ok(())
     }
 
@@ -966,7 +961,6 @@ impl InferenceSolver {
                 self.add_difference(sets, difference)?
             }
             Theorem::CriminalSum(sets, sum) => self.add_sum(sets, sum)?,
-            Theorem::Connected(set, judgment) => self.connected.insert((set, judgment)),
             Theorem::Disjunction(clauses) => self.add_disjunction(clauses)?,
             Theorem::Generic(hint) => self.try_add_hint(hint)?,
             Theorem::True => false,
@@ -998,7 +992,7 @@ impl InferenceSolver {
 
             sum_or_diff | parity
         } else {
-            todo!()
+            unimplemented!("sum of complex sets")
         };
         Ok(updated)
     }
@@ -1029,7 +1023,7 @@ impl InferenceSolver {
 
             sum_or_diff | parity
         } else {
-            todo!()
+            unimplemented!("comparison of complex sets")
         };
         Ok(updated)
     }
@@ -1093,7 +1087,7 @@ impl InferenceSolver {
                     if let &SetExpr1::Regular(set) = inner.as_ref() {
                         self.connected.insert((set, judgment))
                     } else {
-                        todo!()
+                        unimplemented!("connectedness of complex sets")
                     }
                 }
                 SetOp1::Shift(inner, dir) => {
@@ -1103,7 +1097,7 @@ impl InferenceSolver {
                         SetOp::NonEmpty(set) => self.try_add_hint(Hint::Connected(set))?,
                     }
                 }
-                SetOp1::Intersection(..) => todo!(),
+                SetOp1::Intersection(..) => unimplemented!("connectedness of complex sets"),
             },
             Hint::CompareSets(sets, compare) => self.add_complex_diff(sets, compare)?,
             Hint::UniqueWithCount { sets, bound } => {
@@ -1148,7 +1142,9 @@ impl InferenceSolver {
                             count.into(),
                         )?)
                 })?,
-                SetExpr1::Op(_) => todo!(),
+                SetExpr1::Op(_) => {
+                    unimplemented!("neighbors of each suspect in a dynamic set")
+                }
             },
             Hint::CountWithNeighbors {
                 set,
@@ -1159,7 +1155,7 @@ impl InferenceSolver {
                 if let SetExpr1::Regular(set) = set {
                     self.add_count_with_neighbors(each, count, judgment, set)?
                 } else {
-                    todo!()
+                    unimplemented!("neighbors of each suspect in a dynamic set")
                 }
             }
             Hint::IfThen(clauses) => self.add_if_then(clauses)?,
@@ -1226,7 +1222,7 @@ impl InferenceSolver {
                 self.connected
                     .iter()
                     .copied()
-                    .map(|(set, judgment)| Theorem::Connected(set, judgment)),
+                    .map(|(set, judgment)| Hint::Connected(set.judged(judgment)).into()),
             )
             .chain(
                 self.difference
@@ -1258,6 +1254,11 @@ impl InferenceSolver {
             )
             .collect()
     }
+
+    fn update_until_stuck_or_new_knowledge(&mut self) -> Result<(), Contradiction> {
+        while self.new_knowledge.is_empty() && self.update_theorems_or_contradict()? {}
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1275,6 +1276,7 @@ enum Tactic {
     InclusionExclusion,
 }
 
+#[cfg(test)]
 impl Tactic {
     fn name(self) -> &'static str {
         match self {
@@ -1303,7 +1305,6 @@ enum Theorem {
     Generic(Hint),
     True,
     False,
-    Connected(Set1, Judgment),
 }
 
 #[cfg(test)]
@@ -1327,11 +1328,6 @@ impl Theorem {
                 sum.matches(&total)
             }
             Self::Generic(hint) => hint.evaluate(solution),
-            Self::Connected(set, judgment) => set
-                .into_iter()
-                .filter(|&coord| solution[coord] == *judgment)
-                .collect::<Set>()
-                .connected(),
             Self::Disjunction(clauses) => clauses
                 .iter()
                 .any(|&(coord, judgment)| solution[coord] == judgment),
@@ -1353,29 +1349,6 @@ impl From<bool> for Theorem {
     }
 }
 
-enum Retain {
-    Keep,
-    Discard,
-}
-
-impl Retain {
-    /// Returns `true` if the retain is [`Keep`].
-    ///
-    /// [`Keep`]: Retain::Keep
-    #[must_use]
-    fn is_keep(&self) -> bool {
-        matches!(self, Self::Keep)
-    }
-
-    /// Returns `true` if the retain is [`Discard`].
-    ///
-    /// [`Discard`]: Retain::Discard
-    #[must_use]
-    fn is_discard(&self) -> bool {
-        matches!(self, Self::Discard)
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 enum TheoremState {
     Discarded,
@@ -1383,14 +1356,6 @@ enum TheoremState {
 }
 
 impl TheoremState {
-    /// Returns `true` if the theorem state is [`Discarded`].
-    ///
-    /// [`Discarded`]: TheoremState::Discarded
-    #[must_use]
-    fn is_discarded(self) -> bool {
-        matches!(self, Self::Discarded)
-    }
-
     /// Returns `true` if the theorem state is [`Active`].
     ///
     /// [`Active`]: TheoremState::Active
