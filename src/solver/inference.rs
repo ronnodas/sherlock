@@ -408,26 +408,55 @@ impl InferenceSolver {
 
     fn bifurcate_to(&mut self, depth: u8) -> Result<bool, Contradiction> {
         let mut new = Vec::new();
-        for (coord, _) in self.known.iter().filter(|(_, judgment)| judgment.is_none()) {
-            for judgment in [Judgment::Innocent, Judgment::Criminal] {
-                let mut clone = self.clone();
-                clone.allowed_depth = Some(depth);
-                clone.known[coord] = Some(judgment);
-                #[cfg(test)]
-                if clone
-                    .validation_solution
-                    .as_ref()
-                    .is_some_and(|solution| solution[coord] != judgment)
+        let variable: Set = self
+            .known
+            .iter()
+            .filter(|(_, judgment)| judgment.is_none())
+            .map(|(coord, _)| coord)
+            .collect();
+        for coord in variable {
+            let Ok(innocent) = self.bifurcation_branch(depth, coord, Judgment::Innocent) else {
+                new.push((coord, Judgment::Criminal));
+                continue;
+            };
+            let Ok(criminal) = self.bifurcation_branch(depth, coord, Judgment::Criminal) else {
+                new.push((coord, Judgment::Innocent));
+                continue;
+            };
+            for coord in variable {
+                if let Some(innocent) = innocent[coord]
+                    && let Some(criminal) = criminal[coord]
+                    && innocent == criminal
                 {
-                    clone.validation_solution = None;
-                }
-                if matches!(clone.update_until_stuck(), Err(Contradiction)) {
-                    new.push(Hint::Judgment(coord, !judgment).into());
-                    break;
+                    new.push((coord, innocent));
                 }
             }
         }
-        self.add_theorems(new)
+        self.add_theorems(
+            new.into_iter()
+                .map(|(coord, judgment)| Hint::Judgment(coord, judgment).into()),
+        )
+    }
+
+    fn bifurcation_branch(
+        &self,
+        depth: u8,
+        coord: Coord,
+        judgment: Judgment,
+    ) -> Result<Grid<Option<Judgment>>, Contradiction> {
+        let mut clone = self.clone();
+        clone.allowed_depth = Some(depth);
+        clone.known[coord] = Some(judgment);
+        #[cfg(test)]
+        if clone
+            .validation_solution
+            .as_ref()
+            .is_some_and(|solution| solution[coord] != judgment)
+        {
+            clone.validation_solution = None;
+        }
+        clone.update_until_stuck()?;
+        Ok(clone.known)
     }
 
     fn update_until_stuck(&mut self) -> Result<(), Contradiction> {
