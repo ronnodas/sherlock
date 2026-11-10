@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use anyhow::{Result, anyhow};
 use mitsein::btree_map1::BTreeMap1;
 
-use crate::models::{Column, Coord, Name, Profession, Row};
+use crate::models::{Column, Coord, Judged, Name, Profession, Row};
 use crate::solver::board::coordinates::Set1;
 use crate::solver::hint::{Line, LineKind};
 
@@ -15,6 +15,36 @@ pub(crate) trait AddContext {
     type Output;
 
     fn add_context(self, context: Context<'_>) -> Result<Self::Output>;
+}
+
+impl<T: AddContext> AddContext for [T; 2] {
+    type Output = [T::Output; 2];
+
+    fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
+        // TODO use `try_map()` https://github.com/rust-lang/rust/issues/79711
+        let [a, b] = self.map(|unit| unit.add_context(context));
+        Ok([a?, b?])
+    }
+}
+
+impl<'borrow, T> AddContext for &'borrow [T; 2]
+where
+    &'borrow T: AddContext,
+{
+    type Output = [<&'borrow T as AddContext>::Output; 2];
+
+    fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
+        self.each_ref().add_context(context)
+    }
+}
+
+impl AddContext for &Judged<NameRecipe> {
+    type Output = Judged<Coord>;
+
+    fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
+        let Judged(name, judgment) = self;
+        Ok(Judged(name.add_context(context)?, *judgment))
+    }
 }
 
 #[derive(Clone, Copy)]

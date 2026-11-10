@@ -5,8 +5,8 @@ use mitsein::iter1::{IntoIterator1 as _, IteratorExt as _};
 use mitsein::vec1::Vec1;
 use strum::EnumDiscriminants;
 
-use crate::models::{Column, Coord, Judgment, Row, Solution};
-use crate::solver::board::coordinates::{Set, Set1, SetExpr1, SetOp1};
+use crate::models::{Column, Coord, Direction, Judged, Judgment, Row, Solution};
+use crate::solver::board::coordinates::{Set, Set1};
 
 mod parsers;
 pub(crate) mod recipes;
@@ -14,52 +14,69 @@ pub(crate) mod recipes;
 pub(crate) type Number = u8;
 pub(crate) use parsers::Sentence;
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ShiftedCount {
+    pub source: Set1,
+    pub source_judgment: Judgment,
+    pub direction: Direction,
+    pub target_judgment: Judgment,
+    pub bound: Bound,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum Hint {
     /// Given coordinate has given judgment
     Judgment(Coord, Judgment),
     /// Given set of coordinates has that many suspects
-    Count(SetOp1, BoundOrNot),
+    Count(Set1, Judgment, BoundOrNot),
+    ShiftedCount(ShiftedCount),
     /// Given set of coordinates in total have that many suspects
-    CountTotal([SetOp1; 2], Bound),
+    CountTotal([Judged<Set1>; 2], Bound),
     /// Given set of coordinates is connected
-    Connected(SetOp1),
+    Connected(Set1, Judgment),
     /// The first set compares with the second set
-    CompareSets([SetOp1; 2], Comparison),
+    CompareSets([Judged<Set1>; 2], Comparison),
     /// Among the given `sets`, exactly one has count matching `bound`
     UniqueWithCount {
-        sets: Vec1<SetOp1>,
+        sets: Vec1<Set1>,
+        judgment: Judgment,
         bound: Bound,
     },
     /// Each member of the given set has a given number of neighbors with the given judgment
-    EachNeighbors(SetExpr1, Bound, Judgment),
+    EachNeighbors(Set1, Bound, Judgment),
     /// `count` many members of the given set has `each` neighbors with given judgment
     CountWithNeighbors {
-        set: SetExpr1,
+        set: Set1,
         each: Bound,
         count: Bound,
         judgment: Judgment,
     },
-    IfThen([(Coord, Judgment); 2]),
+    IfThen([Judged<Coord>; 2]),
 }
 
 impl Hint {
     pub(crate) fn evaluate(&self, solution: &Solution) -> bool {
         match self {
             &Self::Judgment(coord, judgment) => solution[coord] == judgment,
-            Self::Count(set, bound) => bound.matches(solution.select(set).len()),
+            &Self::Count(set, judgment, bound) => {
+                bound.matches(solution.select(&set.judged(judgment)).len())
+            }
             Self::CountTotal(sets, bound) => {
                 let total = sets.iter().map(|set| solution.select(set).len()).sum();
                 bound.matches(total)
             }
-            Self::Connected(set) => solution.select(set).connected(),
+            Self::Connected(set, judgment) => solution.select(&set.judged(*judgment)).connected(),
             Self::CompareSets(sets, comparison) => {
                 let [lhs, rhs] = sets.each_ref().map(|set| solution.select(set).len());
                 comparison.compare(lhs, rhs)
             }
-            Self::UniqueWithCount { sets, bound } => {
+            Self::UniqueWithCount {
+                sets,
+                judgment,
+                bound,
+            } => {
                 sets.iter()
-                    .filter(|&set| bound.matches(solution.select(set).len()))
+                    .filter(|&set| bound.matches(solution.select(&set.judged(*judgment)).len()))
                     .count()
                     == 1
             }
@@ -69,8 +86,7 @@ impl Hint {
                 count,
                 judgment,
             } => {
-                let counted = solution
-                    .select(set)
+                let counted = set
                     .into_iter()
                     .filter(|coord| {
                         let neighbors = solution.select(&coord.neighbors().judged(*judgment)).len();
@@ -80,16 +96,25 @@ impl Hint {
                     .len();
                 count.matches(counted)
             }
-            Self::EachNeighbors(set, bound, judgment) => {
-                solution.select(set).into_iter().all(|coord| {
-                    let neighbors = solution.select(&coord.neighbors().judged(*judgment)).len();
-                    bound.matches(neighbors)
-                })
-            }
+            Self::EachNeighbors(set, bound, judgment) => set.into_iter().all(|coord| {
+                let neighbors = solution.select(&coord.neighbors().judged(*judgment)).len();
+                bound.matches(neighbors)
+            }),
             Self::IfThen(clauses) => {
                 let [premise, consequence] =
-                    clauses.map(|(coord, judgment)| solution[coord] == judgment);
+                    clauses.map(|Judged(coord, judgment)| solution[coord] == judgment);
                 !premise || consequence
+            }
+            &Self::ShiftedCount(ShiftedCount {
+                source,
+                source_judgment,
+                direction,
+                target_judgment,
+                bound: count,
+            }) => {
+                let source = solution.select(&source.judged(source_judgment));
+                let target = solution.select(&source.shift(direction).judged(target_judgment));
+                count.matches(target.len())
             }
         }
     }
@@ -217,6 +242,24 @@ impl Bound {
             Self::AtLeast(_) | Self::AtMost(_) => None,
         }
     }
+
+    pub(crate) fn checked_sub(self, rhs: Number) -> Option<Self> {
+        let bound = match self {
+            Self::Exact(value) => Self::Exact(value.checked_sub(rhs)?),
+            Self::AtLeast(value) => Self::AtLeast(value.saturating_sub(rhs)),
+            Self::AtMost(value) => Self::AtMost(value.checked_sub(rhs)?),
+            Self::Parity(parity) => Self::Parity(parity ^ Parity::of(rhs)),
+        };
+        Some(bound)
+    }
+
+    pub(crate) fn minimum(self) -> Number {
+        match self {
+            Self::Exact(value) | Self::AtLeast(value) => value,
+            Self::AtMost(_) | Self::Parity(Parity::Even) => 0,
+            Self::Parity(Parity::Odd) => 1,
+        }
+    }
 }
 
 impl From<Parity> for Bound {
@@ -287,14 +330,6 @@ impl BoundOrNot {
             Self::AtMost(value) => len <= value,
             Self::NotExact(value) => len != value,
             Self::Parity(parity) => parity.matches(len),
-        }
-    }
-
-    pub(crate) fn minimum(self) -> Number {
-        match self {
-            Self::Exact(value) | Self::AtLeast(value) => value,
-            Self::Parity(Parity::Odd) | Self::NotExact(0) => 1,
-            Self::AtMost(_) | Self::Parity(Parity::Even) | Self::NotExact(_) => 0,
         }
     }
 }

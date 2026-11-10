@@ -2,29 +2,38 @@ use anyhow::{Context as _, Result, bail};
 use mitsein::iter1::IntoIterator1 as _;
 use mitsein::vec1::Vec1;
 
-use crate::models::{Column, Coord, Direction, Judgment, Name, Profession, Row};
-use crate::solver::board::coordinates::{Set, Set1, SetExpr, SetOp};
+use crate::models::{Column, Coord, Direction, Judged, Judgment, Name, Profession, Row};
+use crate::solver::board::coordinates::{Set, Set1};
 use crate::solver::hint::recipes::{
     AddContext, ColumnRecipe, Context, LineRecipe, NameRecipe, RowRecipe,
 };
-use crate::solver::hint::{Bound, BoundOrNot, Comparison, Hint, LineKind, Number, Parity};
+use crate::solver::hint::{
+    Bound, BoundOrNot, Comparison, Hint, LineKind, Number, Parity, ShiftedCount,
+};
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug)]
 pub(crate) enum Sentence {
     HasTrait(Name, Judgment),
-    UnitIsConnected(UnitExpr),
+    UnitIsConnected(Unit, Judgment, Option<Bound>),
     BiggestInSeries(UnitInSeries, Judgment),
     IsOneOfNInUnit(Unit, NameRecipe, Bound, Judgment),
     EqualNumberOfTraitsInUnits([Unit; 2], Judgment),
     UnitBiggerThanUnit {
-        big: UnitExpr,
-        small: UnitExpr,
+        big: Judged<Unit>,
+        small: Judged<Unit>,
         excess: Option<Number>,
     },
     UnitEquallySplit(Unit),
     MoreTraitsInUnit(Unit, Judgment),
-    UnitSize(UnitExpr, Bound),
+    UnitSize(Unit, Judgment, Bound),
+    TraitsInUnitHaveTraitInDirection {
+        source: Unit,
+        source_judgment: Judgment,
+        direction: Direction,
+        target_judgment: Judgment,
+        bound: Bound,
+    },
     UniqueInUnitHasNNeighbors(Unit, Bound, Option<NameRecipe>, Judgment),
     NInUnitHaveNNeighbors {
         unit: Unit,
@@ -52,7 +61,7 @@ pub(crate) enum Sentence {
         other: Unit,
     },
     IsInUnit(Unit, NameRecipe, Judgment),
-    IfThen([(NameRecipe, Judgment); 2]),
+    IfThen([Judged<NameRecipe>; 2]),
     OnlyTraitInSeries(NameRecipe, DisjointSeries, Judgment),
 }
 
@@ -61,7 +70,9 @@ impl AddContext for &Sentence {
 
     fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
         let hints: Vec<Hint> = match self {
-            Sentence::UnitIsConnected(unit) => unit.members_are_connected(context)?,
+            Sentence::UnitIsConnected(unit, judgment, bound) => {
+                unit.members_are_connected(*judgment, *bound, context)?
+            }
             Sentence::BiggestInSeries(unit, judgment) => unit.has_most(*judgment, context)?,
             Sentence::IsOneOfNInUnit(unit, name, bound, judgment) => {
                 unit.contains_in_n(name, *bound, *judgment, context)?
@@ -69,14 +80,8 @@ impl AddContext for &Sentence {
             Sentence::UnitBiggerThanUnit { big, small, excess } => {
                 big.bigger_than(small, *excess, context)?
             }
-            Sentence::UnitSize(unit, bound) => {
-                let (set, mut hints) = unit.add_context(context)?;
-                match set.regular() {
-                    Ok(set) if bound.matches(set.len()) => {}
-                    Ok(_) => bail!("{unit:?} does not match {bound:?}"),
-                    Err(set) => hints.push(Hint::Count(set, (*bound).into())),
-                }
-                hints
+            Sentence::UnitSize(unit, judgment, bound) => {
+                unit.has_size(*judgment, *bound, context)?
             }
             Sentence::TotalUnitsSize(units, bound, judgment) => {
                 Unit::total_size(units, *bound, *judgment, context)?
@@ -86,17 +91,16 @@ impl AddContext for &Sentence {
             }
 
             &Sentence::UniqueUnitInSeriesHasSize(series, bound, judgment) => {
-                let sets = series
-                    .all(context)
-                    .into_iter1()
-                    .map(|set| set.judged(judgment))
-                    .collect1();
-                vec![Hint::UniqueWithCount { sets, bound }]
+                vec![Hint::UniqueWithCount {
+                    sets: series.all(context),
+                    judgment,
+                    bound,
+                }]
             }
             &Sentence::EachUnitInSeriesHasSize(kind, bound, judgment) => kind
                 .all(context)
                 .into_iter()
-                .map(|set| Hint::Count(set.judged(judgment), bound.into()))
+                .map(|set| Hint::Count(set, judgment, bound.into()))
                 .collect(),
             Sentence::OnlyGivenUnitHasNTraits(unit, bound, judgment) => {
                 unit.only_one_with_n_traits(*bound, *judgment, context)?
@@ -144,144 +148,27 @@ impl AddContext for &Sentence {
                 other,
             } => split.traits_are_in_unit(*any_all, *judgment, other, context)?,
             Sentence::IsInUnit(unit, name, judgment) => unit.contains(name, *judgment, context)?,
-            Sentence::IfThen([(name_p, judgment_p), (name_c, judgment_c)]) => vec![Hint::IfThen([
-                (name_p.add_context(context)?, *judgment_p),
-                (name_c.add_context(context)?, *judgment_c),
-            ])],
+            Sentence::IfThen(clauses) => {
+                vec![Hint::IfThen(clauses.each_ref().add_context(context)?)]
+            }
             Sentence::OnlyTraitInSeries(name, series, judgment) => {
                 series.only_trait(name, *judgment, context)?
             }
+            Sentence::TraitsInUnitHaveTraitInDirection {
+                source,
+                source_judgment,
+                direction,
+                target_judgment,
+                bound,
+            } => source.shifted_count(
+                *source_judgment,
+                *direction,
+                *target_judgment,
+                *bound,
+                context,
+            )?,
         };
         Ok(hints)
-    }
-}
-
-#[cfg_attr(test, derive(PartialEq, Eq))]
-#[derive(Clone, Debug)]
-pub(crate) enum UnitExpr {
-    Regular(Unit),
-    Shifted(Box<Self>, Direction),
-    Bounded(Box<Self>, Bound),
-    Judged(Box<Self>, Judgment),
-}
-
-impl UnitExpr {
-    pub(crate) fn with_judgment(self, judgment: Judgment) -> Self {
-        Self::Judged(Box::new(self), judgment)
-    }
-
-    pub(crate) fn bound(self, bound: impl Into<Bound>) -> Self {
-        if let Self::Regular(unit) = self {
-            Self::Regular(unit.bound(bound))
-        } else {
-            Self::Bounded(Box::new(self), bound.into())
-        }
-    }
-
-    pub(crate) fn shift(self, direction: Direction) -> Self {
-        if let Self::Regular(unit) = self {
-            Self::Regular(unit.shift(direction))
-        } else {
-            Self::Shifted(Box::new(self), direction)
-        }
-    }
-
-    fn members_are_connected(&self, context: Context<'_>) -> Result<Vec<Hint>> {
-        let (set, mut hints) = self.add_context(context)?;
-        match set.regular() {
-            Ok(set) if !set.connected() => bail!("{self:?} is not connected"),
-            Ok(_) => {}
-            Err(set) => hints.push(Hint::Connected(set)),
-        }
-        Ok(hints)
-    }
-
-    fn bigger_than(
-        &self,
-        small_unit: &Self,
-        excess: Option<u8>,
-        context: Context<'_>,
-    ) -> Result<Vec<Hint>> {
-        let (big, mut hints) = self.add_context(context)?;
-        let (small, small_hints) = small_unit.add_context(context)?;
-        hints.extend(small_hints);
-        let compare = excess.map_or(Comparison::More, Comparison::ExactDifference);
-        match [big, small].map(SetExpr::regular) {
-            [Ok(big), Ok(small)] => {
-                let matches = match compare {
-                    Comparison::ExactDifference(diff) => big.len() == small.len().strict_add(diff),
-                    Comparison::More => big.len() > small.len(),
-                };
-                if !matches {
-                    bail!("{self:?} is not bigger than {small_unit:?} by {compare:?}")
-                }
-            }
-            [Ok(big), Err(small)] => {
-                let bound = match compare {
-                    Comparison::ExactDifference(diff) => {
-                        big.len().checked_sub(diff).map(Bound::Exact)
-                    }
-                    Comparison::More => big.len().checked_sub(1).map(Bound::AtMost),
-                }
-                .with_context(|| format!("{self:?} cannot be bigger by {compare:?}"))?;
-                hints.push(Hint::Count(small, bound.into()));
-            }
-            [Err(big), Ok(small)] => {
-                let bound = match compare {
-                    Comparison::ExactDifference(diff) => Bound::Exact(small.len().strict_add(diff)),
-                    Comparison::More => Bound::AtLeast(small.len().strict_add(1)),
-                };
-                hints.push(Hint::Count(big, bound.into()));
-            }
-            [Err(big), Err(small)] => {
-                hints.push(Hint::CompareSets([big, small], compare));
-            }
-        }
-        Ok(hints)
-    }
-}
-
-impl From<Unit> for UnitExpr {
-    fn from(v: Unit) -> Self {
-        Self::Regular(v)
-    }
-}
-
-impl From<LineRecipe> for UnitExpr {
-    fn from(line: LineRecipe) -> Self {
-        Self::Regular(line.into())
-    }
-}
-
-impl AddContext for &UnitExpr {
-    type Output = (SetExpr, Vec<Hint>);
-
-    fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
-        let mut hints = Vec::new();
-        let set;
-        let set: SetExpr = match self {
-            UnitExpr::Regular(unit) => unit.add_context(context)?.into(),
-            UnitExpr::Bounded(inner, bound) => {
-                (set, hints) = inner.add_context(context)?;
-                match set.regular() {
-                    Ok(set) if bound.matches(set.len()) => set.into(),
-                    Ok(_) => bail!("{inner:?} does not have size {bound:?}"),
-                    Err(set) => {
-                        hints.push(Hint::Count(set.clone(), (*bound).into()));
-                        set.into()
-                    }
-                }
-            }
-            UnitExpr::Shifted(inner, direction) => {
-                (set, hints) = inner.add_context(context)?;
-                set.shift(*direction)
-            }
-            UnitExpr::Judged(inner, judgment) => {
-                (set, hints) = inner.add_context(context)?;
-                set.judged(*judgment).into()
-            }
-        };
-        Ok((set, hints))
     }
 }
 
@@ -322,10 +209,7 @@ impl Unit {
             if !set.contains(coord) {
                 bail!("{name:?} does not belong to {self:?}")
             }
-            let mut hints = vec![Hint::Count(
-                coord.neighbors().judged(judgment),
-                bound.into(),
-            )];
+            let mut hints = vec![Hint::Count(coord.neighbors(), judgment, bound.into())];
             if let Some(others) = (set ^ Set1::from_one(coord)).non_empty() {
                 let bound = bound
                     .not()
@@ -333,16 +217,17 @@ impl Unit {
                 hints.extend(
                     others
                         .into_iter()
-                        .map(|other| Hint::Count(other.neighbors().judged(judgment), bound)),
+                        .map(|other| Hint::Count(other.neighbors(), judgment, bound)),
                 );
             }
             hints
         } else {
-            let sets = set
-                .into_iter1()
-                .map(|coord| coord.neighbors().judged(judgment))
-                .collect1();
-            vec![Hint::UniqueWithCount { sets, bound }]
+            let sets = set.into_iter1().map(Coord::neighbors).collect1();
+            vec![Hint::UniqueWithCount {
+                sets,
+                judgment,
+                bound,
+            }]
         };
         Ok(hints)
     }
@@ -364,18 +249,13 @@ impl Unit {
                 Ok(Vec::new())
             }
             Some(self_) => {
-                let self_ = self_.judged(judgment);
-                let mut hints = vec![Hint::Count(self_.clone(), BoundOrNot::Exact(total))];
-                let other = self_.intersect_set(other).judged(judgment);
-                match other {
-                    SetOp::Empty => {
-                        if !intersection.matches(0) {
-                            bail!("intersection of {self:?} and {other:?} is empty")
-                        }
+                let mut hints = vec![Hint::Count(self_, judgment, BoundOrNot::Exact(total))];
+                match (self_ & other).non_empty() {
+                    None if !intersection.matches(0) => {
+                        bail!("intersection of {self:?} and {other:?} is empty")
                     }
-                    SetOp::NonEmpty(other) => {
-                        hints.push(Hint::Count(other, intersection.into()));
-                    }
+                    None => {}
+                    Some(other) => hints.push(Hint::Count(other, judgment, intersection.into())),
                 }
                 Ok(hints)
             }
@@ -417,7 +297,7 @@ impl Unit {
                         intersection
                     }
                 };
-                Ok(vec![Hint::Count(set.judged(judgment), intersection.into())])
+                Ok(vec![Hint::Count(set, judgment, intersection.into())])
             }
         }
     }
@@ -431,7 +311,7 @@ impl Unit {
         let set = self.add_context(context)?;
         let hints = set
             .non_empty()
-            .map_or_default(|set| vec![Hint::EachNeighbors(set.into(), bound, judgment)]);
+            .map_or_default(|set| vec![Hint::EachNeighbors(set, bound, judgment)]);
         Ok(hints)
     }
 
@@ -450,7 +330,7 @@ impl Unit {
                 Vec::new()
             }
             [None, Some(set)] | [Some(set), None] => {
-                vec![Hint::Count(set.judged(judgment), bound.into())]
+                vec![Hint::Count(set, judgment, bound.into())]
             }
             [Some(a), Some(b)] => {
                 let sets = [a, b].map(|set| set.judged(judgment));
@@ -499,7 +379,7 @@ impl Unit {
         let set = self.add_context(context)?;
         if let Some(set) = set.non_empty() {
             let hints = vec![Hint::CountWithNeighbors {
-                set: set.into(),
+                set,
                 count,
                 each,
                 judgment,
@@ -512,8 +392,8 @@ impl Unit {
         }
     }
 
-    pub(crate) fn with_judgment(self, judgment: Judgment) -> UnitExpr {
-        UnitExpr::from(self).with_judgment(judgment)
+    pub(crate) fn judged(self, judgment: Judgment) -> Judged<Self> {
+        Judged(self, judgment)
     }
 
     pub(crate) fn shift(self, direction: Direction) -> Self {
@@ -527,7 +407,7 @@ impl Unit {
                 bail!("{self:?} cannot be split equally")
             }
             let half = set.len().get() / 2;
-            let extra = Hint::Count(set.judged(Judgment::Innocent), BoundOrNot::Exact(half));
+            let extra = Hint::Count(set, Judgment::Innocent, BoundOrNot::Exact(half));
             vec![extra]
         } else {
             Vec::new()
@@ -550,7 +430,7 @@ impl Unit {
         set.assert_contains(coord)?;
         Ok(vec![
             Hint::Judgment(coord, judgment),
-            Hint::Count(set.judged(judgment), bound.into()),
+            Hint::Count(set, judgment, bound.into()),
         ])
     }
 
@@ -564,16 +444,18 @@ impl Unit {
         let [self_, other] = [self, other].add_context(context)?;
         let mut hints = Vec::new();
         if let Some(self_) = self_.non_empty() {
-            let split = self_.judged(judgment);
             if any_all.is_all() {
-                hints.push(Hint::Count(split.clone(), BoundOrNot::AtLeast(1)));
+                hints.push(Hint::Count(self_, judgment, BoundOrNot::AtLeast(1)));
             }
-            let hint = match split.clone().intersect_set(other) {
-                SetOp::Empty => Hint::Count(split, BoundOrNot::Exact(0)),
-                SetOp::NonEmpty(intersection) => {
-                    Hint::CompareSets([split, intersection], Comparison::ExactDifference(0))
-                }
-            };
+            let hint = (self_ & other).non_empty().map_or_else(
+                || Hint::Count(self_, judgment, BoundOrNot::Exact(0)),
+                |intersection| {
+                    Hint::CompareSets(
+                        [self_, intersection].map(|set| set.judged(judgment)),
+                        Comparison::ExactDifference(0),
+                    )
+                },
+            );
             hints.push(hint);
         } else if any_all.is_all() {
             bail!("\"All\" should mean at least one, but {self:?} is empty")
@@ -605,7 +487,7 @@ impl Unit {
         let hints = match sets.map(Set::non_empty) {
             [None, None] => Vec::new(),
             [None, Some(set)] | [Some(set), None] => {
-                vec![Hint::Count(set.judged(judgment), BoundOrNot::Exact(0))]
+                vec![Hint::Count(set, judgment, BoundOrNot::Exact(0))]
             }
             [Some(a), Some(b)] => {
                 let sets = [a, b].map(|set| set.judged(judgment));
@@ -618,6 +500,64 @@ impl Unit {
     #[cfg(test)]
     pub(crate) fn between(names: [impl Into<NameRecipe>; 2]) -> Self {
         Self::Between(names.map(Into::into))
+    }
+
+    fn members_are_connected(
+        &self,
+        judgment: Judgment,
+        bound: Option<Bound>,
+        context: Context<'_>,
+    ) -> Result<Vec<Hint>> {
+        let set = self.add_context(context)?;
+        let hints = match (set.non_empty(), bound) {
+            (None, _) if !Set::empty().connected() => bail!("{self:?} is not connected"),
+            (None, Some(bound)) if !bound.matches(0) => bail!("{self:?} is empty, not {bound:?}"),
+            (None, Some(_) | None) => vec![],
+            (Some(set), None) => vec![Hint::Connected(set, judgment)],
+            (Some(set), Some(bound)) => vec![
+                Hint::Count(set, judgment, bound.into()),
+                Hint::Connected(set, judgment),
+            ],
+        };
+        Ok(hints)
+    }
+
+    fn has_size(
+        &self,
+        judgment: Judgment,
+        bound: Bound,
+        context: Context<'_>,
+    ) -> Result<Vec<Hint>> {
+        let hints = match self.add_context(context)?.non_empty() {
+            None if bound.matches(0) => Vec::new(),
+            None => bail!("{self:?} is empty, not {bound:?}"),
+            Some(set) => vec![Hint::Count(set, judgment, bound.into())],
+        };
+        Ok(hints)
+    }
+
+    fn shifted_count(
+        &self,
+        source_judgment: Judgment,
+        direction: Direction,
+        target_judgment: Judgment,
+        bound: Bound,
+        context: Context<'_>,
+    ) -> Result<Vec<Hint>> {
+        let hints = match self.add_context(context)?.non_empty() {
+            Some(source) => {
+                vec![Hint::ShiftedCount(ShiftedCount {
+                    source,
+                    source_judgment,
+                    direction,
+                    target_judgment,
+                    bound,
+                })]
+            }
+            None if bound.matches(0) => vec![],
+            None => bail!("{self:?} is empty, not {bound:?}"),
+        };
+        Ok(hints)
     }
 }
 
@@ -691,24 +631,6 @@ impl From<Column> for Unit {
     }
 }
 
-impl AddContext for &[Unit; 2] {
-    type Output = [Set; 2];
-
-    fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
-        self.each_ref().add_context(context)
-    }
-}
-
-impl AddContext for [&Unit; 2] {
-    type Output = [Set; 2];
-
-    fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
-        // TODO use `try_map()` https://github.com/rust-lang/rust/issues/79711
-        let [a, b] = self.map(|unit| unit.add_context(context));
-        Ok([a?, b?])
-    }
-}
-
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug)]
 pub(crate) enum UnitInSeries {
@@ -723,7 +645,7 @@ impl UnitInSeries {
         let big = self.add_context(context)?.judged(judgment);
         let hints = small
             .into_iter()
-            .map(|other| Hint::CompareSets([big.clone(), other.judged(judgment)], Comparison::More))
+            .map(|other| Hint::CompareSets([big, other.judged(judgment)], Comparison::More))
             .collect();
         Ok(hints)
     }
@@ -776,7 +698,7 @@ impl UnitInSeries {
     ) -> Result<Vec<Hint>> {
         let others = self.others(context)?;
         let this = self.add_context(context)?;
-        let mut hints = vec![Hint::Count(this.judged(judgment), bound.into())];
+        let mut hints = vec![Hint::Count(this, judgment, bound.into())];
         if !others.is_empty() {
             let bound = bound
                 .not()
@@ -784,7 +706,7 @@ impl UnitInSeries {
             hints.extend(
                 others
                     .into_iter()
-                    .map(|other| Hint::Count(other.judged(judgment), bound)),
+                    .map(|other| Hint::Count(other, judgment, bound)),
             );
         }
         Ok(hints)
@@ -841,6 +763,61 @@ impl From<UnitInSeries> for Unit {
             UnitInSeries::Profession(profession) => Self::Profession(profession),
             UnitInSeries::Neighbor(name) => Self::Neighbor(name),
         }
+    }
+}
+
+impl Judged<Unit> {
+    fn bigger_than(
+        &self,
+        small_unit: &Self,
+        excess: Option<u8>,
+        context: Context<'_>,
+    ) -> Result<Vec<Hint>> {
+        let big = self.add_context(context)?;
+        let small = small_unit.add_context(context)?;
+        let compare = excess.map_or(Comparison::More, Comparison::ExactDifference);
+        let hints = match [big, small].map(Judged::<Set>::non_empty) {
+            [None, None] => {
+                let matches = match compare {
+                    Comparison::ExactDifference(diff) => diff == 0,
+                    Comparison::More => false,
+                };
+                if !matches {
+                    bail!("{self:?} is not bigger than {small_unit:?} by {compare:?}, both empty")
+                }
+                vec![]
+            }
+            [None, Some(small)] => match compare {
+                Comparison::ExactDifference(0) => {
+                    let Judged(small, judgment) = small;
+                    vec![Hint::Count(small, judgment, BoundOrNot::Exact(0))]
+                }
+                Comparison::ExactDifference(_) | Comparison::More => {
+                    bail!("{self:?} is empty, cannot be bigger by {compare:?}")
+                }
+            },
+            [Some(big), None] => {
+                let bound = match compare {
+                    Comparison::ExactDifference(diff) => Bound::Exact(diff),
+                    Comparison::More => Bound::AtLeast(1),
+                };
+                let Judged(big, judgment) = big;
+                vec![Hint::Count(big, judgment, bound.into())]
+            }
+            [Some(big), Some(small)] => {
+                vec![Hint::CompareSets([big, small], compare)]
+            }
+        };
+        Ok(hints)
+    }
+}
+
+impl AddContext for &Judged<Unit> {
+    type Output = Judged<Set>;
+
+    fn add_context(self, context: Context<'_>) -> Result<Self::Output> {
+        let Judged(inner, judgment) = self;
+        Ok(Judged(inner.add_context(context)?, *judgment))
     }
 }
 
@@ -904,10 +881,10 @@ impl DisjointSeries {
         context: Context<'_>,
     ) -> Result<Vec<Hint>> {
         let coord = name.add_context(context)?;
-        let set = self.add_context(coord, context).judged(judgment);
+        let set = self.add_context(coord, context);
         Ok(vec![
             Hint::Judgment(coord, judgment),
-            Hint::Count(set, BoundOrNot::Exact(1)),
+            Hint::Count(set, judgment, BoundOrNot::Exact(1)),
         ])
     }
 }

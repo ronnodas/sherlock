@@ -9,16 +9,16 @@ use winnow::error::{ParserError, StrContext};
 use winnow::token::{any, rest};
 use winnow::{Parser, Result};
 
-use crate::models::{Column, Direction, Judgment, Profession, Row};
+use crate::models::{Column, Direction, Judged, Judgment, Profession, Row};
 use crate::solver::hint::parsers::phrases::{
-    AnyAll, BoundPair, DisjointSeries, MoreOrLess, UnitExpr,
+    AnyAll, BoundPair, DisjointSeries, MoreOrLess, Series,
 };
 use crate::solver::hint::recipes::{ColumnRecipe, LineRecipe, NameRecipe, RowRecipe};
 use crate::solver::hint::{Bound, LineKind, Number, Parity};
 
 mod phrases;
 
-pub(crate) use phrases::{Sentence, Series, Unit, UnitInSeries};
+pub(crate) use phrases::{Sentence, Unit, UnitInSeries};
 
 const PUNCTUATION: [char; 3] = ['.', '!', ':'];
 
@@ -87,6 +87,7 @@ impl Sentence {
             terminated(Self::is_one_of_traits_in_unit, eof),
             terminated(Self::if_then, eof),
             terminated(Self::only_trait_in_series, eof),
+            terminated(Self::traits_in_unit_have_trait_in_direction, eof),
         ))
         .parse_next(input)
     }
@@ -102,13 +103,12 @@ impl Sentence {
             _: words(("are", "connected")),
         )
         .verify_map(|(bound_pair, (judgment, unit))| {
-            let unit = unit.with_judgment(judgment);
-            let unit = if let Some(bound_pair) = bound_pair {
-                unit.bound(bound_pair.to_bound()?)
+            let bound = if let Some(bound_pair) = bound_pair {
+                Some(bound_pair.to_bound()?)
             } else {
-                unit
+                None
             };
-            Some(Self::UnitIsConnected(unit))
+            Some(Self::UnitIsConnected(unit, judgment, bound))
         })
         .parse_next(input)
     }
@@ -191,7 +191,7 @@ impl Sentence {
                 line,
             )
             .map(|(cmp, judgment, left, right)| {
-                let units = [left, right].map(|line| Unit::from(line).with_judgment(judgment));
+                let units = [left, right].map(|line| Unit::from(line).judged(judgment));
                 (cmp, units, None)
             }),
             seq!(
@@ -203,8 +203,8 @@ impl Sentence {
                 unit
             )
             .map(|(cmp, (judgment, left), judgment_right, right)| {
-                let left = left.with_judgment(judgment);
-                let right = right.with_judgment(judgment_right.unwrap_or(judgment));
+                let left = left.judged(judgment);
+                let right = right.judged(judgment_right.unwrap_or(judgment));
                 (cmp, [left, right], None)
             }),
             seq!(
@@ -216,7 +216,7 @@ impl Sentence {
                 word(name_object),
             )
             .map(|(left, excess, cmp, judgment, right)| {
-                let units = [left, right].map(|name| Unit::Neighbor(name).with_judgment(judgment));
+                let units = [left, right].map(|name| Unit::Neighbor(name).judged(judgment));
                 (cmp, units, excess)
             }),
             seq!(
@@ -229,9 +229,8 @@ impl Sentence {
                 _: word(pronoun_object_singular),
             )
             .map(|(name, cmp, judgment, left, right)| {
-                let units = [left, right].map(|direction| {
-                    Unit::Direction(direction, name.clone()).with_judgment(judgment)
-                });
+                let units = [left, right]
+                    .map(|direction| Unit::Direction(direction, name.clone()).judged(judgment));
                 (cmp, units, None)
             }),
         ))
@@ -245,20 +244,20 @@ impl Sentence {
     fn unit_size(input: &mut &[&str]) -> Result<Self> {
         alt((
             preceded(there_is, bounded_judged_unit)
-                .map(|(bound, judgment, unit)| (bound, judgment, unit.into())),
+                .map(|(bound, judgment, unit)| (bound, judgment, unit)),
             seq!(
                 name_has,
                 bound,
                 word(judgment_adjective),
                 _: word(neighbor_any)
             )
-            .map(|(name, bound, judgment)| (bound, judgment, Unit::Neighbor(name).into())),
+            .map(|(name, bound, judgment)| (bound, judgment, Unit::Neighbor(name))),
             seq!(
-                pair_bounded_unit_expr,
+                pair_bounded_unit,
                 _: word(has_have),
                 a_judgment,
                 directly_direction,
-                _: opt(word(pronoun_object_plural))
+                _: opt(word(pronoun_object))
             )
             .map(|((bound, unit), judgment, direction)| {
                 let (bound, unit) = match bound {
@@ -273,11 +272,11 @@ impl Sentence {
             (pair_bounded_profession, is_judgment_any).map(|((bound, profession), judgment)| {
                 let unit = Unit::Profession(profession);
                 match bound {
-                    BoundPair::Simple(bound) => (bound, judgment, unit.into()),
+                    BoundPair::Simple(bound) => (bound, judgment, unit),
                     BoundPair::Subset {
                         matching: bound,
                         total,
-                    } => (bound, judgment, unit.bound(total).into()),
+                    } => (bound, judgment, unit.bound(total)),
                 }
             }),
             alt((
@@ -305,18 +304,18 @@ impl Sentence {
                     word(judgment_adjective)
                 ),
             ))
-            .map(|(unit, judgment)| (Bound::Exact(0), !judgment, unit.into())),
+            .map(|(unit, judgment)| (Bound::Exact(0), !judgment, unit)),
             seq!(
                 _: words(("Not", "everyone")),
                 unit,
                 _: word("is"),
                 judgment_predicate_singular,
             )
-            .map(|(unit, judgment)| (Bound::AtLeast(1), !judgment, unit.into())),
+            .map(|(unit, judgment)| (Bound::AtLeast(1), !judgment, unit)),
             seq!(line, _: word("has"), bound, word(judgment_any))
                 .map(|(line, bound, judgment)| (bound, judgment, line.into())),
         ))
-        .map(|(bound, judgment, unit)| Self::UnitSize(unit.with_judgment(judgment), bound))
+        .map(|(bound, judgment, unit)| Self::UnitSize(unit, judgment, bound))
         .parse_next(input)
     }
 
@@ -843,7 +842,7 @@ impl Sentence {
             )
             .map(|(conclusion, name_p, not_judgment_p)| [(name_p, !not_judgment_p), conclusion]),
         ))
-        .map(Self::IfThen)
+        .map(|clauses| Self::IfThen(clauses.map(|(name, judgment)| Judged(name, judgment))))
         .parse_next(input)
     }
 
@@ -856,6 +855,28 @@ impl Sentence {
             word(disjoint_series)
         )
         .map(|(name, judgment, series)| Self::OnlyTraitInSeries(name, series, judgment))
+        .parse_next(input)
+    }
+
+    fn traits_in_unit_have_trait_in_direction(input: &mut &[&str]) -> Result<Self> {
+        seq!(
+            bounded_judged_unit,
+            _: word(has_have),
+            a_judgment,
+            directly_direction,
+            _: opt(word(pronoun_object)),
+        )
+        .map(
+            |((bound, source_judgment, source), target_judgment, direction)| {
+                Self::TraitsInUnitHaveTraitInDirection {
+                    source,
+                    source_judgment,
+                    direction,
+                    target_judgment,
+                    bound,
+                }
+            },
+        )
         .parse_next(input)
     }
 }
@@ -900,9 +921,8 @@ fn unit(input: &mut &[&str]) -> Result<Unit> {
     .parse_next(input)
 }
 
-fn maybe_judged_unit(input: &mut &[&str]) -> Result<(Option<Judgment>, Unit)> {
+fn unit_subject(input: &mut &[&str]) -> Result<Unit> {
     alt((
-        (word(judgment_any).map(Some), unit),
         preceded(
             word(alt(("persons", "person"))),
             alt((
@@ -912,9 +932,8 @@ fn maybe_judged_unit(input: &mut &[&str]) -> Result<(Option<Judgment>, Unit)> {
                 (direction, word(name_object))
                     .map(|(direction, name)| Unit::Direction(direction, name)),
             )),
-        )
-        .map(|unit| (None, unit)),
-        profession_any.map(|profession| (None, Unit::Profession(profession))),
+        ),
+        profession_any.map(Unit::Profession),
     ))
     .parse_next(input)
 }
@@ -1203,29 +1222,20 @@ fn raw_name<'input>(input: &mut &'input str) -> Result<&'input str> {
         .parse_next(input)
 }
 
-fn pronoun_object_singular<'input>(input: &mut &'input str) -> Result<&'input str> {
-    alt(("him", "her", "them", "me")).parse_next(input)
+fn pronoun_object<'input>(input: &mut &'input str) -> Result<&'input str> {
+    alt(("him", "her", "them", "me", "us")).parse_next(input)
 }
 
-fn pronoun_object_plural<'input>(input: &mut &'input str) -> Result<&'input str> {
-    alt(("them", "us")).parse_next(input)
+fn pronoun_object_singular<'input>(input: &mut &'input str) -> Result<&'input str> {
+    alt(("him", "her", "them", "me")).parse_next(input)
 }
 
 fn pair_bounded_profession(input: &mut &[&str]) -> Result<(BoundPair, Profession)> {
     separated_pair(bound_pair, opt(word(determiner)), profession_any).parse_next(input)
 }
 
-fn pair_bounded_unit_expr(input: &mut &[&str]) -> Result<(BoundPair, UnitExpr)> {
-    separated_pair(bound_pair, opt(word(determiner)), maybe_judged_unit)
-        .map(|(bound, (judgment, unit))| {
-            let unit = if let Some(judgment) = judgment {
-                unit.with_judgment(judgment)
-            } else {
-                unit.into()
-            };
-            (bound, unit)
-        })
-        .parse_next(input)
+fn pair_bounded_unit(input: &mut &[&str]) -> Result<(BoundPair, Unit)> {
+    separated_pair(bound_pair, opt(word(determiner)), unit_subject).parse_next(input)
 }
 
 fn direction(input: &mut &[&str]) -> Result<Direction> {

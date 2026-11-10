@@ -13,12 +13,12 @@ use mitsein::vec1::Vec1;
 use crate::grid::Grid;
 #[cfg(test)]
 use crate::models::Solution;
-use crate::models::{Coord, Direction, Judgment};
+use crate::models::{Coord, Judged, Judgment};
 use crate::solver::Engine;
-use crate::solver::board::coordinates::{Set, Set1, SetExpr1, SetOp, SetOp1};
-use crate::solver::hint::{Bound, BoundOrNot, Comparison, Hint, Number, Parity};
+use crate::solver::board::coordinates::{Set, Set1};
+use crate::solver::hint::{Bound, BoundOrNot, Comparison, Hint, Number, Parity, ShiftedCount};
 use crate::solver::inference::count::{CountSet, EndPoint, Interval};
-use crate::solver::inference::split::{ByJudgment, SetSimplify};
+use crate::solver::inference::split::ByJudgment;
 
 mod count;
 mod split;
@@ -33,7 +33,7 @@ pub(super) struct InferenceSolver {
     connected: IndexSet<(Set1, Judgment)>,
     difference: IndexMap<[Set1; 2], Interval<i8>>,
     sum: IndexMap<[Set1; 2], Interval<Number>>,
-    disjunctions: IndexSet<[(Coord, Judgment); 2]>,
+    disjunctions: IndexSet<[Judged<Coord>; 2]>,
     generic: Vec<Hint>,
     allowed_depth: Option<u8>,
     #[cfg(test)]
@@ -262,12 +262,13 @@ impl InferenceSolver {
 
                             for [a, b] in any.difference(all).into_iter().array_combinations() {
                                 if possibilities.iter().all(|&possibility| {
-                                    possibility.contains(a) != a_matches
+                                    possibility.contains(a) == a_matches
                                         || possibility.contains(b) == b_matches
                                 }) {
-                                    new.push(
-                                        Hint::IfThen([(a, a_judgment), (b, b_judgment)]).into(),
-                                    );
+                                    new.push(Theorem::Disjunction([
+                                        Judged(a, a_judgment),
+                                        Judged(b, b_judgment),
+                                    ]));
                                 }
                             }
                         }
@@ -480,14 +481,13 @@ impl InferenceSolver {
         Ok(variable_count.strict_add(CountSet::Exact(fixed.len())))
     }
 
-    fn count_status(&self, set: &SetOp1, bound: Bound) -> Result<TriState, Contradiction> {
-        if let SetOp1::Judged(inner, judgment) = set
-            && let SetExpr1::Regular(set) = inner.as_ref()
-        {
-            Ok(self.count_judged(*set, *judgment)?.match_bound(bound))
-        } else {
-            Ok(TriState::has_size_1_op(set, bound.into(), &self.known))
-        }
+    fn count_status(
+        &self,
+        set: Set1,
+        judgment: Judgment,
+        bound: Bound,
+    ) -> Result<TriState, Contradiction> {
+        Ok(self.count_judged(set, judgment)?.match_bound(bound))
     }
 
     fn max_criminals(&self, set: Set1) -> Number {
@@ -624,118 +624,36 @@ impl InferenceSolver {
 
     fn simplify_and_add_count(
         &mut self,
-        set: &SetOp1,
+        set: Set1,
+        judgment: Judgment,
         count: BoundOrNot,
     ) -> Result<bool, Contradiction> {
         if matches!(count, BoundOrNot::AtLeast(0)) {
             return Ok(false);
         }
-        let (set, count) = match SetSimplify::split(set, &self.known) {
-            Some(SetSimplify::Fixed(fixed)) if count.matches(fixed.len().get()) => {
+        let (set, count) = match ByJudgment::split(set, &self.known)
+            .only(judgment)
+            .map(Set::non_empty)
+        {
+            [None, Some(fixed)] if count.matches(fixed.len().get()) => {
                 return Ok(false);
             }
-            Some(SetSimplify::Empty) if count.matches(0) => return Ok(false),
-            Some(SetSimplify::Fixed(_) | SetSimplify::Empty) => {
-                return Err(Contradiction);
-            }
-            Some(SetSimplify::Variable(variable)) => (variable, count),
-            Some(SetSimplify::Split(variable, fixed)) => {
+            [None, None] if count.matches(0) => return Ok(false),
+            [None, None | Some(_)] => return Err(Contradiction),
+            [Some(variable), None] => (variable, count),
+            [Some(variable), Some(fixed)] => {
                 let count =
                     count::reduce_bound_or_not(count, fixed.len().get()).ok_or(Contradiction)?;
                 (variable, count)
             }
-            None => (set.clone(), count),
         };
-        self.add_count_and_implied_inner_counts(set, count)
+        self.add_criminal_count(set, judgment, count)
     }
 
-    fn add_count_and_implied_inner_counts(
-        &mut self,
-        set: SetOp1,
-        count: BoundOrNot,
-    ) -> Result<bool, Contradiction> {
-        let updated = match &set {
-            SetOp1::Judged(inner, judgment) => match inner.as_ref() {
-                &SetExpr1::Regular(set) => {
-                    return self.add_criminal_count(set, *judgment, count);
-                }
-                SetExpr1::Op(inner) => {
-                    let implied = if let SetOp1::Shift(source, direction) = inner
-                        && let SetOp1::Judged(source, source_judgment) = source.as_ref()
-                        && let &SetExpr1::Regular(source) = source.as_ref()
-                    {
-                        self.add_shifted_count_implications(
-                            source,
-                            *direction,
-                            *source_judgment,
-                            *judgment,
-                            count,
-                        )?
-                    } else {
-                        false
-                    };
-                    let min_count = count.minimum();
-                    let updated = (min_count > 0)
-                        && self.simplify_and_add_count(inner, BoundOrNot::AtLeast(min_count))?;
-                    self.generic.push(Hint::Count(set, count));
-                    updated | implied
-                }
-            },
-            SetOp1::Shift(inner, direction) => {
-                let min_count = count.minimum();
-                let updated = (min_count > 0) && {
-                    match SetExpr1::Regular(Set1::all())
-                        .shift(direction.flip())
-                        .intersect1(inner.as_ref().clone())
-                        .regular()
-                    {
-                        Err(pre_shift) => {
-                            self.simplify_and_add_count(&pre_shift, BoundOrNot::AtLeast(min_count))?
-                        }
-                        Ok(pre_shift) if pre_shift.len() >= min_count => false,
-                        Ok(_) => return Err(Contradiction),
-                    }
-                };
-                self.generic.push(Hint::Count(set, count));
-                updated
-            }
-            SetOp1::Intersection(vec, fixed) => {
-                let min_count = count.minimum();
-                if let Some(fixed) = fixed
-                    && fixed.len().get() < min_count
-                {
-                    return Err(Contradiction);
-                }
-                if let Some(fixed) = fixed
-                    && fixed.len().get() < min_count
-                {
-                    return Err(Contradiction);
-                }
-                let updated = (min_count > 0)
-                    && vec.iter().try_fold(false, |updated, set| {
-                        Ok(updated
-                            | self.simplify_and_add_count(set, BoundOrNot::AtLeast(min_count))?)
-                    })?;
-                self.generic.push(Hint::Count(set, count));
-                updated
-            }
-        };
-
-        Ok(updated)
-    }
-
-    fn add_shifted_count_implications(
-        &mut self,
-        source: Set1,
-        direction: Direction,
-        source_judgment: Judgment,
-        target_judgment: Judgment,
-        count: BoundOrNot,
-    ) -> Result<bool, Contradiction> {
-        let source = (source & Set1::shift_preimage(direction))
+    fn add_shifted_count(&mut self, hint: ShiftedCount) -> Result<bool, Contradiction> {
+        let source = (hint.source & Set1::shift_preimage(hint.direction))
             .non_empty()
             .ok_or(Contradiction)?;
-        let count = CountSet::from_cardinal(count, source.len()).ok_or(Contradiction)?;
         let mut guaranteed_matches = 0_u8;
         let mut possible_pairs = Vec::new();
         let mut source_only = Set::empty();
@@ -743,10 +661,12 @@ impl InferenceSolver {
         let mut has_unresolved_pair = false;
         for source_coord in source {
             let target_coord = source_coord
-                .step(direction)
+                .step(hint.direction)
                 .expect("source is clipped to the shift preimage");
-            let source_matches = self.known[source_coord].map(|known| known == source_judgment);
-            let target_matches = self.known[target_coord].map(|known| known == target_judgment);
+            let source_matches =
+                self.known[source_coord].map(|known| known == hint.source_judgment);
+            let target_matches =
+                self.known[target_coord].map(|known| known == hint.target_judgment);
             match [source_matches, target_matches] {
                 [Some(true), Some(true)] => guaranteed_matches = guaranteed_matches.strict_add(1),
                 [Some(false), _] | [_, Some(false)] => {}
@@ -765,67 +685,57 @@ impl InferenceSolver {
             }
         }
 
-        let count = count.checked_sub(guaranteed_matches).ok_or(Contradiction)?;
-        if !has_unresolved_pair && let Some(bounds) = count.try_into_bounds() {
+        let count = hint
+            .bound
+            .checked_sub(guaranteed_matches)
+            .ok_or(Contradiction)?;
+        if !has_unresolved_pair {
             return self.shifted_count_pairs(
                 source_only,
-                source_judgment,
+                hint.source_judgment,
                 target_only,
-                target_judgment,
-                bounds,
+                hint.target_judgment,
+                count,
             );
         }
 
-        let maximum = count.maximum();
         let minimum = count.minimum();
-        if maximum == 0 {
-            let new = possible_pairs
-                .into_iter()
-                .map(|(source_coord, target_coord)| {
-                    Theorem::Disjunction([
-                        (source_coord, !source_judgment),
-                        (target_coord, !target_judgment),
-                    ])
-                });
-            self.add_theorems(new)
+        if minimum == 0 {
+            self.generic.push(Hint::ShiftedCount(hint));
+            return Ok(false);
+        }
+        let possible_pairs =
+            Vec1::try_from(possible_pairs).map_err(|EmptyError { .. }| Contradiction)?;
+
+        let possible_sources: Set1 = possible_pairs.iter1().map(|&(source, _)| source).collect1();
+        let possible_targets: Set1 = possible_pairs.iter1().map(|&(_, target)| target).collect1();
+
+        let source_count = self.count_judged(possible_sources, hint.source_judgment)?;
+        let target_count = self.count_judged(possible_targets, hint.target_judgment)?;
+        if minimum > source_count.maximum() || minimum > target_count.maximum() {
+            return Err(Contradiction);
+        }
+
+        let mut new = Vec::new();
+        if minimum == possible_pairs.len().get().try_into().expect("at most 20") {
+            new.push(Theorem::All(possible_sources, hint.source_judgment));
+            new.push(Theorem::All(possible_targets, hint.target_judgment));
         } else {
-            if minimum == 0 {
-                return Ok(false);
-            }
-            let possible_pairs =
-                Vec1::try_from(possible_pairs).map_err(|EmptyError { .. }| Contradiction)?;
-
-            let possible_sources: Set1 =
-                possible_pairs.iter1().map(|&(source, _)| source).collect1();
-            let possible_targets: Set1 =
-                possible_pairs.iter1().map(|&(_, target)| target).collect1();
-
-            let source_count = self.count_judged(possible_sources, source_judgment)?;
-            let target_count = self.count_judged(possible_targets, target_judgment)?;
-            if minimum > source_count.maximum() || minimum > target_count.maximum() {
-                return Err(Contradiction);
-            }
-
-            let mut new = Vec::new();
-            if minimum == possible_pairs.len().get().try_into().expect("at most 20") {
-                new.push(Theorem::All(possible_sources, source_judgment));
-                new.push(Theorem::All(possible_targets, target_judgment));
-            } else {
-                let source_matches = minimum >= source_count.maximum();
-                let target_matches = minimum >= target_count.maximum();
-                for (source_coord, target_coord) in possible_pairs {
-                    let source = (source_coord, source_judgment);
-                    let target = (target_coord, target_judgment);
-                    if source_matches {
-                        new.push(Hint::IfThen([source, target]).into());
-                    }
-                    if target_matches {
-                        new.push(Hint::IfThen([target, source]).into());
-                    }
+            self.generic.push(Hint::ShiftedCount(hint));
+            let source_matches = minimum >= source_count.maximum();
+            let target_matches = minimum >= target_count.maximum();
+            for (source_coord, target_coord) in possible_pairs {
+                let source = Judged(source_coord, hint.source_judgment);
+                let target = Judged(target_coord, hint.target_judgment);
+                if source_matches {
+                    new.push(Hint::IfThen([source, target]).into());
+                }
+                if target_matches {
+                    new.push(Hint::IfThen([target, source]).into());
                 }
             }
-            self.add_theorems(new)
         }
+        self.add_theorems(new)
     }
 
     fn shifted_count_pairs(
@@ -834,41 +744,32 @@ impl InferenceSolver {
         source_judgment: Judgment,
         target: Set,
         target_judgment: Judgment,
-        bounds: Vec<Bound>,
+        bound: Bound,
     ) -> Result<bool, Contradiction> {
         match [
             (source.non_empty(), source_judgment),
             (target.non_empty(), target_judgment),
         ] {
-            [(None, _), (None, _)] if bounds.iter().all(|bound| bound.matches(0)) => Ok(false),
+            [(None, _), (None, _)] if bound.matches(0) => Ok(false),
             [(None, _), (None, _)] => Err(Contradiction),
             [(Some(set), judgment), (None, _)] | [(None, _), (Some(set), judgment)] => {
-                let new = bounds
-                    .into_iter()
-                    .map(|bound| Hint::Count(set.judged(judgment), bound.into()).into());
-                self.add_theorems(new)
+                self.add_theorem(Hint::Count(set, judgment, bound.into()).into())
             }
             [(Some(source), _), (Some(target), _)] => {
-                let new = bounds.into_iter().map(|bound| {
-                    let sets = [(source, source_judgment), (target, target_judgment)]
-                        .map(|(set, judgment)| set.judged(judgment));
-                    Hint::CountTotal(sets, bound).into()
-                });
-                self.add_theorems(new)
+                let sets = [(source, source_judgment), (target, target_judgment)]
+                    .map(|(set, judgment)| set.judged(judgment));
+                self.add_theorem(Hint::CountTotal(sets, bound).into())
             }
         }
     }
 
-    fn add_if_then(&mut self, clauses: [(Coord, Judgment); 2]) -> Result<bool, Contradiction> {
-        let [(p_coord, p_judgment), conclusion] = clauses;
-        self.add_disjunction([(p_coord, !p_judgment), conclusion])
+    fn add_if_then(&mut self, clauses: [Judged<Coord>; 2]) -> Result<bool, Contradiction> {
+        let [premise, conclusion] = clauses;
+        self.add_disjunction([premise.flip(), conclusion])
     }
 
-    fn add_disjunction(
-        &mut self,
-        mut clauses: [(Coord, Judgment); 2],
-    ) -> Result<bool, Contradiction> {
-        clauses.sort_unstable_by_key(|&(coord, _)| coord);
+    fn add_disjunction(&mut self, mut clauses: [Judged<Coord>; 2]) -> Result<bool, Contradiction> {
+        clauses.sort_unstable_by_key(|&Judged(coord, _)| coord);
         let [left, right] = clauses;
         let new = if left == right {
             Some(left)
@@ -876,7 +777,8 @@ impl InferenceSolver {
             if left.0 == right.0 {
                 return Err(Contradiction);
             }
-            match clauses.map(|(coord, judgment)| self.known[coord].map(|known| known == judgment))
+            match clauses
+                .map(|Judged(coord, judgment)| self.known[coord].map(|known| known == judgment))
             {
                 [None, None] => {
                     _ = self.disjunctions.insert(clauses);
@@ -888,7 +790,7 @@ impl InferenceSolver {
                 [Some(false), Some(false)] => return Err(Contradiction),
             }
         };
-        if let Some((coord, judgment)) = new {
+        if let Some(Judged(coord, judgment)) = new {
             self.add_theorem(Hint::Judgment(coord, judgment).into())
         } else {
             Ok(false)
@@ -905,8 +807,7 @@ impl InferenceSolver {
         let mut yes = Set::empty();
         let mut maybe = Set::empty();
         for coord in set {
-            let neighbors = coord.neighbors().judged(judgment);
-            match self.count_status(&neighbors, each)? {
+            match self.count_status(coord.neighbors(), judgment, each)? {
                 TriState::No => {}
                 TriState::Maybe => maybe |= coord,
                 TriState::Yes => yes |= coord,
@@ -917,21 +818,19 @@ impl InferenceSolver {
         if matches!(count, Bound::AtMost(0) | Bound::Exact(0)) {
             let not_bound = each.not().ok_or(Contradiction)?;
             for coord in maybe {
-                _ =
-                    self.try_add_hint(Hint::Count(coord.neighbors().judged(judgment), not_bound))?;
+                _ = self.try_add_hint(Hint::Count(coord.neighbors(), judgment, not_bound))?;
             }
             Ok(true)
         } else if let Bound::AtLeast(min) | Bound::Exact(min) = count
             && min == maybe.len()
         {
             for coord in maybe {
-                _ = self
-                    .try_add_hint(Hint::Count(coord.neighbors().judged(judgment), each.into()))?;
+                _ = self.try_add_hint(Hint::Count(coord.neighbors(), judgment, each.into()))?;
             }
             Ok(true)
         } else if let Some(maybe) = maybe.non_empty() {
             self.generic.push(Hint::CountWithNeighbors {
-                set: SetExpr1::Regular(maybe),
+                set: maybe,
                 each,
                 count,
                 judgment,
@@ -969,63 +868,53 @@ impl InferenceSolver {
         Ok(updated)
     }
 
-    fn add_complex_sum(&mut self, sets: [SetOp1; 2], sum: Bound) -> Result<bool, Contradiction> {
-        let updated: bool = if let [SetOp1::Judged(a, judgment_a), SetOp1::Judged(b, judgment_b)] =
-            sets
-            && let [SetExpr1::Regular(a), SetExpr1::Regular(b)] = [a, b].map(|set| *set)
-        {
-            let sizes = [a, b].map(|set| set.len().get());
-            let judgments = [judgment_a, judgment_b];
-            let (sum_or_diff, parity) = SumOrDiff::from_sum(sum, sizes, judgments)?;
+    fn add_complex_sum(
+        &mut self,
+        sets: [Judged<Set1>; 2],
+        sum: Bound,
+    ) -> Result<bool, Contradiction> {
+        let [Judged(a, judgment_a), Judged(b, judgment_b)] = sets;
+        let sizes = [a, b].map(|set| set.len().get());
+        let judgments = [judgment_a, judgment_b];
+        let (sum_or_diff, parity) = SumOrDiff::from_sum(sum, sizes, judgments)?;
 
-            let sum_or_diff = match sum_or_diff {
-                Some(SumOrDiff::Sum(sum)) => self.add_sum([a, b], sum)?,
-                Some(SumOrDiff::Diff(difference)) => self.add_difference([a, b], difference)?,
-                None => false,
-            };
-
-            let parity = if let Some(parity) = parity {
-                self.add_symm_diff_parity(parity, [a, b])?
-            } else {
-                false
-            };
-
-            sum_or_diff | parity
-        } else {
-            unimplemented!("sum of complex sets")
+        let sum_or_diff = match sum_or_diff {
+            Some(SumOrDiff::Sum(sum)) => self.add_sum([a, b], sum)?,
+            Some(SumOrDiff::Diff(difference)) => self.add_difference([a, b], difference)?,
+            None => false,
         };
-        Ok(updated)
+
+        let parity = if let Some(parity) = parity {
+            self.add_symm_diff_parity(parity, [a, b])?
+        } else {
+            false
+        };
+
+        Ok(sum_or_diff | parity)
     }
 
     fn add_complex_diff(
         &mut self,
-        sets: [SetOp1; 2],
+        sets: [Judged<Set1>; 2],
         compare: Comparison,
     ) -> Result<bool, Contradiction> {
-        let updated = if let [SetOp1::Judged(a, judgment_a), SetOp1::Judged(b, judgment_b)] = sets
-            && let [SetExpr1::Regular(a), SetExpr1::Regular(b)] = [a, b].map(|set| *set)
-        {
-            let sets = [a, b];
-            let sizes = sets.map(|set| set.len().get());
-            let judgments = [judgment_a, judgment_b];
-            let (sum_or_diff, parity) = SumOrDiff::from_diff(compare, sizes, judgments)?;
+        let judgments = sets.map(|Judged(_, judgment)| judgment);
+        let sets = sets.map(|Judged(set, _)| set);
+        let sizes = sets.map(|set| set.len().get());
+        let (sum_or_diff, parity) = SumOrDiff::from_diff(compare, sizes, judgments)?;
 
-            let sum_or_diff = match sum_or_diff {
-                SumOrDiff::Diff(difference) => self.add_difference(sets, difference)?,
-                SumOrDiff::Sum(sum) => self.add_sum(sets, sum)?,
-            };
-
-            let parity = if let Some(parity) = parity {
-                self.add_symm_diff_parity(parity, [a, b])?
-            } else {
-                false
-            };
-
-            sum_or_diff | parity
-        } else {
-            unimplemented!("comparison of complex sets")
+        let sum_or_diff = match sum_or_diff {
+            SumOrDiff::Diff(difference) => self.add_difference(sets, difference)?,
+            SumOrDiff::Sum(sum) => self.add_sum(sets, sum)?,
         };
-        Ok(updated)
+
+        let parity = if let Some(parity) = parity {
+            self.add_symm_diff_parity(parity, sets)?
+        } else {
+            false
+        };
+
+        Ok(sum_or_diff | parity)
     }
 
     fn add_symm_diff_parity(
@@ -1080,31 +969,21 @@ impl InferenceSolver {
                     true
                 }
             },
-            Hint::Count(set, count) => self.simplify_and_add_count(&set, count)?,
+            Hint::Count(set, judgment, count) => {
+                self.simplify_and_add_count(set, judgment, count)?
+            }
             Hint::CountTotal(sets, count) => self.add_complex_sum(sets, count)?,
-            Hint::Connected(set) => match set {
-                SetOp1::Judged(inner, judgment) => {
-                    if let &SetExpr1::Regular(set) = inner.as_ref() {
-                        self.connected.insert((set, judgment))
-                    } else {
-                        unimplemented!("connectedness of complex sets")
-                    }
-                }
-                SetOp1::Shift(inner, dir) => {
-                    match inner.intersect_set1(Set1::shift_preimage(dir)) {
-                        SetOp::Empty if Set::empty().connected() => false,
-                        SetOp::Empty => return Err(Contradiction),
-                        SetOp::NonEmpty(set) => self.try_add_hint(Hint::Connected(set))?,
-                    }
-                }
-                SetOp1::Intersection(..) => unimplemented!("connectedness of complex sets"),
-            },
+            Hint::Connected(set, judgment) => self.connected.insert((set, judgment)),
             Hint::CompareSets(sets, compare) => self.add_complex_diff(sets, compare)?,
-            Hint::UniqueWithCount { sets, bound } => {
+            Hint::UniqueWithCount {
+                sets,
+                judgment,
+                bound,
+            } => {
                 let mut yes = None;
                 let mut maybe = Vec::new();
                 for set in sets {
-                    match self.count_status(&set, bound)? {
+                    match self.count_status(set, judgment, bound)? {
                         TriState::No => {}
                         TriState::Maybe => maybe.push(set),
                         TriState::Yes => {
@@ -1118,47 +997,44 @@ impl InferenceSolver {
                     !maybe.is_empty() && {
                         let count = bound.not().ok_or(Contradiction)?;
                         self.add_theorems(
-                            maybe.into_iter().map(|set| Hint::Count(set, count).into()),
+                            maybe
+                                .into_iter()
+                                .map(|set| Hint::Count(set, judgment, count).into()),
                         )?
                     }
                 } else {
                     match <[_; 1]>::try_from(maybe) {
-                        Ok([unique]) => self.simplify_and_add_count(&unique, bound.into())?,
+                        Ok([unique]) => {
+                            self.simplify_and_add_count(unique, judgment, bound.into())?
+                        }
                         Err(maybe) => {
                             let Ok(sets) = Vec1::try_from(maybe) else {
                                 return Err(Contradiction);
                             };
-                            self.generic.push(Hint::UniqueWithCount { sets, bound });
+                            self.generic.push(Hint::UniqueWithCount {
+                                sets,
+                                judgment,
+                                bound,
+                            });
                             false
                         }
                     }
                 }
             }
-            Hint::EachNeighbors(set, count, judgment) => match set {
-                SetExpr1::Regular(set) => set.into_iter().try_fold(false, |updated, coord| {
+            Hint::EachNeighbors(set, count, judgment) => {
+                set.into_iter().try_fold(false, |updated, coord| {
                     Ok(updated
-                        | self.simplify_and_add_count(
-                            &coord.neighbors().judged(judgment),
-                            count.into(),
-                        )?)
-                })?,
-                SetExpr1::Op(_) => {
-                    unimplemented!("neighbors of each suspect in a dynamic set")
-                }
-            },
+                        | self.simplify_and_add_count(coord.neighbors(), judgment, count.into())?)
+                })?
+            }
             Hint::CountWithNeighbors {
                 set,
                 each,
                 count,
                 judgment,
-            } => {
-                if let SetExpr1::Regular(set) = set {
-                    self.add_count_with_neighbors(each, count, judgment, set)?
-                } else {
-                    unimplemented!("neighbors of each suspect in a dynamic set")
-                }
-            }
+            } => self.add_count_with_neighbors(each, count, judgment, set)?,
             Hint::IfThen(clauses) => self.add_if_then(clauses)?,
+            Hint::ShiftedCount(clue) => self.add_shifted_count(clue)?,
         };
         Ok(updated)
     }
@@ -1222,7 +1098,7 @@ impl InferenceSolver {
                 self.connected
                     .iter()
                     .copied()
-                    .map(|(set, judgment)| Hint::Connected(set.judged(judgment)).into()),
+                    .map(|(set, judgment)| Hint::Connected(set, judgment).into()),
             )
             .chain(
                 self.difference
@@ -1301,7 +1177,7 @@ enum Theorem {
     CriminalCount(Set1, CountSet),
     CriminalDifference([Set1; 2], Interval<i8>),
     CriminalSum([Set1; 2], Interval<Number>),
-    Disjunction([(Coord, Judgment); 2]),
+    Disjunction([Judged<Coord>; 2]),
     Generic(Hint),
     True,
     False,
@@ -1330,7 +1206,7 @@ impl Theorem {
             Self::Generic(hint) => hint.evaluate(solution),
             Self::Disjunction(clauses) => clauses
                 .iter()
-                .any(|&(coord, judgment)| solution[coord] == judgment),
+                .any(|&Judged(coord, judgment)| solution[coord] == judgment),
             Self::True => true,
             Self::False => false,
         }
@@ -1372,49 +1248,6 @@ enum TriState {
 }
 
 impl TriState {
-    fn has_size_1_op(set: &SetOp1, count: BoundOrNot, known: &Grid<Option<Judgment>>) -> Self {
-        let split = SetSimplify::split(set, known);
-        let (set, count) = match &split {
-            None => (set, count),
-            Some(SetSimplify::Variable(set)) => (set, count),
-            Some(SetSimplify::Fixed(set)) => return count.matches(set.len().get()).into(),
-            Some(SetSimplify::Split(variable, fixed)) => {
-                let Some(count) = count::reduce_bound_or_not(count, fixed.len().get()) else {
-                    return Self::No;
-                };
-                (variable, count)
-            }
-            Some(SetSimplify::Empty) => return count.matches(0).into(),
-        };
-        let minimum = count.minimum();
-        if minimum == 0 {
-            return Self::Maybe;
-        }
-        let inner_count = BoundOrNot::AtLeast(minimum);
-        match set {
-            SetOp1::Judged(inner, _) => Self::Maybe & Self::has_size_1(inner, inner_count, known),
-            SetOp1::Shift(inner, dir) => {
-                Self::Maybe
-                    & (Set1::all().shift(dir.flip()).len() >= minimum)
-                    & Self::has_size_1_op(inner, inner_count, known)
-            }
-            SetOp1::Intersection(vec, fixed) => {
-                Self::from(fixed.is_none_or(|fixed| fixed.len().get() >= minimum))
-                    & vec
-                        .iter1()
-                        .map(|set| Self::has_size_1_op(set, count, known))
-                        .reduce(|a, b| a & b)
-            }
-        }
-    }
-
-    fn has_size_1(set: &SetExpr1, count: BoundOrNot, known: &Grid<Option<Judgment>>) -> Self {
-        match set {
-            SetExpr1::Regular(set) => count.matches(set.len().get()).into(),
-            SetExpr1::Op(set) => Self::has_size_1_op(set, count, known),
-        }
-    }
-
     fn union(self, rhs: Self) -> Self {
         match [self, rhs] {
             [Self::No, Self::No] => Self::No,
@@ -1751,12 +1584,8 @@ mod tests {
         writeln!(&mut summary, "sums: {:?}", engine.sum).unwrap();
 
         writeln!(&mut summary, "pending disjunctions:").unwrap();
-        for &[(a, a_judgment), (b, b_judgment)] in &engine.disjunctions {
-            writeln!(
-                &mut summary,
-                "  ({a:?}, {a_judgment:?}) | ({b:?}, {b_judgment:?})"
-            )
-            .unwrap();
+        for &[left, right] in &engine.disjunctions {
+            writeln!(&mut summary, "  ({left:?}) | ({right:?})").unwrap();
         }
 
         let mut generic = BTreeMap::<String, usize>::new();

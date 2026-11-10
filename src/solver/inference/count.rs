@@ -308,20 +308,6 @@ impl CountSet {
             .into_iter()
             .step_by(if parity.is_some() { 2 } else { 1 })
     }
-
-    pub(crate) fn try_into_bounds(self) -> Option<Vec<Bound>> {
-        match self {
-            Self::Exact(value) => Some(vec![Bound::Exact(value)]),
-            Self::Complex { range, parity } => {
-                let mut bounds = vec![Bound::AtLeast(range.start), Bound::AtMost(range.last)];
-                if let Some(parity) = parity {
-                    bounds.push(Bound::Parity(parity));
-                }
-                Some(bounds)
-            }
-            Self::BitSet(_) => None,
-        }
-    }
 }
 
 impl BitAnd for CountSet {

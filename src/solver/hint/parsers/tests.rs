@@ -22,9 +22,8 @@ fn vicky_2025_05_01() {
     sentence(
         "Everyone directly below a doctor is innocent",
         &Sentence::UnitSize(
-            Unit::profession("doctor")
-                .shift(Direction::Below)
-                .with_judgment(Judgment::Criminal),
+            Unit::profession("doctor").shift(Direction::Below),
+            Judgment::Criminal,
             0.into(),
         ),
     );
@@ -35,9 +34,8 @@ fn julie_2025_05_02() {
     sentence(
         "Every coder has an innocent directly to the left of them",
         &Sentence::UnitSize(
-            Unit::profession("coder")
-                .shift(Direction::Left)
-                .with_judgment(Judgment::Criminal),
+            Unit::profession("coder").shift(Direction::Left),
+            Judgment::Criminal,
             0.into(),
         ),
     );
@@ -118,10 +116,8 @@ fn gus_2025_05_15() {
     sentence(
         "I have more innocents to the right than to the left of me",
         &Sentence::UnitBiggerThanUnit {
-            big: Unit::Direction(Direction::Right, NameRecipe::Me)
-                .with_judgment(Judgment::Innocent),
-            small: Unit::Direction(Direction::Left, NameRecipe::Me)
-                .with_judgment(Judgment::Innocent),
+            big: Unit::Direction(Direction::Right, NameRecipe::Me).judged(Judgment::Innocent),
+            small: Unit::Direction(Direction::Left, NameRecipe::Me).judged(Judgment::Innocent),
             excess: None,
         },
     );
@@ -173,7 +169,8 @@ fn isaac_2025_06_14() {
     sentence(
         "Not everyone below Adam is a criminal",
         &Sentence::UnitSize(
-            Unit::direction(Direction::Below, "Adam").with_judgment(Judgment::Innocent),
+            Unit::direction(Direction::Below, "Adam"),
+            Judgment::Innocent,
             Bound::AtLeast(1),
         ),
     );
@@ -262,8 +259,8 @@ fn tyler_2025_08_22() {
     sentence(
         "If Logan is a criminal, then so is Hilda",
         &Sentence::IfThen([
-            ("Logan".into(), Judgment::Criminal),
-            ("Hilda".into(), Judgment::Criminal),
+            Judged("Logan".into(), Judgment::Criminal),
+            Judged("Hilda".into(), Judgment::Criminal),
         ]),
     );
 }
@@ -353,10 +350,7 @@ fn eve_2025_11_03() {
 fn lisa_2025_11_03() {
     sentence(
         "Column D has exactly 4 innocents",
-        &Sentence::UnitSize(
-            Unit::from(Column::D).with_judgment(Judgment::Innocent),
-            4.into(),
-        ),
+        &Sentence::UnitSize(Unit::from(Column::D), Judgment::Innocent, 4.into()),
     );
 }
 
@@ -381,10 +375,8 @@ fn ryan_2026_01_12() {
     sentence(
         "Exactly 1 of the 2 painters has an innocent directly to the left of them",
         &Sentence::UnitSize(
-            Unit::profession("painter")
-                .bound(2)
-                .shift(Direction::Left)
-                .with_judgment(Judgment::Innocent),
+            Unit::profession("painter").bound(2).shift(Direction::Left),
+            Judgment::Innocent,
             1.into(),
         ),
     );
@@ -437,10 +429,7 @@ fn salil_2026_01_15() {
 fn zach_2026_01_21() {
     sentence(
         "All teachers are criminal",
-        &Sentence::UnitSize(
-            Unit::profession("teacher").with_judgment(Judgment::Innocent),
-            0.into(),
-        ),
+        &Sentence::UnitSize(Unit::profession("teacher"), Judgment::Innocent, 0.into()),
     );
 }
 
@@ -449,10 +438,8 @@ fn uma_2026_01_31() {
     sentence(
         "2 out of the 3 teachers have a criminal directly below them",
         &Sentence::UnitSize(
-            Unit::profession("teacher")
-                .bound(3)
-                .shift(Direction::Below)
-                .with_judgment(Judgment::Criminal),
+            Unit::profession("teacher").bound(3).shift(Direction::Below),
+            Judgment::Criminal,
             2.into(),
         ),
     );
@@ -483,9 +470,8 @@ fn uma_2026_02_03() {
     sentence(
         "Exactly 1 judge has an innocent directly above them",
         &Sentence::UnitSize(
-            Unit::profession("judge")
-                .shift(Direction::Above)
-                .with_judgment(Judgment::Innocent),
+            Unit::profession("judge").shift(Direction::Above),
+            Judgment::Innocent,
             1.into(),
         ),
     );
@@ -557,10 +543,7 @@ fn gary_2026_02_05() {
 fn ike_2026_02_05() {
     sentence(
         "Xavi has exactly 3 innocent neighbors",
-        &Sentence::UnitSize(
-            Unit::neighbor("Xavi").with_judgment(Judgment::Innocent),
-            3.into(),
-        ),
+        &Sentence::UnitSize(Unit::neighbor("Xavi"), Judgment::Innocent, 3.into()),
     );
 }
 
@@ -584,9 +567,9 @@ fn tina_2026_02_05() {
     sentence(
         "Both criminals above Xavi are connected",
         &Sentence::UnitIsConnected(
-            Unit::direction(Direction::Above, "Xavi")
-                .with_judgment(Judgment::Criminal)
-                .bound(2),
+            Unit::direction(Direction::Above, "Xavi"),
+            Judgment::Criminal,
+            Some(2.into()),
         ),
     );
 }
@@ -646,9 +629,8 @@ fn logan_2026_02_06() {
     sentence(
         "Exactly 1 farmer has a criminal directly above them",
         &Sentence::UnitSize(
-            Unit::profession("farmer")
-                .shift(Direction::Above)
-                .with_judgment(Judgment::Criminal),
+            Unit::profession("farmer").shift(Direction::Above),
+            Judgment::Criminal,
             1.into(),
         ),
     );
@@ -667,7 +649,8 @@ fn scott_2026_02_06() {
     sentence(
         "There are exactly 2 innocents to the left of Noah",
         &Sentence::UnitSize(
-            Unit::direction(Direction::Left, "Noah").with_judgment(Judgment::Innocent),
+            Unit::direction(Direction::Left, "Noah"),
+            Judgment::Innocent,
             2.into(),
         ),
     );
@@ -678,8 +661,8 @@ fn vera_2026_02_06() {
     sentence(
         "There are more innocent cooks than innocent mechs",
         &Sentence::UnitBiggerThanUnit {
-            big: Unit::profession("cook").with_judgment(Judgment::Innocent),
-            small: Unit::profession("mech").with_judgment(Judgment::Innocent),
+            big: Unit::profession("cook").judged(Judgment::Innocent),
+            small: Unit::profession("mech").judged(Judgment::Innocent),
             excess: None,
         },
     );
@@ -764,8 +747,8 @@ fn xavi_2026_02_09() {
     sentence(
         "There are more innocents in row 3 than row 5",
         &Sentence::UnitBiggerThanUnit {
-            big: Unit::from(Row::Three).with_judgment(Judgment::Innocent),
-            small: Unit::from(Row::Five).with_judgment(Judgment::Innocent),
+            big: Unit::from(Row::Three).judged(Judgment::Innocent),
+            small: Unit::from(Row::Five).judged(Judgment::Innocent),
             excess: None,
         },
     );
@@ -786,10 +769,7 @@ fn ollie_2026_02_09() {
 fn gabe_2026_02_09() {
     sentence(
         "There are at least 10 innocents on the edges",
-        &Sentence::UnitSize(
-            Unit::Edges.with_judgment(Judgment::Innocent),
-            Bound::AtLeast(10),
-        ),
+        &Sentence::UnitSize(Unit::Edges, Judgment::Innocent, Bound::AtLeast(10)),
     );
 }
 
@@ -810,7 +790,7 @@ fn gary_2026_02_10() {
 fn janet_2026_02_10() {
     sentence(
         "There are 9 innocents in total",
-        &Sentence::UnitSize(Unit::All.with_judgment(Judgment::Innocent), 9.into()),
+        &Sentence::UnitSize(Unit::All, Judgment::Innocent, 9.into()),
     );
 }
 
@@ -831,10 +811,8 @@ fn will_2026_02_10() {
     sentence(
         "2 of us 3 singers have an innocent directly to the left of us",
         &Sentence::UnitSize(
-            Unit::profession("singer")
-                .bound(3)
-                .shift(Direction::Left)
-                .with_judgment(Judgment::Innocent),
+            Unit::profession("singer").bound(3).shift(Direction::Left),
+            Judgment::Innocent,
             2.into(),
         ),
     );
@@ -877,8 +855,8 @@ fn paul_2026_03_23() {
     sentence(
         "Freya has one more innocent neighbor than Olof",
         &Sentence::UnitBiggerThanUnit {
-            big: Unit::neighbor("Freya").with_judgment(Judgment::Innocent),
-            small: Unit::neighbor("Olof").with_judgment(Judgment::Innocent),
+            big: Unit::neighbor("Freya").judged(Judgment::Innocent),
+            small: Unit::neighbor("Olof").judged(Judgment::Innocent),
             excess: Some(1),
         },
     );
@@ -889,8 +867,8 @@ fn vince_2026_03_24() {
     sentence(
         "There are more innocent judges than us innocent singers",
         &Sentence::UnitBiggerThanUnit {
-            big: Unit::profession("judge").with_judgment(Judgment::Innocent),
-            small: Unit::profession("singer").with_judgment(Judgment::Innocent),
+            big: Unit::profession("judge").judged(Judgment::Innocent),
+            small: Unit::profession("singer").judged(Judgment::Innocent),
             excess: None,
         },
     );
@@ -947,9 +925,8 @@ fn wally_2026_04_07() {
     sentence(
         "Only one person above Rohan has an innocent directly to the right of them",
         &Sentence::UnitSize(
-            Unit::direction(Direction::Above, "Rohan")
-                .shift(Direction::Right)
-                .with_judgment(Judgment::Innocent),
+            Unit::direction(Direction::Above, "Rohan").shift(Direction::Right),
+            Judgment::Innocent,
             1.into(),
         ),
     );
@@ -959,13 +936,13 @@ fn wally_2026_04_07() {
 fn sofia_2026_04_11() {
     sentence(
         "One innocent in column A has an innocent directly to the right of them",
-        &Sentence::UnitSize(
-            Unit::from(Column::A)
-                .with_judgment(Judgment::Innocent)
-                .shift(Direction::Right)
-                .with_judgment(Judgment::Innocent),
-            1.into(),
-        ),
+        &Sentence::TraitsInUnitHaveTraitInDirection {
+            source: Unit::from(Column::A),
+            source_judgment: (Judgment::Innocent),
+            direction: (Direction::Right),
+            target_judgment: (Judgment::Innocent),
+            bound: 1.into(),
+        },
     );
 }
 
@@ -974,9 +951,8 @@ fn xavi_2026_04_11() {
     sentence(
         "2 persons in column D have an innocent directly above them",
         &Sentence::UnitSize(
-            Unit::from(Column::D)
-                .shift(Direction::Above)
-                .with_judgment(Judgment::Innocent),
+            Unit::from(Column::D).shift(Direction::Above),
+            Judgment::Innocent,
             2.into(),
         ),
     );
@@ -986,10 +962,7 @@ fn xavi_2026_04_11() {
 fn janet_2026_04_13() {
     sentence(
         "There are exactly 3 criminals in my column",
-        &Sentence::UnitSize(
-            Unit::from(ColumnRecipe::Me).with_judgment(Judgment::Criminal),
-            3.into(),
-        ),
+        &Sentence::UnitSize(Unit::from(ColumnRecipe::Me), Judgment::Criminal, 3.into()),
     );
 }
 
@@ -998,10 +971,8 @@ fn bobby_2026_04_14() {
     sentence(
         "Exactly 1 of us 3 mechs has an innocent directly below them",
         &Sentence::UnitSize(
-            Unit::profession("mech")
-                .bound(3)
-                .shift(Direction::Below)
-                .with_judgment(Judgment::Innocent),
+            Unit::profession("mech").bound(3).shift(Direction::Below),
+            Judgment::Innocent,
             1.into(),
         ),
     );
@@ -1022,13 +993,13 @@ fn martin_2026_04_14() {
 fn umar_2026_04_25() {
     sentence(
         "One innocent in the corners has a criminal directly to the right of them",
-        &Sentence::UnitSize(
-            Unit::Corners
-                .with_judgment(Judgment::Innocent)
-                .shift(Direction::Right)
-                .with_judgment(Judgment::Criminal),
-            1.into(),
-        ),
+        &Sentence::TraitsInUnitHaveTraitInDirection {
+            source: Unit::Corners,
+            source_judgment: (Judgment::Innocent),
+            direction: (Direction::Right),
+            target_judgment: (Judgment::Criminal),
+            bound: 1.into(),
+        },
     );
 }
 
@@ -1139,9 +1110,8 @@ fn lisa_2026_08_04() {
     sentence(
         "Only one person in a corner has a criminal directly below them",
         &Sentence::UnitSize(
-            Unit::Corners
-                .shift(Direction::Below)
-                .with_judgment(Judgment::Criminal),
+            Unit::Corners.shift(Direction::Below),
+            Judgment::Criminal,
             1.into(),
         ),
     );
@@ -1160,9 +1130,8 @@ fn steve_2026_08_15() {
     sentence(
         "4 persons on the edges have a criminal directly below them",
         &Sentence::UnitSize(
-            Unit::Edges
-                .shift(Direction::Below)
-                .with_judgment(Judgment::Criminal),
+            Unit::Edges.shift(Direction::Below),
+            Judgment::Criminal,
             4.into(),
         ),
     );
@@ -1173,9 +1142,8 @@ fn bunty_2026_08_25() {
     sentence(
         "An odd number of us 3 painters are innocent",
         &Sentence::UnitSize(
-            Unit::profession("painter")
-                .bound(3)
-                .with_judgment(Judgment::Innocent),
+            Unit::profession("painter").bound(3),
+            Judgment::Innocent,
             Parity::Odd.into(),
         ),
     );
@@ -1201,8 +1169,8 @@ fn gus_2026_10_06() {
     sentence(
         "There are more innocents in row 2 than in column A",
         &Sentence::UnitBiggerThanUnit {
-            big: Unit::from(Row::Two).with_judgment(Judgment::Innocent),
-            small: Unit::from(Column::A).with_judgment(Judgment::Innocent),
+            big: Unit::from(Row::Two).judged(Judgment::Innocent),
+            small: Unit::from(Column::A).judged(Judgment::Innocent),
             excess: None,
         },
     );
@@ -1240,13 +1208,13 @@ fn sue_2026_10_22() {
 fn xia_2026_11_01() {
     sentence(
         "Only 1 innocent in column C has a criminal directly to the left",
-        &Sentence::UnitSize(
-            Unit::from(Column::C)
-                .with_judgment(Judgment::Innocent)
-                .shift(Direction::Left)
-                .with_judgment(Judgment::Criminal),
-            1.into(),
-        ),
+        &Sentence::TraitsInUnitHaveTraitInDirection {
+            source: Column::C.into(),
+            source_judgment: (Judgment::Innocent),
+            direction: (Direction::Left),
+            target_judgment: (Judgment::Criminal),
+            bound: 1.into(),
+        },
     );
 }
 
@@ -1255,8 +1223,8 @@ fn diane_0cf47a07fe08() {
     sentence(
         "Xavi has more criminal neighbors than Ben",
         &Sentence::UnitBiggerThanUnit {
-            big: Unit::neighbor("Xavi").with_judgment(Judgment::Criminal),
-            small: Unit::neighbor("Ben").with_judgment(Judgment::Criminal),
+            big: Unit::neighbor("Xavi").judged(Judgment::Criminal),
+            small: Unit::neighbor("Ben").judged(Judgment::Criminal),
             excess: None,
         },
     );
@@ -1301,10 +1269,7 @@ fn vicky_0cf47a07fe08() {
 fn jose_879da349c27d() {
     sentence(
         "I have exactly 5 innocent neighbors",
-        &Sentence::UnitSize(
-            Unit::Neighbor(NameRecipe::Me).with_judgment(Judgment::Innocent),
-            5.into(),
-        ),
+        &Sentence::UnitSize(Unit::Neighbor(NameRecipe::Me), Judgment::Innocent, 5.into()),
     );
 }
 
@@ -1390,8 +1355,8 @@ fn xia_puzzle_pack_1_2() {
     sentence(
         "I have more innocent neighbors than Olivia",
         &Sentence::UnitBiggerThanUnit {
-            big: Unit::Neighbor(NameRecipe::Me).with_judgment(Judgment::Innocent),
-            small: Unit::neighbor("Olivia").with_judgment(Judgment::Innocent),
+            big: Unit::Neighbor(NameRecipe::Me).judged(Judgment::Innocent),
+            small: Unit::neighbor("Olivia").judged(Judgment::Innocent),
             excess: None,
         },
     );
@@ -1565,9 +1530,9 @@ fn linda_community_6eebae_909beebb44a88201() {
     sentence(
         "All Noah's criminal neighbors are connected",
         &Sentence::UnitIsConnected(
-            Unit::neighbor("Noah")
-                .with_judgment(Judgment::Criminal)
-                .bound(Bound::AtLeast(1)),
+            Unit::neighbor("Noah"),
+            Judgment::Criminal,
+            Some(Bound::AtLeast(1)),
         ),
     );
 }
@@ -1606,28 +1571,34 @@ fn unit_size() {
     parser(
         Sentence::unit_size,
         &["All", "teachers", "are", "criminal"],
-        &Sentence::UnitSize(
-            Unit::profession("teacher").with_judgment(Judgment::Innocent),
-            0.into(),
-        ),
+        &Sentence::UnitSize(Unit::profession("teacher"), Judgment::Innocent, 0.into()),
     );
 }
 
 #[test]
-fn pair_bounded_unit_expr_regression() {
+fn pair_bounded_unit_regression() {
     parser(
-        pair_bounded_unit_expr,
+        pair_bounded_unit,
         &["only", "one", "person", "above", "Rohan"],
-        &(1.into(), Unit::direction(Direction::Above, "Rohan").into()),
+        &(1.into(), Unit::direction(Direction::Above, "Rohan")),
     );
-}
 
-#[test]
-fn maybe_judged_unit_regression() {
     parser(
-        maybe_judged_unit,
-        &["person", "above", "Rohan"],
-        &(None, Unit::direction(Direction::Above, "Rohan")),
+        pair_bounded_unit,
+        &["only", "one", "person", "in", "a", "corner"],
+        &(1.into(), Unit::Corners),
+    );
+
+    parser(
+        pair_bounded_unit,
+        &["2", "of", "us", "3", "singers"],
+        &(
+            BoundPair::Subset {
+                matching: 2.into(),
+                total: 3,
+            },
+            Unit::profession("singer"),
+        ),
     );
 }
 
