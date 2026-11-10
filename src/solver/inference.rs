@@ -8,6 +8,7 @@ use std::{assert_matches, error, fmt, mem};
 use anyhow::Result;
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools as _;
+use mitsein::EmptyError;
 use mitsein::slice1::Slice1;
 use mitsein::vec1::Vec1;
 
@@ -545,7 +546,7 @@ impl InferenceSolver {
             let count = sum.checked_div_2().ok_or(Contradiction)?;
             self.add_theorem(Theorem::CriminalCount(sets[0], count.into()))
         } else if let Some(intersection) = (sets[0] & sets[1]).non_empty() {
-            if let Some(intersection) = self.gather_criminal_count(intersection)?.exact() {
+            if let CountSet::Exact(intersection) = self.gather_criminal_count(intersection)? {
                 let sum = sum
                     .checked_sub(intersection.strict_mul(2))
                     .ok_or(Contradiction)?;
@@ -635,9 +636,7 @@ impl InferenceSolver {
                     return self.add_criminal_count(set, *judgment, count);
                 }
                 SetExpr1::Op(inner) => {
-                    let min_count = count.minimum();
-                    let implied = if min_count > 0
-                        && let SetOp1::Shift(source, direction) = inner
+                    let implied = if let SetOp1::Shift(source, direction) = inner
                         && let SetOp1::Judged(source, source_judgment) = source.as_ref()
                         && let &SetExpr1::Regular(source) = source.as_ref()
                     {
@@ -646,11 +645,12 @@ impl InferenceSolver {
                             *direction,
                             *source_judgment,
                             *judgment,
-                            min_count,
+                            count,
                         )?
                     } else {
                         false
                     };
+                    let min_count = count.minimum();
                     let updated = (min_count > 0)
                         && self.simplify_and_add_count(inner, BoundOrNot::AtLeast(min_count))?;
                     self.generic.push(Hint::Count(set, count));
@@ -706,37 +706,133 @@ impl InferenceSolver {
         direction: Direction,
         source_judgment: Judgment,
         target_judgment: Judgment,
-        min_count: Number,
+        count: BoundOrNot,
     ) -> Result<bool, Contradiction> {
         let source = (source & Set1::shift_preimage(direction))
             .non_empty()
             .ok_or(Contradiction)?;
-        let source_count = self.count_judged(source, source_judgment)?;
-        let target = source.shift(direction).non_empty().ok_or(Contradiction)?;
-        let target_count = self.count_judged(target, target_judgment)?;
-        if min_count > source_count.maximum() || min_count > target_count.maximum() {
-            return Err(Contradiction);
-        }
-        let source_matches = min_count >= source_count.maximum();
-        let target_matches = min_count >= target_count.maximum();
-        if !source_matches && !target_matches {
-            return Ok(false);
-        }
-
-        let mut new = Vec::new();
+        let count = CountSet::from_cardinal(count, source.len()).ok_or(Contradiction)?;
+        let mut guaranteed_matches = 0_u8;
+        let mut possible_pairs = Vec::new();
+        let mut source_only = Set::empty();
+        let mut target_only = Set::empty();
+        let mut has_unresolved_pair = false;
         for source_coord in source {
-            if let Some(target_coord) = source_coord.step(direction) {
-                let source = (source_coord, source_judgment);
-                let target = (target_coord, target_judgment);
-                if source_matches {
-                    new.push(Hint::IfThen([source, target]).into());
+            let target_coord = source_coord
+                .step(direction)
+                .expect("source is clipped to the shift preimage");
+            let source_matches = self.known[source_coord].map(|known| known == source_judgment);
+            let target_matches = self.known[target_coord].map(|known| known == target_judgment);
+            match [source_matches, target_matches] {
+                [Some(true), Some(true)] => guaranteed_matches = guaranteed_matches.strict_add(1),
+                [Some(false), _] | [_, Some(false)] => {}
+                [None, Some(true)] => {
+                    source_only |= source_coord;
+                    possible_pairs.push((source_coord, target_coord));
                 }
-                if target_matches {
-                    new.push(Hint::IfThen([target, source]).into());
+                [Some(true), None] => {
+                    target_only |= target_coord;
+                    possible_pairs.push((source_coord, target_coord));
+                }
+                [None, None] => {
+                    has_unresolved_pair = true;
+                    possible_pairs.push((source_coord, target_coord));
                 }
             }
         }
-        self.add_theorems(new)
+
+        let count = count.checked_sub(guaranteed_matches).ok_or(Contradiction)?;
+        if !has_unresolved_pair && let Some(bounds) = count.try_into_bounds() {
+            return self.shifted_count_pairs(
+                source_only,
+                source_judgment,
+                target_only,
+                target_judgment,
+                bounds,
+            );
+        }
+
+        let maximum = count.maximum();
+        let minimum = count.minimum();
+        if maximum == 0 {
+            let new = possible_pairs
+                .into_iter()
+                .map(|(source_coord, target_coord)| {
+                    Theorem::Disjunction([
+                        (source_coord, !source_judgment),
+                        (target_coord, !target_judgment),
+                    ])
+                });
+            self.add_theorems(new)
+        } else {
+            if minimum == 0 {
+                return Ok(false);
+            }
+            let possible_pairs =
+                Vec1::try_from(possible_pairs).map_err(|EmptyError { .. }| Contradiction)?;
+
+            let possible_sources: Set1 =
+                possible_pairs.iter1().map(|&(source, _)| source).collect1();
+            let possible_targets: Set1 =
+                possible_pairs.iter1().map(|&(_, target)| target).collect1();
+
+            let source_count = self.count_judged(possible_sources, source_judgment)?;
+            let target_count = self.count_judged(possible_targets, target_judgment)?;
+            if minimum > source_count.maximum() || minimum > target_count.maximum() {
+                return Err(Contradiction);
+            }
+
+            let mut new = Vec::new();
+            if minimum == possible_pairs.len().get().try_into().expect("at most 20") {
+                new.push(Theorem::All(possible_sources, source_judgment));
+                new.push(Theorem::All(possible_targets, target_judgment));
+            } else {
+                let source_matches = minimum >= source_count.maximum();
+                let target_matches = minimum >= target_count.maximum();
+                for (source_coord, target_coord) in possible_pairs {
+                    let source = (source_coord, source_judgment);
+                    let target = (target_coord, target_judgment);
+                    if source_matches {
+                        new.push(Hint::IfThen([source, target]).into());
+                    }
+                    if target_matches {
+                        new.push(Hint::IfThen([target, source]).into());
+                    }
+                }
+            }
+            self.add_theorems(new)
+        }
+    }
+
+    fn shifted_count_pairs(
+        &mut self,
+        source: Set,
+        source_judgment: Judgment,
+        target: Set,
+        target_judgment: Judgment,
+        bounds: Vec<Bound>,
+    ) -> Result<bool, Contradiction> {
+        match [
+            (source.non_empty(), source_judgment),
+            (target.non_empty(), target_judgment),
+        ] {
+            [(None, _), (None, _)] if bounds.iter().all(|bound| bound.matches(0)) => Ok(false),
+            [(None, _), (None, _)] => Err(Contradiction),
+            [(Some(set), judgment), (None, _)] | [(None, _), (Some(set), judgment)] => {
+                let new = bounds
+                    .into_iter()
+                    .map(|bound| Hint::Count(set.judged(judgment), bound.into()).into());
+                self.add_theorems(new)
+            }
+            [(Some(source), _), (Some(target), _)] => {
+                let new = bounds.into_iter().map(|bound| {
+                    let sets = [(source, source_judgment), (target, target_judgment)]
+                        .map(|(set, judgment)| set.judged(judgment));
+                    Hint::CountTotal(sets, bound).into()
+                });
+                self.add_theorems(new)
+            }
+        }
     }
 
     fn add_if_then(&mut self, clauses: [(Coord, Judgment); 2]) -> Result<bool, Contradiction> {

@@ -309,12 +309,17 @@ impl CountSet {
             .step_by(if parity.is_some() { 2 } else { 1 })
     }
 
-    #[must_use]
-    pub(crate) fn exact(self) -> Option<Number> {
-        if let Self::Exact(v) = self {
-            Some(v)
-        } else {
-            None
+    pub(crate) fn try_into_bounds(self) -> Option<Vec<Bound>> {
+        match self {
+            Self::Exact(value) => Some(vec![Bound::Exact(value)]),
+            Self::Complex { range, parity } => {
+                let mut bounds = vec![Bound::AtLeast(range.start), Bound::AtMost(range.last)];
+                if let Some(parity) = parity {
+                    bounds.push(Bound::Parity(parity));
+                }
+                Some(bounds)
+            }
+            Self::BitSet(_) => None,
         }
     }
 }
