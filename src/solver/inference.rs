@@ -1513,9 +1513,12 @@ impl error::Error for Contradiction {}
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+    use std::fmt::Write as _;
+
     use test_each_file::test_each_file;
 
-    use crate::models::Puzzle;
+    use crate::models::{Column, Puzzle, Row};
     use crate::solver::board::Lookup;
     use crate::solver::hint::Sentence;
     use crate::solver::hint::recipes::AddContext as _;
@@ -1562,7 +1565,62 @@ mod tests {
         }
 
         let marked = marked.into_values().filter(|&marked| marked).count();
-        assert_eq!(marked, 20, "state: {engine:#?}");
+        assert_eq!(
+            marked,
+            20,
+            "stuck after discovering {marked}/20 cells:\n{}",
+            summarize(&engine)
+        );
+    }
+
+    #[expect(clippy::use_debug, reason = "test")]
+    fn summarize(engine: &InferenceSolver) -> String {
+        let mut summary = String::new();
+        writeln!(&mut summary, "grid (?: unknown, C: criminal, I: innocent):").unwrap();
+        writeln!(&mut summary, "    A B C D").unwrap();
+        for row in Row::ALL {
+            write!(&mut summary, "  {row} ").unwrap();
+            for col in Column::ALL {
+                let cell = match engine.known[Coord { row, col }] {
+                    None => '?',
+                    Some(Judgment::Criminal) => 'C',
+                    Some(Judgment::Innocent) => 'I',
+                };
+                write!(&mut summary, "{cell} ").unwrap();
+            }
+            writeln!(&mut summary).unwrap();
+        }
+
+        writeln!(&mut summary, "active criminal counts:").unwrap();
+        for (set, (count, state)) in &engine.criminal_count {
+            if state.is_active() {
+                writeln!(&mut summary, "  {set:?}: {count:?}").unwrap();
+            }
+        }
+
+        writeln!(&mut summary, "connected: {:?}", engine.connected).unwrap();
+        writeln!(&mut summary, "differences: {:?}", engine.difference).unwrap();
+        writeln!(&mut summary, "sums: {:?}", engine.sum).unwrap();
+
+        writeln!(&mut summary, "pending disjunctions:").unwrap();
+        for &[(a, a_judgment), (b, b_judgment)] in &engine.disjunctions {
+            writeln!(
+                &mut summary,
+                "  ({a:?}, {a_judgment:?}) | ({b:?}, {b_judgment:?})"
+            )
+            .unwrap();
+        }
+
+        let mut generic = BTreeMap::<String, usize>::new();
+        for hint in &engine.generic {
+            let count = generic.entry(format!("{hint:?}")).or_insert(0);
+            *count = count.strict_add(1);
+        }
+        writeln!(&mut summary, "pending hints ({} unique):", generic.len()).unwrap();
+        for (hint, count) in generic {
+            writeln!(&mut summary, "  {count}x {hint}").unwrap();
+        }
+        summary
     }
 
     test_each_file! { in "./archive" as puzzle => inference}
