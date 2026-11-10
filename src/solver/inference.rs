@@ -28,7 +28,7 @@ mod split;
 const MAX_BIFURCATION_DEPTH: u8 = 2;
 
 #[derive(Debug, Default, Clone)]
-struct InferenceSolver {
+pub(super) struct InferenceSolver {
     known: Grid<Option<Judgment>>,
     new_knowledge: Vec<(Coord, Judgment)>,
     criminal_count: IndexMap<Set1, (CountSet, TheoremState)>,

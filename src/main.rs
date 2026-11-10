@@ -4,7 +4,7 @@ use std::{fmt, fs};
 
 use anyhow::{Result, bail};
 use arboard::Clipboard;
-use bpaf::{Bpaf, Parser as _};
+use bpaf::Bpaf;
 use inquire::{Confirm, Editor, Select, Text};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
@@ -29,16 +29,20 @@ const ARCHIVE_DIR: &str = "archive/";
 fn main() -> Result<()> {
     let args = args().run();
 
-    let result = match args {
-        Args::Menu => main_menu()?,
-        Args::Html { path } => MainMenu::Solve(read_from_file(path, FileType::Html)?),
-        Args::Load { path } => MainMenu::Solve(read_from_file(path, FileType::Ron)?),
-        Args::Today => MainMenu::Solve(fetch_today()?),
-        Args::Paste => MainMenu::Solve(paste()?),
-        Args::Archive { id_or_url } => MainMenu::Solve(archive(&id_or_url)?),
+    let Args { command, solver } = args;
+    let result = match command {
+        Command::Menu => main_menu()?,
+        Command::Html { path } => MainMenu::Solve(read_from_file(path, FileType::Html)?),
+        Command::Load { path } => MainMenu::Solve(read_from_file(path, FileType::Ron)?),
+        Command::Today => MainMenu::Solve(fetch_today()?),
+        Command::Paste => MainMenu::Solve(paste()?),
+        Command::Archive { id_or_url } => MainMenu::Solve(archive(&id_or_url)?),
     };
     match result {
-        MainMenu::Solve(board) => board.solve_brute_force()?,
+        MainMenu::Solve(board) => match solver {
+            SolverChoice::Inference => board.solve_inference()?,
+            SolverChoice::BruteForce => board.solve_brute_force()?,
+        },
         MainMenu::Play(puzzle) => App::new(&puzzle).play()?,
     }
 
@@ -225,8 +229,15 @@ fn read_from_file(path: impl AsRef<Path>, file_type: FileType) -> Result<ParsedB
 
 #[derive(Debug, Clone, Bpaf)]
 #[bpaf(options)]
-#[bpaf(fallback(Args::Menu))]
-enum Args {
+struct Args {
+    #[bpaf(external(solver_choice), fallback(SolverChoice::Inference))]
+    solver: SolverChoice,
+    #[bpaf(external(command), fallback(Command::Menu))]
+    command: Command,
+}
+
+#[derive(Debug, Clone, Bpaf)]
+enum Command {
     /// Show the main menu (default)
     #[bpaf(command)]
     Menu,
@@ -259,6 +270,16 @@ enum Args {
         #[bpaf(positional("ID or URL"))]
         id_or_url: String,
     },
+}
+
+#[derive(Debug, Clone, Copy, Bpaf)]
+enum SolverChoice {
+    /// Use the inference solver
+    #[bpaf(skip)]
+    Inference,
+    /// Use the brute-force solver
+    #[bpaf(long("brute-force"))]
+    BruteForce,
 }
 
 #[derive(Clone, Copy)]

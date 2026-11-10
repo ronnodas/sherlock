@@ -23,6 +23,7 @@ use crate::solver::board::{Board, Format, HtmlBoard, SolvedBoard};
 use crate::solver::brute_force::BruteForceSolver;
 use crate::solver::hint::recipes::AddContext as _;
 use crate::solver::hint::{Hint, Sentence};
+use crate::solver::inference::InferenceSolver;
 use crate::{ARCHIVE_DIR, SAVE_DIR};
 
 pub(crate) mod board;
@@ -544,6 +545,10 @@ impl ParsedBoard {
 
     pub(crate) fn solve_brute_force(self) -> Result<()> {
         self.solve::<BruteForceSolver>()
+    }
+
+    pub(crate) fn solve_inference(self) -> Result<()> {
+        self.solve::<InferenceSolver>()
     }
 }
 
