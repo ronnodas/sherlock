@@ -8,7 +8,7 @@ use mitsein::iter1::{IntoIterator1, Iterator1};
 
 use crate::solver::board::coordinates::Set1;
 use crate::solver::hint::{Bound, BoundOrNot, Number, Parity};
-use crate::solver::inference::Contradiction;
+use crate::solver::inference::{Contradiction, TriState};
 
 pub(crate) fn reduce_bound_or_not(count: BoundOrNot, rhs: Number) -> Option<BoundOrNot> {
     let count = match count {
@@ -33,6 +33,7 @@ pub(crate) fn reduce_bound(count: Bound, rhs: Number) -> Option<Bound> {
     Some(count)
 }
 
+// TODO use `RangeInclusive1` once `mitsein` updates
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum CountSet {
     Exact(Number),
@@ -75,6 +76,22 @@ impl CountSet {
                 range.contains(&len) && parity.is_none_or(|parity| parity.matches(len))
             }
             Self::BitSet(bits) => bits.contains(len),
+        }
+    }
+
+    pub(crate) fn match_bound(self, bound: Bound) -> TriState {
+        match self {
+            Self::Exact(value) => bound.matches(value).into(),
+            Self::Complex { range, parity } => range
+                .into_iter()
+                .step_by(if parity.is_some() { 2 } else { 1 })
+                .map(|value| TriState::from(bound.matches(value)))
+                .reduce(TriState::union)
+                .expect("range non-empty"),
+            Self::BitSet(bits) => bits
+                .into_iter1()
+                .map(|value| TriState::from(bound.matches(value)))
+                .reduce(TriState::union),
         }
     }
 
@@ -558,3 +575,40 @@ impl Iterator for IntoIter {
 }
 
 impl ExactSizeIterator for IntoIter {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn count_set_classifies_bound_matches() {
+        assert!(matches!(
+            CountSet::Exact(2).match_bound(Bound::Exact(2)),
+            TriState::Yes
+        ));
+        assert!(matches!(
+            CountSet::complex(1, 3, None)
+                .unwrap()
+                .match_bound(Bound::Exact(2)),
+            TriState::Maybe
+        ));
+        assert!(matches!(
+            CountSet::complex(1, 3, None)
+                .unwrap()
+                .match_bound(Bound::AtLeast(1)),
+            TriState::Yes
+        ));
+        assert!(matches!(
+            CountSet::complex(0, 2, None)
+                .unwrap()
+                .match_bound(Bound::AtLeast(3)),
+            TriState::No
+        ));
+        assert!(matches!(
+            CountSet::complex(0, 4, Some(Parity::Even))
+                .unwrap()
+                .match_bound(Bound::Parity(Parity::Even)),
+            TriState::Yes
+        ));
+    }
+}

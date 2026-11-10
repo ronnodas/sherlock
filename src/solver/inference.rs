@@ -455,6 +455,16 @@ impl InferenceSolver {
         Ok(variable_count.strict_add(CountSet::Exact(fixed.len())))
     }
 
+    fn count_status(&self, set: &SetOp1, bound: Bound) -> Result<TriState, Contradiction> {
+        if let SetOp1::Judged(inner, judgment) = set
+            && let SetExpr1::Regular(set) = inner.as_ref()
+        {
+            Ok(self.count_judged(*set, *judgment)?.match_bound(bound))
+        } else {
+            Ok(TriState::has_size_1_op(set, bound.into(), &self.known))
+        }
+    }
+
     fn max_criminals(&self, set: Set1) -> Number {
         self.criminal_count
             .iter()
@@ -775,11 +785,8 @@ impl InferenceSolver {
         let mut yes = Set::empty();
         let mut maybe = Set::empty();
         for coord in set {
-            match TriState::has_size_1_op(
-                &coord.neighbors().judged(judgment),
-                each.into(),
-                &self.known,
-            ) {
+            let neighbors = coord.neighbors().judged(judgment);
+            match self.count_status(&neighbors, each)? {
                 TriState::No => {}
                 TriState::Maybe => maybe |= coord,
                 TriState::Yes => yes |= coord,
@@ -978,7 +985,7 @@ impl InferenceSolver {
                 let mut yes = None;
                 let mut maybe = Vec::new();
                 for set in sets {
-                    match TriState::has_size_1_op(&set, bound.into(), &self.known) {
+                    match self.count_status(&set, bound)? {
                         TriState::No => {}
                         TriState::Maybe => maybe.push(set),
                         TriState::Yes => {
@@ -1315,6 +1322,16 @@ impl TriState {
         match set {
             SetExpr1::Regular(set) => count.matches(set.len().get()).into(),
             SetExpr1::Op(set) => Self::has_size_1_op(set, count, known),
+        }
+    }
+
+    fn union(self, rhs: Self) -> Self {
+        match [self, rhs] {
+            [Self::No, Self::No] => Self::No,
+            [Self::Yes, Self::Yes] => Self::Yes,
+            [_, Self::Maybe] | [Self::Maybe, _] | [Self::No, Self::Yes] | [Self::Yes, Self::No] => {
+                Self::Maybe
+            }
         }
     }
 }
