@@ -440,39 +440,6 @@ impl InferenceSolver {
     }
 
     fn count_judged(&self, set: Set1, judgment: Judgment) -> Result<CountSet, Contradiction> {
-        if let Some((count, _)) = self.criminal_count.get(&set) {
-            match judgment {
-                Judgment::Innocent => CountSet::Exact(set.len().get())
-                    .checked_sub(*count)
-                    .ok_or(Contradiction),
-                Judgment::Criminal => Ok(*count),
-            }
-        } else {
-            let min = match judgment {
-                Judgment::Innocent => set
-                    .len()
-                    .get()
-                    .checked_sub(self.max_criminals(set))
-                    .ok_or(Contradiction)?,
-                Judgment::Criminal => self.min_criminals(set),
-            };
-            let max = match judgment {
-                Judgment::Innocent => set
-                    .len()
-                    .get()
-                    .checked_sub(self.min_criminals(set))
-                    .ok_or(Contradiction)?,
-                Judgment::Criminal => self.max_criminals(set),
-            };
-            CountSet::complex(min, max, None).ok_or(Contradiction)
-        }
-    }
-
-    fn count_judged_with_known(
-        &self,
-        set: Set1,
-        judgment: Judgment,
-    ) -> Result<CountSet, Contradiction> {
         let [variable, fixed] = ByJudgment::split(set, &self.known).only(judgment);
         let variable_count = if let Some(variable) = variable.non_empty() {
             let criminal_count = self.gather_criminal_count(variable)?;
@@ -734,9 +701,9 @@ impl InferenceSolver {
         let source = (source & Set1::shift_preimage(direction))
             .non_empty()
             .ok_or(Contradiction)?;
-        let source_count = self.count_judged_with_known(source, source_judgment)?;
+        let source_count = self.count_judged(source, source_judgment)?;
         let target = source.shift(direction).non_empty().ok_or(Contradiction)?;
-        let target_count = self.count_judged_with_known(target, target_judgment)?;
+        let target_count = self.count_judged(target, target_judgment)?;
         if min_count > source_count.maximum() || min_count > target_count.maximum() {
             return Err(Contradiction);
         }
