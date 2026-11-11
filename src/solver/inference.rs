@@ -1021,12 +1021,6 @@ impl InferenceSolver {
                     }
                 }
             }
-            Hint::EachNeighbors(set, count, judgment) => {
-                set.into_iter().try_fold(false, |updated, coord| {
-                    Ok(updated
-                        | self.simplify_and_add_count(coord.neighbors(), judgment, count.into())?)
-                })?
-            }
             Hint::CountWithNeighbors {
                 set,
                 each,

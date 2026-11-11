@@ -308,10 +308,11 @@ impl Unit {
         judgment: Judgment,
         context: Context<'_>,
     ) -> Result<Vec<Hint>> {
-        let set = self.add_context(context)?;
-        let hints = set
-            .non_empty()
-            .map_or_default(|set| vec![Hint::EachNeighbors(set, bound, judgment)]);
+        let hints = self
+            .add_context(context)?
+            .into_iter()
+            .map(|coord| Hint::Count(coord.neighbors(), judgment, bound.into()))
+            .collect();
         Ok(hints)
     }
 

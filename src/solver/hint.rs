@@ -42,8 +42,6 @@ pub(crate) enum Hint {
         judgment: Judgment,
         bound: Bound,
     },
-    /// Each member of the given set has a given number of neighbors with the given judgment
-    EachNeighbors(Set1, Bound, Judgment),
     /// `count` many members of the given set has `each` neighbors with given judgment
     CountWithNeighbors {
         set: Set1,
@@ -96,10 +94,6 @@ impl Hint {
                     .len();
                 count.matches(counted)
             }
-            Self::EachNeighbors(set, bound, judgment) => set.into_iter().all(|coord| {
-                let neighbors = solution.select(&coord.neighbors().judged(*judgment)).len();
-                bound.matches(neighbors)
-            }),
             Self::IfThen(clauses) => {
                 let [premise, consequence] =
                     clauses.map(|Judged(coord, judgment)| solution[coord] == judgment);
