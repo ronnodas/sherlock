@@ -17,7 +17,9 @@ use crate::models::Solution;
 use crate::models::{Coord, Judged, Judgment};
 use crate::solver::Engine;
 use crate::solver::board::coordinates::{Set, Set1};
-use crate::solver::hint::{Bound, BoundOrNot, Comparison, Hint, Number, Parity, ShiftedCount};
+use crate::solver::hint::{
+    Bound, BoundOrNot, Comparison, CountWithNeighbors, Hint, Number, Parity, ShiftedCount,
+};
 use crate::solver::inference::count::{CountSet, EndPoint, Interval};
 use crate::solver::inference::split::ByJudgment;
 
@@ -36,6 +38,7 @@ pub(super) struct InferenceSolver {
     sum: IndexMap<[Set1; 2], Interval<Number>>,
     disjunctions: IndexSet<[Judged<Coord>; 2]>,
     shifted_counts: Vec<ShiftedCount>,
+    count_with_neighbors: Vec<CountWithNeighbors>,
     generic: Vec<Hint>,
     allowed_depth: Option<u8>,
     #[cfg(test)]
@@ -66,6 +69,7 @@ impl InferenceSolver {
             Tactic::SimplifyDifferences => self.simplify_differences(),
             Tactic::SimplifyConnected => self.simplify_connected(),
             Tactic::SimplifyShiftedCounts => self.simplify_shifted_counts(),
+            Tactic::SimplifyCountsWithNeighbors => self.simplify_count_with_neighbors(),
             Tactic::CountsFromDifferences => self.counts_from_differences(),
             Tactic::CombineCriminalCounts => self.combine_criminal_counts(),
             Tactic::InclusionExclusion => self.inclusion_exclusion_bounds(),
@@ -800,50 +804,41 @@ impl InferenceSolver {
         }
     }
 
-    fn add_count_with_neighbors(
-        &mut self,
-        each: Bound,
-        count: Bound,
-        judgment: Judgment,
-        set: Set1,
-    ) -> Result<bool, Contradiction> {
-        let mut yes = Set::empty();
-        let mut maybe = Set::empty();
-        for coord in set {
-            match self.count_status(coord.neighbors(), judgment, each)? {
-                TriState::No => {}
-                TriState::Maybe => maybe |= coord,
-                TriState::Yes => yes |= coord,
+    fn simplify_count_with_neighbors(&mut self) -> Result<bool, Contradiction> {
+        let mut new = Vec::new();
+        for hint in mem::take(&mut self.count_with_neighbors) {
+            let mut yes = Set::empty();
+            let mut maybe = Set::empty();
+            for coord in hint.set {
+                match self.count_status(coord.neighbors(), hint.judgment, hint.each)? {
+                    TriState::No => {}
+                    TriState::Maybe => maybe |= coord,
+                    TriState::Yes => yes |= coord,
+                }
             }
-        }
 
-        let count = count::reduce_bound(count, yes.len()).ok_or(Contradiction)?;
-        if matches!(count, Bound::AtMost(0) | Bound::Exact(0)) {
-            let not_bound = each.not().ok_or(Contradiction)?;
-            for coord in maybe {
-                _ = self.try_add_hint(Hint::Count(coord.neighbors(), judgment, not_bound))?;
+            let count = count::reduce_bound(hint.count, yes.len()).ok_or(Contradiction)?;
+            if matches!(count, Bound::AtMost(0) | Bound::Exact(0)) {
+                let not_bound = hint.each.not().ok_or(Contradiction)?;
+                for coord in maybe {
+                    new.push(Hint::Count(coord.neighbors(), hint.judgment, not_bound).into());
+                }
+            } else if let Bound::AtLeast(min) | Bound::Exact(min) = count
+                && min == maybe.len()
+            {
+                for coord in maybe {
+                    new.push(
+                        Hint::Count(coord.neighbors(), hint.judgment, hint.each.into()).into(),
+                    );
+                }
+            } else if let Some(set) = maybe.non_empty() {
+                let hint = CountWithNeighbors { set, count, ..hint };
+                new.push(Theorem::CountWithNeighbors(hint));
+            } else if !count.matches(0) {
+                return Err(Contradiction);
             }
-            Ok(true)
-        } else if let Bound::AtLeast(min) | Bound::Exact(min) = count
-            && min == maybe.len()
-        {
-            for coord in maybe {
-                _ = self.try_add_hint(Hint::Count(coord.neighbors(), judgment, each.into()))?;
-            }
-            Ok(true)
-        } else if let Some(maybe) = maybe.non_empty() {
-            self.generic.push(Hint::CountWithNeighbors {
-                set: maybe,
-                each,
-                count,
-                judgment,
-            });
-            Ok(maybe != set)
-        } else if count.matches(0) {
-            Ok(false)
-        } else {
-            Err(Contradiction)
         }
+        self.add_theorems(new)
     }
 
     fn add_theorem(&mut self, thm: Theorem) -> Result<bool, Contradiction> {
@@ -864,13 +859,17 @@ impl InferenceSolver {
             }
             Theorem::CriminalSum(sets, sum) => self.add_sum(sets, sum)?,
             Theorem::Disjunction(clauses) => self.add_disjunction(clauses)?,
-            Theorem::Generic(hint) => self.try_add_hint(hint)?,
-            Theorem::True => false,
-            Theorem::False => return Err(Contradiction),
             Theorem::ShiftedCount(hint) => {
                 self.shifted_counts.push(hint);
                 false
             }
+            Theorem::CountWithNeighbors(hint) => {
+                self.count_with_neighbors.push(hint);
+                false
+            }
+            Theorem::Generic(hint) => self.try_add_hint(hint)?,
+            Theorem::True => false,
+            Theorem::False => return Err(Contradiction),
         };
         Ok(updated)
     }
@@ -1028,12 +1027,10 @@ impl InferenceSolver {
                     }
                 }
             }
-            Hint::CountWithNeighbors {
-                set,
-                each,
-                count,
-                judgment,
-            } => self.add_count_with_neighbors(each, count, judgment, set)?,
+            Hint::CountWithNeighbors(hint) => {
+                self.count_with_neighbors.push(hint);
+                false
+            }
             Hint::IfThen(clauses) => self.add_if_then(clauses)?,
             Hint::ShiftedCount(clue) => {
                 self.shifted_counts.push(clue);
@@ -1151,6 +1148,7 @@ enum Tactic {
     SimplifyDifferences,
     SimplifyConnected,
     SimplifyShiftedCounts,
+    SimplifyCountsWithNeighbors,
     CountsFromDifferences,
     CombineCriminalCounts,
     InclusionExclusion,
@@ -1169,6 +1167,9 @@ impl Tactic {
             Self::SimplifyDifferences => "simplifying differences",
             Self::SimplifyConnected => "simplifying connected hints",
             Self::SimplifyShiftedCounts => "simplifying clues involving shifted suspects",
+            Self::SimplifyCountsWithNeighbors => {
+                "simplifying clues about suspects with a given number of neighbors"
+            }
             Self::CountsFromDifferences => "inferring counts from differences",
             Self::CombineCriminalCounts => "comparing count pairs",
             Self::InclusionExclusion => "generating bounds from inclusion-exclusion",
@@ -1185,6 +1186,7 @@ enum Theorem {
     CriminalSum([Set1; 2], Interval<Number>),
     Disjunction([Judged<Coord>; 2]),
     ShiftedCount(ShiftedCount),
+    CountWithNeighbors(CountWithNeighbors),
     Generic(Hint),
     True,
     False,
@@ -1214,6 +1216,7 @@ impl Theorem {
                 .iter()
                 .any(|&Judged(coord, judgment)| solution[coord] == judgment),
             Self::ShiftedCount(hint) => hint.evaluate(solution),
+            Self::CountWithNeighbors(hint) => hint.evaluate(solution),
             Self::Generic(hint) => hint.evaluate(solution),
             Self::True => true,
             Self::False => false,
@@ -1590,6 +1593,7 @@ mod tests {
         writeln!(&mut summary, "connected: {:?}", engine.connected).unwrap();
         writeln!(&mut summary, "differences: {:?}", engine.difference).unwrap();
         writeln!(&mut summary, "sums: {:?}", engine.sum).unwrap();
+        writeln!(&mut summary, "shifted counts: {:?}", engine.shifted_counts).unwrap();
 
         writeln!(&mut summary, "pending disjunctions:").unwrap();
         for &[left, right] in &engine.disjunctions {

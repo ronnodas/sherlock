@@ -8,7 +8,7 @@ use crate::solver::hint::recipes::{
     AddContext, ColumnRecipe, Context, LineRecipe, NameRecipe, RowRecipe,
 };
 use crate::solver::hint::{
-    Bound, BoundOrNot, Comparison, Hint, LineKind, Number, Parity, ShiftedCount,
+    Bound, BoundOrNot, Comparison, CountWithNeighbors, Hint, LineKind, Number, Parity, ShiftedCount,
 };
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
@@ -379,12 +379,12 @@ impl Unit {
     ) -> Result<Vec<Hint>> {
         let set = self.add_context(context)?;
         if let Some(set) = set.non_empty() {
-            let hints = vec![Hint::CountWithNeighbors {
+            let hints = vec![Hint::CountWithNeighbors(CountWithNeighbors {
                 set,
-                count,
                 each,
+                count,
                 judgment,
-            }];
+            })];
             Ok(hints)
         } else if !count.matches(0) {
             bail!("{self:?} is empty so cannot have {count:?} members");

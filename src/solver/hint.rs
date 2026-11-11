@@ -33,13 +33,7 @@ pub(crate) enum Hint {
         judgment: Judgment,
         bound: Bound,
     },
-    /// `count` many members of the given set has `each` neighbors with given judgment
-    CountWithNeighbors {
-        set: Set1,
-        each: Bound,
-        count: Bound,
-        judgment: Judgment,
-    },
+    CountWithNeighbors(CountWithNeighbors),
     IfThen([Judged<Coord>; 2]),
 }
 
@@ -69,22 +63,7 @@ impl Hint {
                     .count()
                     == 1
             }
-            Self::CountWithNeighbors {
-                set,
-                each,
-                count,
-                judgment,
-            } => {
-                let counted = set
-                    .into_iter()
-                    .filter(|coord| {
-                        let neighbors = solution.select(&coord.neighbors().judged(*judgment)).len();
-                        each.matches(neighbors)
-                    })
-                    .collect::<Set>()
-                    .len();
-                count.matches(counted)
-            }
+            Self::CountWithNeighbors(hint) => hint.evaluate(solution),
             Self::IfThen(clauses) => {
                 let [premise, consequence] =
                     clauses.map(|Judged(coord, judgment)| solution[coord] == judgment);
@@ -109,6 +88,32 @@ impl ShiftedCount {
         let source = solution.select(&self.source.judged(self.source_judgment));
         let target = solution.select(&source.shift(self.direction).judged(self.target_judgment));
         self.bound.matches(target.len())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+/// `count` many members of the given set has `each` neighbors with given judgment
+pub(crate) struct CountWithNeighbors {
+    pub set: Set1,
+    pub each: Bound,
+    pub count: Bound,
+    pub judgment: Judgment,
+}
+
+impl CountWithNeighbors {
+    pub(crate) fn evaluate(&self, solution: &Solution) -> bool {
+        let counted = self
+            .set
+            .into_iter()
+            .filter(|coord| {
+                let neighbors = solution
+                    .select(&coord.neighbors().judged(self.judgment))
+                    .len();
+                self.each.matches(neighbors)
+            })
+            .collect::<Set>()
+            .len();
+        self.count.matches(counted)
     }
 }
 
