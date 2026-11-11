@@ -9,6 +9,7 @@ use itertools::Itertools as _;
 use mitsein::EmptyError;
 use mitsein::slice1::Slice1;
 use mitsein::vec1::Vec1;
+use strum::VariantArray;
 
 use crate::grid::Grid;
 #[cfg(test)]
@@ -34,6 +35,7 @@ pub(super) struct InferenceSolver {
     difference: IndexMap<[Set1; 2], Interval<i8>>,
     sum: IndexMap<[Set1; 2], Interval<Number>>,
     disjunctions: IndexSet<[Judged<Coord>; 2]>,
+    shifted_counts: Vec<ShiftedCount>,
     generic: Vec<Hint>,
     allowed_depth: Option<u8>,
     #[cfg(test)]
@@ -41,17 +43,12 @@ pub(super) struct InferenceSolver {
 }
 
 impl InferenceSolver {
-    fn update_phase(
-        &mut self,
-        #[cfg(test)] tactic: Tactic,
-        #[cfg(not(test))] _tactic: Tactic,
-        update: impl FnOnce(&mut Self) -> Result<bool, Contradiction>,
-    ) -> Result<bool, Contradiction> {
+    fn update_phase(&mut self, tactic: Tactic) -> Result<bool, Contradiction> {
         #[cfg(test)]
         if self.allowed_depth.is_none() {
             eprintln!("{}", tactic.name());
         }
-        let updated = update(self)?;
+        let updated = self.apply_tactic(tactic)?;
         #[cfg(test)]
         if self.validation_solution.is_some() {
             self.validate_theorems(tactic);
@@ -59,23 +56,30 @@ impl InferenceSolver {
         Ok(updated)
     }
 
+    fn apply_tactic(&mut self, tactic: Tactic) -> Result<bool, Contradiction> {
+        match tactic {
+            Tactic::ProcessGenericHints => self.process_generic_hints(),
+            Tactic::SimplifyDisjunctions => self.simplify_disjunctions(),
+            Tactic::ExtractTightCounts => self.extract_tight_counts(),
+            Tactic::SimplifyCriminalCounts => self.simplify_criminal_counts(),
+            Tactic::SimplifySums => self.simplify_sums(),
+            Tactic::SimplifyDifferences => self.simplify_differences(),
+            Tactic::SimplifyConnected => self.simplify_connected(),
+            Tactic::SimplifyShiftedCounts => self.simplify_shifted_counts(),
+            Tactic::CountsFromDifferences => self.counts_from_differences(),
+            Tactic::CombineCriminalCounts => self.combine_criminal_counts(),
+            Tactic::InclusionExclusion => self.inclusion_exclusion_bounds(),
+            Tactic::Bifurcate => self.bifurcate(),
+        }
+    }
+
     fn update_theorems_or_contradict(&mut self) -> Result<bool, Contradiction> {
-        let updated = self
-            .update_phase(Tactic::ProcessGenericHints, Self::process_generic_hints)?
-            || self.update_phase(Tactic::SimplifyDisjunctions, Self::simplify_disjunctions)?
-            || self.update_phase(Tactic::ExtractTightCounts, Self::extract_tight_counts)?
-            || self.update_phase(
-                Tactic::SimplifyCriminalCounts,
-                Self::simplify_criminal_counts,
-            )?
-            || self.update_phase(Tactic::SimplifySums, Self::simplify_sums)?
-            || self.update_phase(Tactic::SimplifyDifferences, Self::simplify_differences)?
-            || self.update_phase(Tactic::SimplifyConnected, Self::simplify_connected)?
-            || self.update_phase(Tactic::CountsFromDifferences, Self::counts_from_differences)?
-            || self.update_phase(Tactic::CombineCriminalCounts, Self::combine_criminal_counts)?
-            || self.update_phase(Tactic::InclusionExclusion, Self::inclusion_exclusion_bounds)?
-            || self.update_phase(Tactic::Bifurcate, Self::bifurcate)?;
-        Ok(updated)
+        for &tactic in Tactic::VARIANTS {
+            if self.update_phase(tactic)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     fn process_generic_hints(&mut self) -> Result<bool, Contradiction> {
@@ -650,117 +654,116 @@ impl InferenceSolver {
         self.add_criminal_count(set, judgment, count)
     }
 
-    fn add_shifted_count(&mut self, hint: ShiftedCount) -> Result<bool, Contradiction> {
-        let source = (hint.source & Set1::shift_preimage(hint.direction))
-            .non_empty()
-            .ok_or(Contradiction)?;
-        let mut guaranteed_matches = 0_u8;
-        let mut possible_pairs = Vec::new();
-        let mut source_only = Set::empty();
-        let mut target_only = Set::empty();
-        let mut has_unresolved_pair = false;
-        for source_coord in source {
-            let target_coord = source_coord
-                .step(hint.direction)
-                .expect("source is clipped to the shift preimage");
-            let source_matches =
-                self.known[source_coord].map(|known| known == hint.source_judgment);
-            let target_matches =
-                self.known[target_coord].map(|known| known == hint.target_judgment);
-            match [source_matches, target_matches] {
-                [Some(true), Some(true)] => guaranteed_matches = guaranteed_matches.strict_add(1),
-                [Some(false), _] | [_, Some(false)] => {}
-                [None, Some(true)] => {
-                    source_only |= source_coord;
-                    possible_pairs.push((source_coord, target_coord));
-                }
-                [Some(true), None] => {
-                    target_only |= target_coord;
-                    possible_pairs.push((source_coord, target_coord));
-                }
-                [None, None] => {
-                    has_unresolved_pair = true;
-                    possible_pairs.push((source_coord, target_coord));
+    fn simplify_shifted_counts(&mut self) -> Result<bool, Contradiction> {
+        let mut new = Vec::new();
+        for hint in mem::take(&mut self.shifted_counts) {
+            let source = (hint.source & Set1::shift_preimage(hint.direction))
+                .non_empty()
+                .ok_or(Contradiction)?;
+            let mut guaranteed_matches = 0_u8;
+            let mut possible_pairs = Vec::new();
+            let mut source_only = Set::empty();
+            let mut target_only = Set::empty();
+            let mut has_unresolved_pair = false;
+            for source_coord in source {
+                let target_coord = source_coord
+                    .step(hint.direction)
+                    .expect("source is clipped to the shift preimage");
+                let source_matches =
+                    self.known[source_coord].map(|known| known == hint.source_judgment);
+                let target_matches =
+                    self.known[target_coord].map(|known| known == hint.target_judgment);
+                match [source_matches, target_matches] {
+                    [Some(true), Some(true)] => {
+                        guaranteed_matches = guaranteed_matches.strict_add(1);
+                    }
+                    [Some(false), _] | [_, Some(false)] => {}
+                    [None, Some(true)] => {
+                        source_only |= source_coord;
+                        possible_pairs.push((source_coord, target_coord));
+                    }
+                    [Some(true), None] => {
+                        target_only |= target_coord;
+                        possible_pairs.push((source_coord, target_coord));
+                    }
+                    [None, None] => {
+                        has_unresolved_pair = true;
+                        possible_pairs.push((source_coord, target_coord));
+                    }
                 }
             }
-        }
 
-        let count = hint
-            .bound
-            .checked_sub(guaranteed_matches)
-            .ok_or(Contradiction)?;
-        if !has_unresolved_pair {
-            return self.shifted_count_pairs(
-                source_only,
-                hint.source_judgment,
-                target_only,
-                hint.target_judgment,
-                count,
-            );
-        }
+            let bound = hint
+                .bound
+                .checked_sub(guaranteed_matches)
+                .ok_or(Contradiction)?;
+            if !has_unresolved_pair {
+                Self::shifted_count_pairs(
+                    source_only.judged(hint.source_judgment),
+                    target_only.judged(hint.target_judgment),
+                    bound,
+                    &mut new,
+                )?;
+            }
 
-        let minimum = count.minimum();
-        if minimum == 0 {
-            self.generic.push(Hint::ShiftedCount(hint));
-            return Ok(false);
-        }
-        let possible_pairs =
-            Vec1::try_from(possible_pairs).map_err(|EmptyError { .. }| Contradiction)?;
+            let minimum = bound.minimum();
+            if minimum == 0 {
+                new.push(Theorem::ShiftedCount(hint));
+                continue;
+            }
+            let possible_pairs =
+                Vec1::try_from(possible_pairs).map_err(|EmptyError { .. }| Contradiction)?;
 
-        let possible_sources: Set1 = possible_pairs.iter1().map(|&(source, _)| source).collect1();
-        let possible_targets: Set1 = possible_pairs.iter1().map(|&(_, target)| target).collect1();
+            let possible_sources: Set1 =
+                possible_pairs.iter1().map(|&(source, _)| source).collect1();
+            let possible_targets: Set1 =
+                possible_pairs.iter1().map(|&(_, target)| target).collect1();
 
-        let source_count = self.count_judged(possible_sources, hint.source_judgment)?;
-        let target_count = self.count_judged(possible_targets, hint.target_judgment)?;
-        if minimum > source_count.maximum() || minimum > target_count.maximum() {
-            return Err(Contradiction);
-        }
+            let source_count = self.count_judged(possible_sources, hint.source_judgment)?;
+            let target_count = self.count_judged(possible_targets, hint.target_judgment)?;
+            if minimum > source_count.maximum() || minimum > target_count.maximum() {
+                return Err(Contradiction);
+            }
 
-        let mut new = Vec::new();
-        if minimum == possible_pairs.len().get().try_into().expect("at most 20") {
-            new.push(Theorem::All(possible_sources, hint.source_judgment));
-            new.push(Theorem::All(possible_targets, hint.target_judgment));
-        } else {
-            self.generic.push(Hint::ShiftedCount(hint));
-            let source_matches = minimum >= source_count.maximum();
-            let target_matches = minimum >= target_count.maximum();
-            for (source_coord, target_coord) in possible_pairs {
-                let source = Judged(source_coord, hint.source_judgment);
-                let target = Judged(target_coord, hint.target_judgment);
-                if source_matches {
-                    new.push(Hint::IfThen([source, target]).into());
+            if minimum == possible_pairs.len().get().try_into().expect("at most 20") {
+                new.push(Theorem::All(possible_sources, hint.source_judgment));
+                new.push(Theorem::All(possible_targets, hint.target_judgment));
+            } else {
+                let source_matches = minimum >= source_count.maximum();
+                let target_matches = minimum >= target_count.maximum();
+                for (source_coord, target_coord) in possible_pairs {
+                    let source = Judged(source_coord, hint.source_judgment);
+                    let target = Judged(target_coord, hint.target_judgment);
+                    if source_matches {
+                        new.push(Hint::IfThen([source, target]).into());
+                    }
+                    if target_matches {
+                        new.push(Hint::IfThen([target, source]).into());
+                    }
                 }
-                if target_matches {
-                    new.push(Hint::IfThen([target, source]).into());
-                }
+                new.push(Theorem::ShiftedCount(hint));
             }
         }
         self.add_theorems(new)
     }
 
     fn shifted_count_pairs(
-        &mut self,
-        source: Set,
-        source_judgment: Judgment,
-        target: Set,
-        target_judgment: Judgment,
+        source: Judged<Set>,
+        target: Judged<Set>,
         bound: Bound,
-    ) -> Result<bool, Contradiction> {
-        match [
-            (source.non_empty(), source_judgment),
-            (target.non_empty(), target_judgment),
-        ] {
-            [(None, _), (None, _)] if bound.matches(0) => Ok(false),
-            [(None, _), (None, _)] => Err(Contradiction),
-            [(Some(set), judgment), (None, _)] | [(None, _), (Some(set), judgment)] => {
-                self.add_theorem(Hint::Count(set, judgment, bound.into()).into())
+        new: &mut Vec<Theorem>,
+    ) -> Result<(), Contradiction> {
+        match [source.non_empty(), target.non_empty()] {
+            [None, None] if bound.matches(0) => {}
+            [None, None] => return Err(Contradiction),
+            [Some(Judged(set, judgment)), None] | [None, Some(Judged(set, judgment))] => {
+                new.push(Hint::Count(set, judgment, bound.into()).into());
             }
-            [(Some(source), _), (Some(target), _)] => {
-                let sets = [(source, source_judgment), (target, target_judgment)]
-                    .map(|(set, judgment)| set.judged(judgment));
-                self.add_theorem(Hint::CountTotal(sets, bound).into())
+            [Some(source), Some(target)] => {
+                new.push(Hint::CountTotal([source, target], bound).into());
             }
         }
+        Ok(())
     }
 
     fn add_if_then(&mut self, clauses: [Judged<Coord>; 2]) -> Result<bool, Contradiction> {
@@ -864,6 +867,10 @@ impl InferenceSolver {
             Theorem::Generic(hint) => self.try_add_hint(hint)?,
             Theorem::True => false,
             Theorem::False => return Err(Contradiction),
+            Theorem::ShiftedCount(hint) => {
+                self.shifted_counts.push(hint);
+                false
+            }
         };
         Ok(updated)
     }
@@ -1028,7 +1035,10 @@ impl InferenceSolver {
                 judgment,
             } => self.add_count_with_neighbors(each, count, judgment, set)?,
             Hint::IfThen(clauses) => self.add_if_then(clauses)?,
-            Hint::ShiftedCount(clue) => self.add_shifted_count(clue)?,
+            Hint::ShiftedCount(clue) => {
+                self.shifted_counts.push(clue);
+                false
+            }
         };
         Ok(updated)
     }
@@ -1131,7 +1141,7 @@ impl InferenceSolver {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, VariantArray)]
 enum Tactic {
     ProcessGenericHints,
     SimplifyDisjunctions,
@@ -1140,10 +1150,11 @@ enum Tactic {
     SimplifySums,
     SimplifyDifferences,
     SimplifyConnected,
+    SimplifyShiftedCounts,
     CountsFromDifferences,
     CombineCriminalCounts,
-    Bifurcate,
     InclusionExclusion,
+    Bifurcate,
 }
 
 #[cfg(test)]
@@ -1157,6 +1168,7 @@ impl Tactic {
             Self::SimplifySums => "simplifying sums",
             Self::SimplifyDifferences => "simplifying differences",
             Self::SimplifyConnected => "simplifying connected hints",
+            Self::SimplifyShiftedCounts => "simplifying clues involving shifted suspects",
             Self::CountsFromDifferences => "inferring counts from differences",
             Self::CombineCriminalCounts => "comparing count pairs",
             Self::InclusionExclusion => "generating bounds from inclusion-exclusion",
@@ -1172,6 +1184,7 @@ enum Theorem {
     CriminalDifference([Set1; 2], Interval<i8>),
     CriminalSum([Set1; 2], Interval<Number>),
     Disjunction([Judged<Coord>; 2]),
+    ShiftedCount(ShiftedCount),
     Generic(Hint),
     True,
     False,
@@ -1197,10 +1210,11 @@ impl Theorem {
                     .strict_add(solution.select(&b.judged(Judgment::Criminal)).len());
                 sum.matches(&total)
             }
-            Self::Generic(hint) => hint.evaluate(solution),
             Self::Disjunction(clauses) => clauses
                 .iter()
                 .any(|&Judged(coord, judgment)| solution[coord] == judgment),
+            Self::ShiftedCount(hint) => hint.evaluate(solution),
+            Self::Generic(hint) => hint.evaluate(solution),
             Self::True => true,
             Self::False => false,
         }

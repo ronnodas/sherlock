@@ -14,15 +14,6 @@ pub(crate) mod recipes;
 pub(crate) type Number = u8;
 pub(crate) use parsers::Sentence;
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ShiftedCount {
-    pub source: Set1,
-    pub source_judgment: Judgment,
-    pub direction: Direction,
-    pub target_judgment: Judgment,
-    pub bound: Bound,
-}
-
 #[derive(Clone, Debug)]
 pub(crate) enum Hint {
     /// Given coordinate has given judgment
@@ -99,18 +90,25 @@ impl Hint {
                     clauses.map(|Judged(coord, judgment)| solution[coord] == judgment);
                 !premise || consequence
             }
-            &Self::ShiftedCount(ShiftedCount {
-                source,
-                source_judgment,
-                direction,
-                target_judgment,
-                bound: count,
-            }) => {
-                let source = solution.select(&source.judged(source_judgment));
-                let target = solution.select(&source.shift(direction).judged(target_judgment));
-                count.matches(target.len())
-            }
+            &Self::ShiftedCount(hint) => hint.evaluate(solution),
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ShiftedCount {
+    pub source: Set1,
+    pub source_judgment: Judgment,
+    pub direction: Direction,
+    pub target_judgment: Judgment,
+    pub bound: Bound,
+}
+
+impl ShiftedCount {
+    pub(crate) fn evaluate(&self, solution: &Solution) -> bool {
+        let source = solution.select(&self.source.judged(self.source_judgment));
+        let target = solution.select(&source.shift(self.direction).judged(self.target_judgment));
+        self.bound.matches(target.len())
     }
 }
 
