@@ -10,19 +10,6 @@ use crate::solver::board::coordinates::Set1;
 use crate::solver::hint::{Bound, BoundOrNot, Number, Parity};
 use crate::solver::inference::{Contradiction, TriState};
 
-pub(crate) fn reduce_bound_or_not(count: BoundOrNot, rhs: Number) -> Option<BoundOrNot> {
-    let count = match count {
-        BoundOrNot::Exact(count) => BoundOrNot::Exact(count.checked_sub(rhs)?),
-        BoundOrNot::AtLeast(count) => BoundOrNot::AtLeast(count.saturating_sub(rhs)),
-        BoundOrNot::AtMost(count) => BoundOrNot::AtMost(count.checked_sub(rhs)?),
-        BoundOrNot::Parity(parity) => BoundOrNot::Parity(parity ^ Parity::of(rhs)),
-        BoundOrNot::NotExact(count) => count
-            .checked_sub(rhs)
-            .map_or(BoundOrNot::AtLeast(0), BoundOrNot::NotExact),
-    };
-    Some(count)
-}
-
 pub(crate) fn reduce_bound(count: Bound, rhs: Number) -> Option<Bound> {
     let count = match count {
         Bound::Exact(count) => Bound::Exact(count.checked_sub(rhs)?),
@@ -180,8 +167,8 @@ impl CountSet {
         .simplify()
     }
 
-    pub(crate) fn from_cardinal(cardinal: BoundOrNot, max: NonZero<Number>) -> Option<Self> {
-        match cardinal {
+    pub(crate) fn from_bound_or_not(bound: BoundOrNot, max: NonZero<Number>) -> Option<Self> {
+        match bound {
             BoundOrNot::Exact(value) => (value <= max.get()).then_some(Self::Exact(value)),
             BoundOrNot::AtLeast(min) => Self::complex(min, max.get(), None),
             BoundOrNot::AtMost(value) => Some(Self::max(value.min(max.get()))),

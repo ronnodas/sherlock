@@ -332,14 +332,3 @@ pub(crate) enum Direction {
     Left,
     Right,
 }
-
-impl Direction {
-    pub(crate) fn flip(self) -> Self {
-        match self {
-            Self::Above => Self::Below,
-            Self::Below => Self::Above,
-            Self::Left => Self::Right,
-            Self::Right => Self::Left,
-        }
-    }
-}

@@ -453,8 +453,8 @@ impl Unit {
             if any_all.is_all() {
                 hints.push(Hint::Count(self_, judgment, BoundOrNot::AtLeast(1)));
             }
-            let hint = (self_ & other).non_empty().map_or_else(
-                || Hint::Count(self_, judgment, BoundOrNot::Exact(0)),
+            let hint = (self_ & other).non_empty().map_or(
+                Hint::Count(self_, judgment, BoundOrNot::Exact(0)),
                 |intersection| {
                     Hint::CompareSets(
                         [self_, intersection].map(|set| set.judged(judgment)),

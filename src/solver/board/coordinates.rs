@@ -219,25 +219,12 @@ impl Set1 {
         set1!(A 1 | D 1 | A 5 | D 5)
     }
 
-    pub(crate) fn shift_preimage(direction: Direction) -> Self {
-        Self::all()
-            .shift(direction.flip())
-            .non_empty()
-            .expect("each shift is non-trivial")
-    }
-
     pub(crate) fn len(self) -> NonZero<u8> {
         self.0.count_ones().try_into().expect("at most 20")
     }
 
     pub(crate) fn contains(self, coord: Coord) -> bool {
         self.0.get() & (1 << coord.to_index()) != 0
-    }
-
-    pub(crate) fn shift(self, direction: Direction) -> Set {
-        self.into_iter()
-            .filter_map(|coord| coord.step(direction))
-            .collect()
     }
 
     pub(crate) fn judged(self, judgment: Judgment) -> Judged<Self> {

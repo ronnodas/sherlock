@@ -23,6 +23,7 @@ impl ByJudgment {
         Self { variable, fixed }
     }
 
+    /// returns `[variable, fixed]` where `fixed` is the subset with given judgment
     pub(crate) fn only(self, judgment: Judgment) -> [Set; 2] {
         [self.variable, self.fixed[judgment]]
     }
