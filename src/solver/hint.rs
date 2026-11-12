@@ -27,12 +27,7 @@ pub(crate) enum Hint {
     Connected(Set1, Judgment),
     /// The first set compares with the second set
     CompareSets([Judged<Set1>; 2], Comparison),
-    /// Among the given `sets`, exactly one has count matching `bound`
-    UniqueWithCount {
-        sets: Vec1<Set1>,
-        judgment: Judgment,
-        bound: Bound,
-    },
+    UniqueWithCount(UniqueWithCount),
     CountWithNeighbors(CountWithNeighbors),
     IfThen([Judged<Coord>; 2]),
 }
@@ -53,16 +48,7 @@ impl Hint {
                 let [lhs, rhs] = sets.each_ref().map(|set| solution.select(set).len());
                 comparison.compare(lhs, rhs)
             }
-            Self::UniqueWithCount {
-                sets,
-                judgment,
-                bound,
-            } => {
-                sets.iter()
-                    .filter(|&set| bound.matches(solution.select(&set.judged(*judgment)).len()))
-                    .count()
-                    == 1
-            }
+            Self::UniqueWithCount(hint) => hint.evaluate(solution),
             Self::CountWithNeighbors(hint) => hint.evaluate(solution),
             Self::IfThen(clauses) => {
                 let [premise, consequence] =
@@ -114,6 +100,27 @@ impl CountWithNeighbors {
             .collect::<Set>()
             .len();
         self.count.matches(counted)
+    }
+}
+
+#[derive(Clone, Debug)]
+/// Among the given `sets`, exactly one has count matching `bound`
+pub(crate) struct UniqueWithCount {
+    pub sets: Vec1<Set1>,
+    pub judgment: Judgment,
+    pub bound: Bound,
+}
+
+impl UniqueWithCount {
+    pub(crate) fn evaluate(&self, solution: &Solution) -> bool {
+        self.sets
+            .iter()
+            .filter(|&set| {
+                self.bound
+                    .matches(solution.select(&set.judged(self.judgment)).len())
+            })
+            .count()
+            == 1
     }
 }
 

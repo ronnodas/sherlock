@@ -8,7 +8,8 @@ use crate::solver::hint::recipes::{
     AddContext, ColumnRecipe, Context, LineRecipe, NameRecipe, RowRecipe,
 };
 use crate::solver::hint::{
-    Bound, BoundOrNot, Comparison, CountWithNeighbors, Hint, LineKind, Number, Parity, ShiftedCount,
+    Bound, BoundOrNot, Comparison, CountWithNeighbors, Hint, LineKind, Number, Parity,
+    ShiftedCount, UniqueWithCount,
 };
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
@@ -91,11 +92,11 @@ impl AddContext for &Sentence {
             }
 
             &Sentence::UniqueUnitInSeriesHasSize(series, bound, judgment) => {
-                vec![Hint::UniqueWithCount {
+                vec![Hint::UniqueWithCount(UniqueWithCount {
                     sets: series.all(context),
                     judgment,
                     bound,
-                }]
+                })]
             }
             &Sentence::EachUnitInSeriesHasSize(kind, bound, judgment) => kind
                 .all(context)
@@ -223,11 +224,11 @@ impl Unit {
             hints
         } else {
             let sets = set.into_iter1().map(Coord::neighbors).collect1();
-            vec![Hint::UniqueWithCount {
+            vec![Hint::UniqueWithCount(UniqueWithCount {
                 sets,
                 judgment,
                 bound,
-            }]
+            })]
         };
         Ok(hints)
     }
@@ -377,6 +378,10 @@ impl Unit {
         judgment: Judgment,
         context: Context<'_>,
     ) -> Result<Vec<Hint>> {
+        if matches!(count, Bound::Exact(1)) {
+            return self.unique_member_has_n_neighbors(each, judgment, None, context);
+        }
+
         let set = self.add_context(context)?;
         if let Some(set) = set.non_empty() {
             let hints = vec![Hint::CountWithNeighbors(CountWithNeighbors {

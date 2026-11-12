@@ -19,6 +19,7 @@ use crate::solver::Engine;
 use crate::solver::board::coordinates::{Set, Set1};
 use crate::solver::hint::{
     Bound, BoundOrNot, Comparison, CountWithNeighbors, Hint, Number, Parity, ShiftedCount,
+    UniqueWithCount,
 };
 use crate::solver::inference::count::{CountSet, EndPoint, Interval};
 use crate::solver::inference::split::ByJudgment;
@@ -39,6 +40,7 @@ pub(super) struct InferenceSolver {
     disjunctions: IndexSet<[Judged<Coord>; 2]>,
     shifted_counts: Vec<ShiftedCount>,
     count_with_neighbors: Vec<CountWithNeighbors>,
+    unique_with_count: Vec<UniqueWithCount>,
     generic: Vec<Hint>,
     allowed_depth: Option<u8>,
     #[cfg(test)]
@@ -70,6 +72,7 @@ impl InferenceSolver {
             Tactic::SimplifyConnected => self.simplify_connected(),
             Tactic::SimplifyShiftedCounts => self.simplify_shifted_counts(),
             Tactic::SimplifyCountsWithNeighbors => self.simplify_count_with_neighbors(),
+            Tactic::SimplifyUniqueWithCount => self.simplify_unique_with_count(),
             Tactic::CountsFromDifferences => self.counts_from_differences(),
             Tactic::CombineCriminalCounts => self.combine_criminal_counts(),
             Tactic::InclusionExclusion => self.inclusion_exclusion_bounds(),
@@ -770,6 +773,48 @@ impl InferenceSolver {
         Ok(())
     }
 
+    fn simplify_unique_with_count(&mut self) -> Result<bool, Contradiction> {
+        let mut new = Vec::new();
+        for hint in mem::take(&mut self.unique_with_count) {
+            let mut yes = None;
+            let mut maybe = Vec::new();
+            for set in hint.sets {
+                match self.count_status(set, hint.judgment, hint.bound)? {
+                    TriState::No => {}
+                    TriState::Maybe => maybe.push(set),
+                    TriState::Yes => {
+                        if yes.replace(set).is_some() {
+                            return Err(Contradiction);
+                        }
+                    }
+                }
+            }
+            if yes.is_some() {
+                if !maybe.is_empty() {
+                    let bound = hint.bound.not().ok_or(Contradiction)?;
+                    new.extend(
+                        maybe
+                            .into_iter()
+                            .map(|set| Hint::Count(set, hint.judgment, bound).into()),
+                    );
+                }
+            } else {
+                match <[_; 1]>::try_from(maybe) {
+                    Ok([unique]) => {
+                        new.push(Hint::Count(unique, hint.judgment, hint.bound.into()).into());
+                    }
+                    Err(maybe) => {
+                        let Ok(sets) = Vec1::try_from(maybe) else {
+                            return Err(Contradiction);
+                        };
+                        new.push(Theorem::UniqueWithCount(UniqueWithCount { sets, ..hint }));
+                    }
+                }
+            }
+        }
+        self.add_theorems(new)
+    }
+
     fn add_if_then(&mut self, clauses: [Judged<Coord>; 2]) -> Result<bool, Contradiction> {
         let [premise, conclusion] = clauses;
         self.add_disjunction([premise.flip(), conclusion])
@@ -865,6 +910,10 @@ impl InferenceSolver {
             }
             Theorem::CountWithNeighbors(hint) => {
                 self.count_with_neighbors.push(hint);
+                false
+            }
+            Theorem::UniqueWithCount(hint) => {
+                self.unique_with_count.push(hint);
                 false
             }
             Theorem::Generic(hint) => self.try_add_hint(hint)?,
@@ -981,51 +1030,9 @@ impl InferenceSolver {
             Hint::CountTotal(sets, count) => self.add_complex_sum(sets, count)?,
             Hint::Connected(set, judgment) => self.connected.insert((set, judgment)),
             Hint::CompareSets(sets, compare) => self.add_complex_diff(sets, compare)?,
-            Hint::UniqueWithCount {
-                sets,
-                judgment,
-                bound,
-            } => {
-                let mut yes = None;
-                let mut maybe = Vec::new();
-                for set in sets {
-                    match self.count_status(set, judgment, bound)? {
-                        TriState::No => {}
-                        TriState::Maybe => maybe.push(set),
-                        TriState::Yes => {
-                            if yes.replace(set).is_some() {
-                                return Err(Contradiction);
-                            }
-                        }
-                    }
-                }
-                if yes.is_some() {
-                    !maybe.is_empty() && {
-                        let count = bound.not().ok_or(Contradiction)?;
-                        self.add_theorems(
-                            maybe
-                                .into_iter()
-                                .map(|set| Hint::Count(set, judgment, count).into()),
-                        )?
-                    }
-                } else {
-                    match <[_; 1]>::try_from(maybe) {
-                        Ok([unique]) => {
-                            self.simplify_and_add_count(unique, judgment, bound.into())?
-                        }
-                        Err(maybe) => {
-                            let Ok(sets) = Vec1::try_from(maybe) else {
-                                return Err(Contradiction);
-                            };
-                            self.generic.push(Hint::UniqueWithCount {
-                                sets,
-                                judgment,
-                                bound,
-                            });
-                            false
-                        }
-                    }
-                }
+            Hint::UniqueWithCount(hint) => {
+                self.unique_with_count.push(hint);
+                false
             }
             Hint::CountWithNeighbors(hint) => {
                 self.count_with_neighbors.push(hint);
@@ -1149,6 +1156,7 @@ enum Tactic {
     SimplifyConnected,
     SimplifyShiftedCounts,
     SimplifyCountsWithNeighbors,
+    SimplifyUniqueWithCount,
     CountsFromDifferences,
     CombineCriminalCounts,
     InclusionExclusion,
@@ -1170,6 +1178,7 @@ impl Tactic {
             Self::SimplifyCountsWithNeighbors => {
                 "simplifying clues about suspects with a given number of neighbors"
             }
+            Self::SimplifyUniqueWithCount => "simplifying clues about unique counts",
             Self::CountsFromDifferences => "inferring counts from differences",
             Self::CombineCriminalCounts => "comparing count pairs",
             Self::InclusionExclusion => "generating bounds from inclusion-exclusion",
@@ -1187,6 +1196,7 @@ enum Theorem {
     Disjunction([Judged<Coord>; 2]),
     ShiftedCount(ShiftedCount),
     CountWithNeighbors(CountWithNeighbors),
+    UniqueWithCount(UniqueWithCount),
     Generic(Hint),
     True,
     False,
@@ -1217,6 +1227,7 @@ impl Theorem {
                 .any(|&Judged(coord, judgment)| solution[coord] == judgment),
             Self::ShiftedCount(hint) => hint.evaluate(solution),
             Self::CountWithNeighbors(hint) => hint.evaluate(solution),
+            Self::UniqueWithCount(hint) => hint.evaluate(solution),
             Self::Generic(hint) => hint.evaluate(solution),
             Self::True => true,
             Self::False => false,
