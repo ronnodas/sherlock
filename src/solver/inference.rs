@@ -75,6 +75,7 @@ impl InferenceSolver {
             Tactic::SimplifyCountsWithNeighbors => self.simplify_count_with_neighbors(),
             Tactic::SimplifyUniqueWithCount => self.simplify_unique_with_count(),
             Tactic::CountsFromDifferences => self.counts_from_differences(),
+            Tactic::CountsFromSums => self.counts_from_sums(),
             Tactic::CombineCriminalCounts => self.combine_criminal_counts(),
             Tactic::InclusionExclusion => self.inclusion_exclusion_bounds(),
             Tactic::Bifurcate => self.bifurcate(),
@@ -573,6 +574,28 @@ impl InferenceSolver {
         self.add_theorems(new)
     }
 
+    fn counts_from_sums(&mut self) -> Result<bool> {
+        let mut new = Vec::with_capacity(self.sum.len().strict_mul(2));
+        for (&[a, b], sum) in &self.sum {
+            let a_min = sum.min().saturating_sub(self.max_criminals(b));
+            let a_max = sum
+                .max()
+                .checked_sub(self.min_criminals(b))
+                .ok_or(Contradiction)?;
+            let count = CountSet::complex(a_min, a_max, None).ok_or(Contradiction)?;
+            new.push(Theorem::CriminalCount(a, count));
+
+            let b_min = sum.min().saturating_sub(self.max_criminals(a));
+            let b_max = sum
+                .max()
+                .checked_sub(self.min_criminals(a))
+                .ok_or(Contradiction)?;
+            let count = CountSet::complex(b_min, b_max, None).ok_or(Contradiction)?;
+            new.push(Theorem::CriminalCount(b, count));
+        }
+        self.add_theorems(new)
+    }
+
     fn simplify_shifted_counts(&mut self) -> Result<bool> {
         let mut new = Vec::new();
         for hint in mem::take(&mut self.shifted_counts) {
@@ -928,6 +951,7 @@ enum Tactic {
     SimplifyCountsWithNeighbors,
     SimplifyUniqueWithCount,
     CountsFromDifferences,
+    CountsFromSums,
     CombineCriminalCounts,
     InclusionExclusion,
     Bifurcate,
@@ -950,6 +974,7 @@ impl Tactic {
             }
             Self::SimplifyUniqueWithCount => "simplifying clues about unique counts",
             Self::CountsFromDifferences => "inferring counts from differences",
+            Self::CountsFromSums => "inferring counts from sums",
             Self::CombineCriminalCounts => "comparing count pairs",
             Self::InclusionExclusion => "generating bounds from inclusion-exclusion",
             Self::Bifurcate => "bifurcating",
