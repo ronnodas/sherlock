@@ -34,7 +34,7 @@ const MAX_BIFURCATION_DEPTH: u8 = 2;
 pub(super) struct InferenceSolver {
     known: Grid<Option<Judgment>>,
     new_knowledge: Vec<(Coord, Judgment)>,
-    criminal_count: IndexMap<Set1, (CountSet, TheoremState)>,
+    criminal_count: IndexMap<Set1, CountSet>,
     connected: IndexSet<(Set1, Judgment)>,
     difference: IndexMap<[Set1; 2], Interval<i8>>,
     sum: IndexMap<[Set1; 2], Interval<Number>>,
@@ -66,8 +66,8 @@ impl InferenceSolver {
         match tactic {
             Tactic::ProcessHints => self.process_hints(),
             Tactic::SimplifyDisjunctions => self.simplify_disjunctions(),
-            Tactic::ExtractTightCounts => self.extract_tight_counts(),
             Tactic::SimplifyCriminalCounts => self.simplify_criminal_counts(),
+            Tactic::ExtractTightCounts => self.extract_tight_counts(),
             Tactic::SimplifySums => self.simplify_sums(),
             Tactic::SimplifyDifferences => self.simplify_differences(),
             Tactic::SimplifyConnected => self.simplify_connected(),
@@ -102,7 +102,7 @@ impl InferenceSolver {
     fn simplify_criminal_counts(&mut self) -> Result<bool> {
         let mut discard = Vec::new();
         let mut new = Vec::new();
-        for (index, (&set, (count, _))) in self.criminal_count.iter().enumerate() {
+        for (index, (&set, count)) in self.criminal_count.iter().enumerate() {
             let [variable, fixed] = ByJudgment::split(set, &self.known).only(Judgment::Criminal);
             let count = count.checked_sub(fixed.len()).ok_or(Contradiction)?;
             if let Some(variable) = variable.non_empty() {
@@ -199,7 +199,7 @@ impl InferenceSolver {
                         && (a_var & b_var).non_empty().is_none_or(|intersection| {
                             self.criminal_count
                                 .get(&intersection)
-                                .is_none_or(|(intersection, _)| !intersection.is_exact())
+                                .is_none_or(|intersection| !intersection.is_exact())
                         })
                     {
                         continue;
@@ -291,7 +291,7 @@ impl InferenceSolver {
             .criminal_count
             .iter()
             .enumerate()
-            .map(|(index, (&set, &(count, _)))| {
+            .map(|(index, (&set, &count))| {
                 Ok(count.tight(set)?.map(|endpoint| {
                     discard.push(index);
                     let judgment = match endpoint {
@@ -313,29 +313,16 @@ impl InferenceSolver {
     }
 
     fn combine_criminal_counts(&mut self) -> Result<bool> {
-        let mut discard = BTreeSet::new();
         let mut new = Vec::new();
         // TODO array_permutations()
-        for [(a_index, (a, (a_count, _))), (b_index, (b, (b_count, _)))] in self
-            .criminal_count
-            .iter()
-            .enumerate()
-            .filter(|(_, (_, (_, state)))| state.is_active())
-            .array_combinations()
-        {
+        for [(a, a_count), (b, b_count)] in self.criminal_count.iter().array_combinations() {
             if a <= b {
-                if a_count.is_exact() {
-                    _ = discard.insert(b_index);
-                }
                 let count = b_count.checked_sub(*a_count).ok_or(Contradiction)?;
                 new.push(Theorem::CriminalCount(
                     b.difference(Set::from(*a)).non_empty().expect("a != b"),
                     count,
                 ));
             } else if b <= a {
-                if b_count.is_exact() {
-                    _ = discard.insert(a_index);
-                }
                 let count = a_count.checked_sub(*b_count).ok_or(Contradiction)?;
                 new.push(Theorem::CriminalCount(
                     a.difference(Set::from(*b)).non_empty().expect("a != b"),
@@ -349,9 +336,6 @@ impl InferenceSolver {
                 new.push(Theorem::CriminalCount(symm_diff, count));
             }
         }
-        for index in discard.into_iter().rev() {
-            self.criminal_count[index].1 = TheoremState::Discarded;
-        }
         self.add_theorems(new)
     }
 
@@ -359,17 +343,12 @@ impl InferenceSolver {
     /// bounds for both the union and the intersection
     fn inclusion_exclusion_bounds(&mut self) -> Result<bool> {
         let mut new = Vec::new();
-        for [(&a, (a_count, _)), (&b, (b_count, _))] in self
-            .criminal_count
-            .iter()
-            .filter(|(_, (_, state))| state.is_active())
-            .array_combinations()
-        {
+        for [(&a, a_count), (&b, b_count)] in self.criminal_count.iter().array_combinations() {
             let union = a | b;
             let sum = a_count.strict_add(*b_count);
             if let Some(intersection) = (a & b).non_empty() {
-                if let Some(&(union_bound, _)) = self.criminal_count.get(&union)
-                    && let Some(&(intersection_bound, _)) = self.criminal_count.get(&intersection)
+                if let Some(&union_bound) = self.criminal_count.get(&union)
+                    && let Some(&intersection_bound) = self.criminal_count.get(&intersection)
                 {
                     new.push(Theorem::CriminalCount(
                         union,
@@ -486,7 +465,7 @@ impl InferenceSolver {
     fn max_criminals(&self, set: Set1) -> Number {
         self.criminal_count
             .iter()
-            .map(|(other, (count, _))| {
+            .map(|(other, count)| {
                 count
                     .maximum()
                     .min((set & *other).len())
@@ -499,7 +478,7 @@ impl InferenceSolver {
     fn min_criminals(&self, set: Set1) -> Number {
         self.criminal_count
             .iter()
-            .map(|(other, (count, _))| {
+            .map(|(other, count)| {
                 count
                     .minimum()
                     .saturating_sub(other.difference(Set::from(set)).len())
@@ -806,8 +785,7 @@ impl InferenceSolver {
                     updated = self
                         .criminal_count
                         .entry(set)
-                        .or_insert_with(|| (CountSet::max(set.len().get()), TheoremState::Active))
-                        .0
+                        .or_insert_with(|| CountSet::max(set.len().get()))
                         .intersect(count)?;
                 } else if !count.matches(0) {
                     return Err(Contradiction);
@@ -851,7 +829,7 @@ impl InferenceSolver {
     }
 
     fn gather_criminal_count(&self, set: Set1) -> Result<CountSet> {
-        if let Some(&(count, _)) = self.criminal_count.get(&set) {
+        if let Some(&count) = self.criminal_count.get(&set) {
             Ok(count)
         } else {
             CountSet::complex(self.min_criminals(set), self.max_criminals(set), None)
@@ -901,7 +879,7 @@ impl InferenceSolver {
     fn theorems(&self) -> Vec<Theorem> {
         self.criminal_count
             .iter()
-            .map(|(&set, &(count, _))| Theorem::CriminalCount(set, count))
+            .map(|(&set, &count)| Theorem::CriminalCount(set, count))
             .chain(
                 self.connected
                     .iter()
@@ -942,8 +920,8 @@ impl InferenceSolver {
 enum Tactic {
     ProcessHints,
     SimplifyDisjunctions,
-    ExtractTightCounts,
     SimplifyCriminalCounts,
+    ExtractTightCounts,
     SimplifySums,
     SimplifyDifferences,
     SimplifyConnected,
@@ -1180,22 +1158,6 @@ impl From<CountWithNeighbors> for Theorem {
 impl From<UniqueWithCount> for Theorem {
     fn from(v: UniqueWithCount) -> Self {
         Self::UniqueWithCount(v)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum TheoremState {
-    Discarded,
-    Active,
-}
-
-impl TheoremState {
-    /// Returns `true` if the theorem state is [`Active`].
-    ///
-    /// [`Active`]: TheoremState::Active
-    #[must_use]
-    fn is_active(self) -> bool {
-        matches!(self, Self::Active)
     }
 }
 
@@ -1532,10 +1494,8 @@ mod tests {
         }
 
         writeln!(&mut summary, "active criminal counts:").unwrap();
-        for (set, (count, state)) in &engine.criminal_count {
-            if state.is_active() {
-                writeln!(&mut summary, "  {set:?}: {count:?}").unwrap();
-            }
+        for (set, count) in &engine.criminal_count {
+            writeln!(&mut summary, "  {set:?}: {count:?}").unwrap();
         }
 
         writeln!(&mut summary, "connected: {:?}", engine.connected).unwrap();
