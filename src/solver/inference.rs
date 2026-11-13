@@ -101,27 +101,31 @@ impl InferenceSolver {
 
     fn simplify_criminal_counts(&mut self) -> Result<bool> {
         let mut discard = Vec::new();
-        let mut new = Vec::new();
-        for (index, (&set, count)) in self.criminal_count.iter().enumerate() {
-            let [variable, fixed] = ByJudgment::split(set, &self.known).only(Judgment::Criminal);
-            let count = count.checked_sub(fixed.len()).ok_or(Contradiction)?;
-            if let Some(variable) = variable.non_empty() {
-                if variable != set {
+        let theorems: Vec<Theorem> = self
+            .criminal_count
+            .iter()
+            .enumerate()
+            .map(|(index, (&set, count))| {
+                let [variable, fixed] =
+                    ByJudgment::split(set, &self.known).only(Judgment::Criminal);
+                let Some(count) = count.checked_sub(fixed.len()) else {
+                    return Theorem::False;
+                };
+                if let Some(variable) = variable.non_empty() {
+                    if variable != set {
+                        discard.push(index);
+                    }
+                    Theorem::CriminalCount(variable, count)
+                } else {
                     discard.push(index);
-                    new.push(Theorem::CriminalCount(variable, count));
+                    count.matches(0).into()
                 }
-            } else if count.matches(0) {
-                discard.push(index);
-            } else {
-                return Err(Contradiction);
-            }
-        }
-        let updated = !discard.is_empty();
+            })
+            .collect();
         for index in discard.into_iter().rev() {
-            let discard = self.criminal_count.swap_remove_index(index);
-            assert_matches!(discard, Some(_), "invalid discard");
+            assert_matches!(self.criminal_count.shift_remove_index(index), Some(_));
         }
-        Ok(updated | self.add_theorems(new)?)
+        self.add_theorems(theorems)
     }
 
     fn simplify_differences(&mut self) -> Result<bool> {
