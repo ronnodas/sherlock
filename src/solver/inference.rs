@@ -130,7 +130,7 @@ impl InferenceSolver {
 
     fn simplify_differences(&mut self) -> Result<bool> {
         let mut discard = BTreeSet::new();
-        let mut new = Vec::new();
+        let mut theorems = Vec::new();
         for (index, (sets, difference)) in self.difference.iter().enumerate() {
             let [[a_var, a_fixed], [b_var, b_fixed]] =
                 sets.map(|set| ByJudgment::split(set, &self.known).only(Judgment::Criminal));
@@ -149,11 +149,11 @@ impl InferenceSolver {
                         .non_negative()
                         .ok_or(Contradiction)?
                         .into();
-                    new.push(Theorem::CriminalCount(b_var, count));
+                    theorems.push(Theorem::CriminalCount(b_var, count));
                 }
                 [Some(a_var), None] => {
                     let count = difference.non_negative().ok_or(Contradiction)?.into();
-                    new.push(Theorem::CriminalCount(a_var, count));
+                    theorems.push(Theorem::CriminalCount(a_var, count));
                 }
                 [Some(a_var), Some(b_var)] => {
                     if &[a_var, b_var] == sets {
@@ -167,7 +167,7 @@ impl InferenceSolver {
                             Interval::range(b_len.strict_neg(), a_len).expect("neg ..= pos"),
                         )
                         .ok_or(Contradiction)?;
-                    new.push(Theorem::CriminalDifference(sets, difference));
+                    theorems.push(Theorem::CriminalDifference(sets, difference));
                 }
             }
             _ = discard.insert(index);
@@ -176,12 +176,12 @@ impl InferenceSolver {
         for index in discard.into_iter().rev() {
             assert_matches!(self.difference.swap_remove_index(index), Some(_));
         }
-        Ok(updated | self.add_theorems(new)?)
+        Ok(updated | self.add_theorems(theorems)?)
     }
 
     fn simplify_sums(&mut self) -> Result<bool> {
         let mut discard = BTreeSet::new();
-        let mut new = Vec::new();
+        let mut theorems = Vec::new();
         for (index, (sets, sum)) in self.sum.iter().enumerate() {
             let [[a_var, a_fixed], [b_var, b_fixed]] =
                 sets.map(|set| ByJudgment::split(set, &self.known).only(Judgment::Criminal));
@@ -196,7 +196,7 @@ impl InferenceSolver {
                     }
                 }
                 [None, Some(set)] | [Some(set), None] => {
-                    new.push(Theorem::CriminalCount(set, sum.into()));
+                    theorems.push(Theorem::CriminalCount(set, sum.into()));
                 }
                 [Some(a_var), Some(b_var)] => {
                     if &[a_var, b_var] == sets
@@ -213,7 +213,7 @@ impl InferenceSolver {
                     let sum = sum
                         .intersection(Interval::zero_to(b_len.strict_add(a_len)))
                         .ok_or(Contradiction)?;
-                    new.push(Theorem::CriminalSum(sets, sum));
+                    theorems.push(Theorem::CriminalSum(sets, sum));
                 }
             }
             _ = discard.insert(index);
@@ -222,12 +222,12 @@ impl InferenceSolver {
         for index in discard.into_iter().rev() {
             assert_matches!(self.sum.swap_remove_index(index), Some(_));
         }
-        Ok(updated | self.add_theorems(new)?)
+        Ok(updated | self.add_theorems(theorems)?)
     }
 
     fn simplify_connected(&mut self) -> Result<bool> {
         let mut discard = Vec::new();
-        let mut new = Vec::new();
+        let mut theorems = Vec::new();
         for (index, &(set, judgment)) in self.connected.iter().enumerate() {
             let [variable, fixed] = ByJudgment::split(set, &self.known).only(judgment);
             if let Some(variable) = variable.non_empty() {
@@ -244,8 +244,8 @@ impl InferenceSolver {
                 };
                 if let &[unique] = possibilities.as_slice() {
                     discard.push(index);
-                    new.extend(Theorem::all(unique | fixed, judgment));
-                    new.extend(Theorem::all(variable.difference(unique), !judgment));
+                    theorems.extend(Theorem::all(unique | fixed, judgment));
+                    theorems.extend(Theorem::all(variable.difference(unique), !judgment));
                 } else {
                     if possibilities.len().get() == matches_count {
                         discard.push(index);
@@ -253,8 +253,8 @@ impl InferenceSolver {
                     let all = possibilities.iter1().copied().reduce(|a, b| a & b);
                     let any = possibilities.iter1().copied().reduce(|a, b| a | b);
 
-                    new.extend(Theorem::all(all, judgment));
-                    new.extend(Theorem::all(variable.difference(any), !judgment));
+                    theorems.extend(Theorem::all(all, judgment));
+                    theorems.extend(Theorem::all(variable.difference(any), !judgment));
 
                     for a_judgment in [Judgment::Innocent, Judgment::Criminal] {
                         for b_judgment in [Judgment::Innocent, Judgment::Criminal] {
@@ -266,7 +266,7 @@ impl InferenceSolver {
                                     possibility.contains(a) == a_matches
                                         || possibility.contains(b) == b_matches
                                 }) {
-                                    new.push(Theorem::Disjunction([
+                                    theorems.push(Theorem::Disjunction([
                                         Judged(a, a_judgment),
                                         Judged(b, b_judgment),
                                     ]));
@@ -286,12 +286,12 @@ impl InferenceSolver {
         for index in discard.into_iter().rev() {
             assert_matches!(self.connected.swap_remove_index(index), Some(_));
         }
-        Ok(updated | self.add_theorems(new)?)
+        Ok(updated | self.add_theorems(theorems)?)
     }
 
     fn extract_tight_counts(&mut self) -> Result<bool> {
         let mut discard = Vec::new();
-        let new: Vec<Theorem> = self
+        let theorems: Vec<Theorem> = self
             .criminal_count
             .iter()
             .enumerate()
@@ -313,22 +313,22 @@ impl InferenceSolver {
             assert_matches!(discard, Some(_), "invalid discard");
         }
 
-        self.add_theorems(new)
+        self.add_theorems(theorems)
     }
 
     fn combine_criminal_counts(&mut self) -> Result<bool> {
-        let mut new = Vec::new();
+        let mut theorems = Vec::new();
         // TODO array_permutations()
         for [(a, a_count), (b, b_count)] in self.criminal_count.iter().array_combinations() {
             if a <= b {
                 let count = b_count.checked_sub(*a_count).ok_or(Contradiction)?;
-                new.push(Theorem::CriminalCount(
+                theorems.push(Theorem::CriminalCount(
                     b.difference(Set::from(*a)).non_empty().expect("a != b"),
                     count,
                 ));
             } else if b <= a {
                 let count = a_count.checked_sub(*b_count).ok_or(Contradiction)?;
-                new.push(Theorem::CriminalCount(
+                theorems.push(Theorem::CriminalCount(
                     a.difference(Set::from(*b)).non_empty().expect("a != b"),
                     count,
                 ));
@@ -337,16 +337,16 @@ impl InferenceSolver {
             {
                 let symm_diff = (*a ^ *b).non_empty().expect("a != b");
                 let count = CountSet::from_parity(a_parity ^ b_parity, symm_diff.len());
-                new.push(Theorem::CriminalCount(symm_diff, count));
+                theorems.push(Theorem::CriminalCount(symm_diff, count));
             }
         }
-        self.add_theorems(new)
+        self.add_theorems(theorems)
     }
 
     /// This is quite a conservative version, only propagating the bounds if there are already known
     /// bounds for both the union and the intersection
     fn inclusion_exclusion_bounds(&mut self) -> Result<bool> {
-        let mut new = Vec::new();
+        let mut theorems = Vec::new();
         for [(&a, a_count), (&b, b_count)] in self.criminal_count.iter().array_combinations() {
             let union = a | b;
             let sum = a_count.strict_add(*b_count);
@@ -354,11 +354,11 @@ impl InferenceSolver {
                 if let Some(&union_bound) = self.criminal_count.get(&union)
                     && let Some(&intersection_bound) = self.criminal_count.get(&intersection)
                 {
-                    new.push(Theorem::CriminalCount(
+                    theorems.push(Theorem::CriminalCount(
                         union,
                         sum.checked_sub(intersection_bound).ok_or(Contradiction)?,
                     ));
-                    new.push(Theorem::CriminalCount(
+                    theorems.push(Theorem::CriminalCount(
                         intersection,
                         sum.checked_sub(union_bound).ok_or(Contradiction)?,
                     ));
@@ -367,10 +367,10 @@ impl InferenceSolver {
                 && !b_count.is_exact()
                 && self.criminal_count.contains_key(&union)
             {
-                new.push(Theorem::CriminalCount(union, sum));
+                theorems.push(Theorem::CriminalCount(union, sum));
             }
         }
-        self.add_theorems(new)
+        self.add_theorems(theorems)
     }
 
     fn bifurcate(&mut self) -> Result<bool> {
@@ -389,7 +389,7 @@ impl InferenceSolver {
     }
 
     fn bifurcate_to(&mut self, depth: u8) -> Result<bool> {
-        let mut new = Vec::new();
+        let mut judgments = Vec::new();
         let variable: Set = self
             .known
             .iter()
@@ -398,11 +398,11 @@ impl InferenceSolver {
             .collect();
         for coord in variable {
             let Ok(innocent) = self.bifurcation_branch(depth, coord, Judgment::Innocent) else {
-                new.push((coord, Judgment::Criminal));
+                judgments.push((coord, Judgment::Criminal));
                 continue;
             };
             let Ok(criminal) = self.bifurcation_branch(depth, coord, Judgment::Criminal) else {
-                new.push((coord, Judgment::Innocent));
+                judgments.push((coord, Judgment::Innocent));
                 continue;
             };
             for coord in variable {
@@ -410,12 +410,13 @@ impl InferenceSolver {
                     && let Some(criminal) = criminal[coord]
                     && innocent == criminal
                 {
-                    new.push((coord, innocent));
+                    judgments.push((coord, innocent));
                 }
             }
         }
         self.add_theorems(
-            new.into_iter()
+            judgments
+                .into_iter()
                 .map(|(coord, judgment)| Theorem::Judgment(coord, judgment)),
         )
     }
@@ -532,7 +533,7 @@ impl InferenceSolver {
     }
 
     fn counts_from_differences(&mut self) -> Result<bool> {
-        let mut new = Vec::with_capacity(self.difference.len().strict_mul(2));
+        let mut theorems = Vec::with_capacity(self.difference.len().strict_mul(2));
         for (&[a, b], difference) in &self.difference {
             let b_min = self
                 .min_criminals(a)
@@ -542,7 +543,7 @@ impl InferenceSolver {
                 .checked_sub_signed(difference.min())
                 .ok_or(Contradiction)?;
             let count = CountSet::complex(b_min, b_max, None).ok_or(Contradiction)?;
-            new.push(Theorem::CriminalCount(b, count));
+            theorems.push(Theorem::CriminalCount(b, count));
 
             let a_min = self
                 .min_criminals(b)
@@ -552,13 +553,13 @@ impl InferenceSolver {
                 .checked_add_signed(difference.max())
                 .ok_or(Contradiction)?;
             let count = CountSet::complex(a_min, a_max, None).ok_or(Contradiction)?;
-            new.push(Theorem::CriminalCount(a, count));
+            theorems.push(Theorem::CriminalCount(a, count));
         }
-        self.add_theorems(new)
+        self.add_theorems(theorems)
     }
 
     fn counts_from_sums(&mut self) -> Result<bool> {
-        let mut new = Vec::with_capacity(self.sum.len().strict_mul(2));
+        let mut theorems = Vec::with_capacity(self.sum.len().strict_mul(2));
         for (&[a, b], sum) in &self.sum {
             let a_min = sum.min().saturating_sub(self.max_criminals(b));
             let a_max = sum
@@ -566,7 +567,7 @@ impl InferenceSolver {
                 .checked_sub(self.min_criminals(b))
                 .ok_or(Contradiction)?;
             let count = CountSet::complex(a_min, a_max, None).ok_or(Contradiction)?;
-            new.push(Theorem::CriminalCount(a, count));
+            theorems.push(Theorem::CriminalCount(a, count));
 
             let b_min = sum.min().saturating_sub(self.max_criminals(a));
             let b_max = sum
@@ -574,13 +575,13 @@ impl InferenceSolver {
                 .checked_sub(self.min_criminals(a))
                 .ok_or(Contradiction)?;
             let count = CountSet::complex(b_min, b_max, None).ok_or(Contradiction)?;
-            new.push(Theorem::CriminalCount(b, count));
+            theorems.push(Theorem::CriminalCount(b, count));
         }
-        self.add_theorems(new)
+        self.add_theorems(theorems)
     }
 
     fn simplify_shifted_counts(&mut self) -> Result<bool> {
-        let mut new = Vec::new();
+        let mut theorems = Vec::new();
         for hint in mem::take(&mut self.shifted_counts) {
             let mut guaranteed_matches = 0_u8;
             let mut possible_pairs = Vec::new();
@@ -620,7 +621,7 @@ impl InferenceSolver {
                 .checked_sub(guaranteed_matches)
                 .ok_or(Contradiction)?;
             if !has_unresolved_pair {
-                new.extend(Theorem::shifted_count_pairs(
+                theorems.extend(Theorem::shifted_count_pairs(
                     source_only.judged(hint.source_judgment),
                     target_only.judged(hint.target_judgment),
                     bound,
@@ -629,7 +630,7 @@ impl InferenceSolver {
 
             let minimum = bound.minimum();
             if minimum == 0 {
-                new.push(Theorem::ShiftedCount(hint));
+                theorems.push(Theorem::ShiftedCount(hint));
                 continue;
             }
             let possible_pairs =
@@ -647,8 +648,8 @@ impl InferenceSolver {
             }
 
             if minimum == possible_pairs.len().get().try_into().expect("at most 20") {
-                new.extend(Theorem::all(possible_sources, hint.source_judgment));
-                new.extend(Theorem::all(possible_targets, hint.target_judgment));
+                theorems.extend(Theorem::all(possible_sources, hint.source_judgment));
+                theorems.extend(Theorem::all(possible_targets, hint.target_judgment));
             } else {
                 let source_matches = minimum >= source_count.maximum();
                 let target_matches = minimum >= target_count.maximum();
@@ -656,20 +657,20 @@ impl InferenceSolver {
                     let source = Judged(source_coord, hint.source_judgment);
                     let target = Judged(target_coord, hint.target_judgment);
                     if source_matches {
-                        new.push(Theorem::if_then([source, target]));
+                        theorems.push(Theorem::if_then([source, target]));
                     }
                     if target_matches {
-                        new.push(Theorem::if_then([target, source]));
+                        theorems.push(Theorem::if_then([target, source]));
                     }
                 }
-                new.push(Theorem::ShiftedCount(hint));
+                theorems.push(Theorem::ShiftedCount(hint));
             }
         }
-        self.add_theorems(new)
+        self.add_theorems(theorems)
     }
 
     fn simplify_unique_with_count(&mut self) -> Result<bool> {
-        let mut new = Vec::new();
+        let mut theorems = Vec::new();
         for hint in mem::take(&mut self.unique_with_count) {
             let mut yes = None;
             let mut maybe = Vec::new();
@@ -688,13 +689,13 @@ impl InferenceSolver {
                 if !maybe.is_empty() {
                     let bound = hint.bound.not().ok_or(Contradiction)?;
                     for set in maybe {
-                        new.push(Theorem::criminal_count(set, hint.judgment, bound));
+                        theorems.push(Theorem::criminal_count(set, hint.judgment, bound));
                     }
                 }
             } else {
                 match <[_; 1]>::try_from(maybe) {
                     Ok([unique]) => {
-                        new.push(Theorem::criminal_count(
+                        theorems.push(Theorem::criminal_count(
                             unique,
                             hint.judgment,
                             hint.bound.into(),
@@ -704,12 +705,12 @@ impl InferenceSolver {
                         let sets = maybe
                             .try_into()
                             .map_err(|EmptyError { .. }| Contradiction)?;
-                        new.push(Theorem::UniqueWithCount(UniqueWithCount { sets, ..hint }));
+                        theorems.push(Theorem::UniqueWithCount(UniqueWithCount { sets, ..hint }));
                     }
                 }
             }
         }
-        self.add_theorems(new)
+        self.add_theorems(theorems)
     }
 
     fn simplify_disjunctions(&mut self) -> Result<bool> {
@@ -737,7 +738,7 @@ impl InferenceSolver {
     }
 
     fn simplify_count_with_neighbors(&mut self) -> Result<bool> {
-        let mut new = Vec::new();
+        let mut theorems = Vec::new();
         for hint in mem::take(&mut self.count_with_neighbors) {
             let mut yes = Set::empty();
             let mut maybe = Set::empty();
@@ -753,7 +754,7 @@ impl InferenceSolver {
             if matches!(count, Bound::AtMost(0) | Bound::Exact(0)) {
                 let not_bound = hint.each.not().ok_or(Contradiction)?;
                 for coord in maybe {
-                    new.push(Theorem::criminal_count(
+                    theorems.push(Theorem::criminal_count(
                         coord.neighbors(),
                         hint.judgment,
                         not_bound,
@@ -763,7 +764,7 @@ impl InferenceSolver {
                 && min == maybe.len()
             {
                 for coord in maybe {
-                    new.push(Theorem::criminal_count(
+                    theorems.push(Theorem::criminal_count(
                         coord.neighbors(),
                         hint.judgment,
                         hint.each.into(),
@@ -771,17 +772,17 @@ impl InferenceSolver {
                 }
             } else if let Some(set) = maybe.non_empty() {
                 let hint = CountWithNeighbors { set, count, ..hint };
-                new.push(Theorem::CountWithNeighbors(hint));
+                theorems.push(Theorem::CountWithNeighbors(hint));
             } else if !count.matches(0) {
                 return Err(Contradiction);
             }
         }
-        self.add_theorems(new)
+        self.add_theorems(theorems)
     }
 
-    fn add_theorem(&mut self, thm: Theorem) -> Result<bool> {
+    fn add_theorem(&mut self, theorem: Theorem) -> Result<bool> {
         let mut updated = false;
-        match thm {
+        match theorem {
             Theorem::CriminalCount(set, count) => {
                 let [set, fixed] = ByJudgment::split(set, &self.known).only(Judgment::Criminal);
                 let count = count.checked_sub(fixed.len()).ok_or(Contradiction)?;
@@ -822,8 +823,8 @@ impl InferenceSolver {
         Ok(updated)
     }
 
-    fn add_theorems(&mut self, new: impl IntoIterator<Item = Theorem>) -> Result<bool> {
-        new.into_iter().try_fold(false, |updated, theorem| {
+    fn add_theorems(&mut self, theorems: impl IntoIterator<Item = Theorem>) -> Result<bool> {
+        theorems.into_iter().try_fold(false, |updated, theorem| {
             Ok(updated | self.add_theorem(theorem)?)
         })
     }
