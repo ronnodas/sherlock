@@ -6,9 +6,9 @@ edition = "2024"
 [dependencies]
 ansi-to-tui = { version = "8.0.1", default-features = false }
 anyhow = "1.0.104"
-arboard = { version = "3.6.1", default-features = false }
+arboard = { version = "3.7.0", default-features = false }
 bitvec = { version = "1.1.1", default-features = false }
-bpaf = { version = "0.9.28", default-features = false, features = [
+bpaf = { version = "0.9.29", default-features = false, features = [
     "derive",
     "autocomplete",
 ] }
@@ -20,12 +20,12 @@ inquire = { version = "0.9.4", default-features = false, features = [
     "editor",
 ] }
 itertools = "0.15.0"
-jiff = { version = "0.2.37", features = ["serde"] }
+jiff = { version = "0.2.43", features = ["serde"] }
 lazy-regex = "3.6.2"
 linearize = { version = "0.1.8", default-features = false, features = [
     "derive",
 ] }
-mitsein = { version = "0.9.0", default-features = false, features = [
+mitsein = { version = "0.10.0", default-features = false, features = [
     "alloc",
     "arrayvec",
 ] }
@@ -34,7 +34,7 @@ ratatui = { version = "0.30.2", default-features = false, features = [
     "layout-cache",
     "unstable-widget-ref",
 ] }
-ron = "0.12.2"
+ron = "0.12.3"
 select = "0.6.1"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_with = { version = "3.24.0", default-features = false, features = [
@@ -42,8 +42,8 @@ serde_with = { version = "3.24.0", default-features = false, features = [
 ] }
 strum = { version = "0.28.0", features = ["derive"] }
 tabled = { version = "0.22.0", default-features = false, features = ["ansi"] }
-ureq = "3.4.2"
-winnow = "1.0.4"
+ureq = "3.5.2"
+winnow = "1.0.5"
 
 
 [lints.rust]
