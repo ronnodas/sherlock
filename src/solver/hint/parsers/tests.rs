@@ -1275,7 +1275,7 @@ fn jose_879da349c27d() {
 #[test]
 fn ryan_327a79cc5a8c() {
     sentence(
-        "Zoe is the only one with exactly 1 criminal neighbors",
+        "Zoe is the only one with exactly 1 criminal neighbor",
         &Sentence::OnlyGivenUnitHasNTraits(
             UnitInSeries::neighbor("Zoe"),
             1.into(),
