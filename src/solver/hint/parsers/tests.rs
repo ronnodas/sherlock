@@ -1575,33 +1575,6 @@ fn unit_size() {
 }
 
 #[test]
-fn pair_bounded_unit_regression() {
-    parser(
-        pair_bounded_unit,
-        &["only", "one", "person", "above", "Rohan"],
-        &(1.into(), Unit::direction(Direction::Above, "Rohan")),
-    );
-
-    parser(
-        pair_bounded_unit,
-        &["only", "one", "person", "in", "a", "corner"],
-        &(1.into(), Unit::Corners),
-    );
-
-    parser(
-        pair_bounded_unit,
-        &["2", "of", "us", "3", "singers"],
-        &(
-            BoundPair::Subset {
-                matching: 2.into(),
-                total: 3,
-            },
-            Unit::profession("singer"),
-        ),
-    );
-}
-
-#[test]
 fn judgment_predicate_singular_exhaustive() {
     parser(
         judgment_predicate_singular,

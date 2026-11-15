@@ -264,13 +264,14 @@ impl Sentence {
             )
             .map(|(name, bound, judgment)| (bound, judgment, Unit::Neighbor(name))),
             seq!(
-                pair_bounded_unit,
+                bound_pair,
+                unit_subject,
                 _: word(has_have),
                 a_judgment,
                 directly_direction,
                 _: opt(word(pronoun_object))
             )
-            .map(|((bound, unit), judgment, direction)| {
+            .map(|(bound, unit, judgment, direction)| {
                 let (bound, unit) = match bound {
                     BoundPair::Simple(bound) => (bound, unit),
                     BoundPair::Subset {
@@ -280,7 +281,7 @@ impl Sentence {
                 };
                 (bound, judgment, unit.shift(direction))
             }),
-            (pair_bounded_profession, is_judgment_any).map(|((bound, profession), judgment)| {
+            (bound_pair, profession_any, is_judgment_any).map(|(bound, profession, judgment)| {
                 let unit = Unit::Profession(profession);
                 match bound {
                     BoundPair::Simple(bound) => (bound, judgment, unit),
@@ -335,7 +336,7 @@ impl Sentence {
             seq!(
                 alt((
                     preceded(words(("Only", "one", "person")), unit_prepositional),
-                    pair_bounded_profession.verify_map(|(bound, profession)| {
+                    (bound_pair,profession_any).verify_map(|(bound, profession)| {
                         if let BoundPair::Subset { matching: Bound::Exact(1), total } = bound {
                             Some(Unit::Profession(profession).bound(total))
                         } else {
@@ -367,13 +368,14 @@ impl Sentence {
 
     fn n_people_in_unit_have_n_trait_neighbors(input: &mut &[&str]) -> ModalResult<Self> {
         seq!(
-            pair_bounded_profession,
+            bound_pair,
+            profession_any,
             _: word(has_have),
             bound,
             word(judgment_adjective),
             _: word(neighbor_any),
         )
-        .map(|((count, profession), neighbors, judgment)| {
+        .map(|(count, profession, neighbors, judgment)| {
             let unit = Unit::Profession(profession);
             let (count, unit) = match count {
                 BoundPair::Simple(bound) => (bound, unit),
@@ -593,12 +595,13 @@ impl Sentence {
             )
             .map(|(name, judgment, unit)| ([Unit::Neighbor(name), unit], judgment, 0.into())),
             seq!(
-                pair_bounded_profession,
+                bound_pair,
+                profession_any,
                 _: neighboring_predicate,
                 word(name_object),
                 is_judgment_any,
             )
-            .map(|((bound, profession), name, judgment)| {
+            .map(|(bound, profession, name, judgment)| {
                 let units = [Unit::Profession(profession), Unit::Neighbor(name)];
                 (units, judgment, bound)
             }),
@@ -981,11 +984,11 @@ fn pair_bounded_judged_unit(input: &mut &[&str]) -> ModalResult<(BoundPair, Judg
             });
             (bound, judgment, Unit::Neighbor(name))
         }),
-        seq!(
+        (bound_pair, word(judgment_any), unit_prepositional),
+        (
             bound_pair,
-            _: opt((word("of"), opt(word(determiner)))),
             word(judgment_any),
-            alt((unit_prepositional, profession_any.map(Unit::Profession))),
+            profession_any.map(Unit::Profession),
         ),
         seq!(
             _: words(("neither", "of")),
@@ -1027,8 +1030,6 @@ fn bounded_judged_unit(input: &mut &[&str]) -> ModalResult<(Bound, Judgment, Uni
     .parse_next(input)
 }
 
-// TODO include the optional determiners at the end of `bound_pair` and `bound` and remove ones
-// made redundant
 fn bound_pair(input: &mut &[&str]) -> ModalResult<BoundPair> {
     alt((
         word("both").value(BoundPair::Subset {
@@ -1037,31 +1038,24 @@ fn bound_pair(input: &mut &[&str]) -> ModalResult<BoundPair> {
         }),
         (
             word("neither"),
-            opt((
-                word("of"),
-                opt(words((alt((determiner, pronoun_possessive_singular)), "2"))),
-            )),
+            word("of"),
+            opt(words((alt((determiner, pronoun_possessive_singular)), "2"))),
         )
             .value(BoundPair::Subset {
                 matching: Bound::Exact(0),
                 total: 2,
             }),
-        separated_pair(
+        seq!(
             bound,
-            (
-                opt(words(("out", "of"))),
-                alt((
-                    word(determiner).void(),
-                    word(pronoun_possessive_singular).void(),
-                    empty,
-                )),
-            ),
+            _: opt(words(("out", "of"))),
+            _: alt((
+                word(determiner).void(),
+                word(pronoun_possessive_singular).void(),
+                empty,
+            )),
             word(number),
         )
-        .map(|(a, b)| BoundPair::Subset {
-            matching: a,
-            total: b,
-        }),
+        .map(|(matching, total)| BoundPair::Subset { matching, total }),
         terminated(bound, opt(word(determiner))).map(BoundPair::Simple),
         words(("the", "only")).value(BoundPair::Subset {
             matching: Bound::Exact(1),
@@ -1247,14 +1241,6 @@ fn pronoun_object<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
 
 fn pronoun_object_singular<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
     alt(("him", "her", "them", "me")).parse_next(input)
-}
-
-fn pair_bounded_profession(input: &mut &[&str]) -> ModalResult<(BoundPair, Profession)> {
-    separated_pair(bound_pair, opt(word(determiner)), profession_any).parse_next(input)
-}
-
-fn pair_bounded_unit(input: &mut &[&str]) -> ModalResult<(BoundPair, Unit)> {
-    separated_pair(bound_pair, opt(word(determiner)), unit_subject).parse_next(input)
 }
 
 fn direction(input: &mut &[&str]) -> ModalResult<Direction> {
