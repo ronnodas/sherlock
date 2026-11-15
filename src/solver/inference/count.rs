@@ -4,7 +4,9 @@ use std::ops::BitAnd;
 use std::range::RangeInclusive;
 
 use itertools::Itertools as _;
+use mitsein::cmp::UnsafeOrd;
 use mitsein::iter1::{IntoIterator1, Iterator1};
+use mitsein::range1::RangeInclusive1;
 
 use crate::solver::board::coordinates::Set1;
 use crate::solver::hint::{Bound, BoundOrNot, Number, Parity};
@@ -20,19 +22,17 @@ pub(crate) fn reduce_bound(count: Bound, rhs: Number) -> Option<Bound> {
     Some(count)
 }
 
-// TODO use `RangeInclusive1` once `mitsein` updates
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum CountSet {
     Exact(Number),
     Complex {
-        range: RangeInclusive<Number>,
+        range: RangeInclusive1<Number>,
         parity: Option<Parity>,
     },
     BitSet(BitSet),
 }
 
 impl CountSet {
-    // TODO return bool to mark updated
     pub(crate) fn intersect(&mut self, rhs: Self) -> Result<bool, Contradiction> {
         let value = (*self & rhs).ok_or(Contradiction)?;
         let updated = value != *self;
@@ -43,7 +43,7 @@ impl CountSet {
     pub(crate) fn minimum(self) -> Number {
         match self {
             Self::Exact(value) => value,
-            Self::Complex { range, .. } => range.start,
+            Self::Complex { range, .. } => *range.start(),
             Self::BitSet(bits) => bits.min(),
         }
     }
@@ -51,7 +51,7 @@ impl CountSet {
     pub(crate) fn maximum(self) -> Number {
         match self {
             Self::Exact(value) => value,
-            Self::Complex { range, .. } => range.last,
+            Self::Complex { range, .. } => *range.last(),
             Self::BitSet(bits) => bits.into_iter1().max(),
         }
     }
@@ -83,9 +83,10 @@ impl CountSet {
     }
 
     pub(crate) fn simplify(self) -> Option<Self> {
-        match self {
-            Self::Exact(value) => Some(Self::Exact(value)),
-            Self::Complex { mut range, parity } => {
+        let count = match self {
+            Self::Exact(value) => Self::Exact(value),
+            Self::Complex { range, parity } => {
+                let mut range: RangeInclusive<Number> = range.into();
                 if let Some(parity) = parity {
                     if !parity.matches(range.start) {
                         range.start = range.start.strict_add(1);
@@ -94,29 +95,30 @@ impl CountSet {
                         range.last = range.last.checked_sub(1)?;
                     }
                 }
-
-                match range.start.cmp(&range.last) {
-                    Ordering::Less => Some(Self::Complex { range, parity }),
-                    Ordering::Equal => Some(Self::Exact(range.start)),
-                    Ordering::Greater => None,
+                let range = RangeInclusive1::try_from(range).ok()?;
+                if range.start() == range.last() {
+                    Self::Exact(*range.start())
+                } else {
+                    Self::Complex { range, parity }
                 }
             }
-            Self::BitSet(bits) => Some(bits.into()),
-        }
+            Self::BitSet(bits) => bits.into(),
+        };
+        Some(count)
     }
 
     pub(crate) fn checked_sub(self, rhs: impl Into<Self>) -> Option<Self> {
         match [self, rhs.into()] {
             [Self::Exact(exact), Self::Exact(rhs)] => Some(Self::Exact(exact.checked_sub(rhs)?)),
             [Self::Complex { range, parity }, Self::Exact(rhs)] => {
-                let min = range.start.saturating_sub(rhs);
-                let max = range.last.checked_sub(rhs)?;
+                let min = range.start().saturating_sub(rhs);
+                let max = range.last().checked_sub(rhs)?;
                 let parity = parity.map(|parity| parity ^ Parity::of(rhs));
                 Self::complex(min, max, parity)
             }
             [Self::Exact(exact), Self::Complex { range, parity }] => {
-                let min = exact.saturating_sub(range.last);
-                let max = exact.checked_sub(range.start)?;
+                let min = exact.saturating_sub(*range.last());
+                let max = exact.checked_sub(*range.start())?;
                 let parity = parity.map(|parity| parity ^ Parity::of(exact));
                 Self::complex(min, max, parity)
             }
@@ -127,8 +129,8 @@ impl CountSet {
                     parity: rhs_parity,
                 },
             ] => {
-                let min = range.start.saturating_sub(rhs_range.last);
-                let max = range.last.saturating_sub(rhs_range.start);
+                let min = range.start().saturating_sub(*rhs_range.last());
+                let max = range.last().saturating_sub(*rhs_range.start());
                 // TODO Option::zip_with https://github.com/rust-lang/rust/issues/70086
                 let parity = parity
                     .zip(rhs_parity)
@@ -161,7 +163,7 @@ impl CountSet {
 
     pub(crate) fn complex(min: Number, max: Number, parity: Option<Parity>) -> Option<Self> {
         Self::Complex {
-            range: (min..=max).into(),
+            range: (min..=max).try_into().ok()?,
             parity,
         }
         .simplify()
@@ -193,8 +195,11 @@ impl CountSet {
         if min == max {
             Self::Exact(min)
         } else {
+            let range = (min..=max)
+                .try_into()
+                .expect("0..=non-zero has at least one element of each parity");
             Self::Complex {
-                range: (min..=max).into(),
+                range,
                 parity: Some(parity),
             }
         }
@@ -204,8 +209,10 @@ impl CountSet {
         if max == 0 {
             Self::Exact(0)
         } else {
+            // TODO https://github.com/olson-sean-k/mitsein/pull/57
+            let range = (0..=max).try_into().expect("contains 0");
             Self::Complex {
-                range: (0..=max).into(),
+                range,
                 parity: None,
             }
         }
@@ -231,10 +238,13 @@ impl CountSet {
         match [self, rhs] {
             [Self::Exact(this), Self::Exact(rhs)] => Self::Exact(this.strict_add(rhs)),
             [Self::Complex { range, parity }, Self::Exact(exact)]
-            | [Self::Exact(exact), Self::Complex { range, parity }] => Self::Complex {
-                range: (range.start.strict_add(exact)..=range.last.strict_add(exact)).into(),
-                parity: parity.map(|parity| parity ^ Parity::of(exact)),
-            },
+            | [Self::Exact(exact), Self::Complex { range, parity }] => {
+                let range = (range.start().strict_add(exact)..=range.last().strict_add(exact))
+                    .try_into()
+                    .expect("translating a non-empty range");
+                let parity = parity.map(|parity| parity ^ Parity::of(exact));
+                Self::Complex { range, parity }
+            }
             [
                 Self::Complex { range, parity },
                 Self::Complex {
@@ -243,9 +253,10 @@ impl CountSet {
                 },
             ] => {
                 let parity = parity.zip(parity_rhs).map(|(this, rhs)| this ^ rhs);
-                let range = (range.start.strict_add(range_rhs.start)
-                    ..=range.last.strict_add(range_rhs.last))
-                    .into();
+                let range = (range.start().strict_add(*range_rhs.start())
+                    ..=range.last().strict_add(*range_rhs.last()))
+                    .try_into()
+                    .expect("minkowski sum of non-empty sets is non-empty");
                 Self::Complex { range, parity }
             }
             [Self::Exact(exact), Self::BitSet(bits)] | [Self::BitSet(bits), Self::Exact(exact)] => {
@@ -288,7 +299,7 @@ impl CountSet {
     }
 
     fn iter_complex(
-        range: RangeInclusive<Number>,
+        range: RangeInclusive1<Number>,
         parity: Option<Parity>,
     ) -> impl Iterator<Item = Number> + Clone {
         range
@@ -311,17 +322,17 @@ impl BitAnd for CountSet {
             [
                 Self::Complex { range, parity },
                 Self::Complex {
-                    range: range_1,
-                    parity: parity_1,
+                    range: range_rhs,
+                    parity: parity_rhs,
                 },
             ] => {
-                let min = range.start.max(range_1.start);
-                let max = range.last.min(range_1.last);
-                // TODO use Option::reduce https://github.com/rust-lang/rust/issues/144273
-                let parity = match [parity, parity_1] {
+                let &min = range.start().max(range_rhs.start());
+                let &max = range.last().min(range_rhs.last());
+                // TODO Option::zip_with https://github.com/rust-lang/rust/issues/70086
+                let parity = match [parity, parity_rhs] {
                     [None, None] => None,
                     [None, Some(parity)] | [Some(parity), None] => Some(parity),
-                    [Some(parity), Some(parity_1)] if parity == parity_1 => Some(parity),
+                    [Some(parity), Some(parity_rhs)] if parity == parity_rhs => Some(parity),
                     [Some(_), Some(_)] => return None,
                 };
                 Self::complex(min, max, parity)?
@@ -355,39 +366,37 @@ pub(crate) enum EndPoint {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Interval<T> {
-    range: RangeInclusive<T>,
+    range: RangeInclusive1<T>,
 }
 
-impl<T: Ord + Copy> Interval<T> {
+impl<T: Ord + Copy + UnsafeOrd> Interval<T> {
     pub(crate) fn matches(&self, value: &T) -> bool {
         self.range.contains(value)
     }
 
     pub(crate) fn intersection(self, rhs: Self) -> Option<Self> {
         Self::range(
-            self.range.start.max(rhs.range.start),
-            self.range.last.min(rhs.range.last),
+            *self.range.start().max(rhs.range.start()),
+            *self.range.last().min(rhs.range.last()),
         )
     }
 
     pub(crate) fn range(min: T, max: T) -> Option<Self> {
-        (min <= max).then(|| Self {
-            range: (min..=max).into(),
-        })
+        let range = (min..=max).try_into().ok()?;
+        Some(Self { range })
     }
 
     pub(crate) fn exact(exact: T) -> Self {
-        Self {
-            range: (exact..=exact).into(),
-        }
+        let range = (exact..=exact).try_into().expect("singleton");
+        Self { range }
     }
 
     pub(crate) fn max(&self) -> T {
-        self.range.last
+        *self.range.last()
     }
 
     pub(crate) fn min(&self) -> T {
-        self.range.start
+        *self.range.start()
     }
 
     pub(crate) fn intersect(&mut self, rhs: Self) -> Result<bool, Contradiction> {
@@ -400,62 +409,69 @@ impl<T: Ord + Copy> Interval<T> {
 
 impl Interval<Number> {
     pub(crate) fn zero_to(max: Number) -> Self {
-        let range = (0..=max).into();
+        // TODO https://github.com/olson-sean-k/mitsein/pull/57
+        let range = (0..=max).try_into().expect("contains 0");
         Self { range }
     }
 
     pub(crate) fn checked_div_2(self) -> Option<Self> {
-        Self::range(self.range.start.div_ceil(2), self.range.last / 2)
+        Self::range(self.range.start().div_ceil(2), self.range.last() / 2)
     }
 
     pub(crate) fn checked_sub(self, rhs: Number) -> Option<Self> {
-        let range =
-            (self.range.start.saturating_sub(rhs)..=self.range.last.checked_sub(rhs)?).into();
+        let range = (self.range.start().saturating_sub(rhs)
+            ..=self.range.last().checked_sub(rhs)?)
+            .try_into()
+            .expect("either last - start unchanged or start == 0");
         Some(Self { range })
     }
 }
 
 impl Interval<i8> {
     pub(crate) fn strict_sub_unsigned(self, rhs: Number) -> Self {
-        let range = (self.range.start.strict_sub_unsigned(rhs)
-            ..=self.range.last.strict_sub_unsigned(rhs))
-            .into();
+        let range = (self.range.start().strict_sub_unsigned(rhs)
+            ..=self.range.last().strict_sub_unsigned(rhs))
+            .try_into()
+            .expect("translation of non-empty set");
         Self { range }
     }
 
     pub(crate) fn strict_add_unsigned(self, rhs: Number) -> Self {
-        let range = (self.range.start.strict_add_unsigned(rhs)
-            ..=self.range.last.strict_add_unsigned(rhs))
-            .into();
+        let range = (self.range.start().strict_add_unsigned(rhs)
+            ..=self.range.last().strict_add_unsigned(rhs))
+            .try_into()
+            .expect("translation of non-empty set");
         Self { range }
     }
 
     pub(crate) fn non_negative(self) -> Option<Interval<Number>> {
         match self {
             Self { range } => Interval::range(
-                range.start.try_into().unwrap_or(0),
-                range.last.try_into().ok()?,
+                (*range.start()).try_into().unwrap_or(0),
+                (*range.last()).try_into().ok()?,
             ),
         }
     }
 
     pub(crate) fn strict_neg(self) -> Self {
-        let range = (self.range.last.strict_neg()..=self.range.start.strict_neg()).into();
+        let range = (self.range.last().strict_neg()..=self.range.start().strict_neg())
+            .try_into()
+            .expect("last - start unchanged");
         Self { range }
     }
 
     pub(crate) fn neg_to_pos(neg_min: u8, max: u8) -> Self {
         let min = 0_i8.strict_sub_unsigned(neg_min);
         let max = max.try_into().expect("at most i8::MAX");
-        let range = (min..=max).into();
+        let range = (min..=max).try_into().expect("min <= 0 <= max");
         Self { range }
     }
 }
 
 impl From<Interval<Number>> for CountSet {
     fn from(value: Interval<Number>) -> Self {
-        if value.range.start == value.range.last {
-            Self::Exact(value.range.start)
+        if value.range.start() == value.range.last() {
+            Self::Exact(*value.range.start())
         } else {
             Self::Complex {
                 range: value.range,

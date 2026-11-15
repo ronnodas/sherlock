@@ -1428,7 +1428,6 @@ mod tests {
 
     use super::*;
 
-    // TODO reuse `solver::test::solve`
     fn solve_with_validation(puzzle: &Puzzle) {
         eprintln!("solving puzzle: {}", puzzle.metadata);
         let solution = puzzle.solution();

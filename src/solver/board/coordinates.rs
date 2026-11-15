@@ -59,7 +59,6 @@ impl Set {
         NonZero::new(self.0).map(Set1)
     }
 
-    // TODO could be Iterator1
     pub(crate) fn power_set(self) -> impl Iterator<Item = Self> {
         (0..=self.0).map(Self).filter(move |sub| sub <= &self)
     }
@@ -243,7 +242,6 @@ impl Set1 {
         }
     }
 
-    // TODO could be Iterator1
     pub(crate) fn power_set(self) -> impl Iterator<Item = Set> {
         Set::from(self).power_set()
     }
