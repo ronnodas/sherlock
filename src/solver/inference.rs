@@ -6,7 +6,7 @@ use std::{assert_matches, error, fmt, mem, result};
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools as _;
 use mitsein::EmptyError;
-use mitsein::slice1::Slice1;
+use mitsein::iter1::IteratorExt as _;
 use mitsein::vec1::Vec1;
 use strum::VariantArray;
 
@@ -233,13 +233,13 @@ impl InferenceSolver {
             if let Some(variable) = variable.non_empty() {
                 let count = self.count_judged(variable, judgment)?;
                 let mut matches_count = 0_usize;
-                let possibilities = variable
+                let Ok(possibilities): Result<Vec1<_>, _> = variable
                     .power_set()
                     .filter(|sub| count.matches(sub.len()))
                     .inspect(|_| matches_count = matches_count.strict_add(1))
                     .filter(|sub| (*sub | fixed).connected())
-                    .collect_vec();
-                let Ok(possibilities) = Slice1::try_from_slice(possibilities.as_slice()) else {
+                    .try_collect1()
+                else {
                     return Err(Contradiction);
                 };
                 if let &[unique] = possibilities.as_slice() {
@@ -275,11 +275,10 @@ impl InferenceSolver {
                         }
                     }
                 }
-            } else {
+            } else if fixed.connected() {
                 discard.push(index);
-                if !fixed.connected() {
-                    return Err(Contradiction);
-                }
+            } else {
+                return Err(Contradiction);
             }
         }
         let updated = !discard.is_empty();
@@ -1113,16 +1112,13 @@ impl Theorem {
                 count.matches(solution.select(&set.judged(Judgment::Criminal)).len())
             }
             Self::CriminalDifference([a, b], difference) => {
-                let a = solution.select(&a.judged(Judgment::Criminal)).len();
-                let b = solution.select(&b.judged(Judgment::Criminal)).len();
+                let [a, b] =
+                    [a, b].map(|set| solution.select(&set.judged(Judgment::Criminal)).len());
                 difference.matches(&0_i8.strict_add_unsigned(a).strict_sub_unsigned(b))
             }
-            Self::CriminalSum([a, b], sum) => {
-                let total = solution
-                    .select(&a.judged(Judgment::Criminal))
-                    .len()
-                    .strict_add(solution.select(&b.judged(Judgment::Criminal)).len());
-                sum.matches(&total)
+            Self::CriminalSum(sets, sum) => {
+                let [a, b] = sets.map(|set| solution.select(&set.judged(Judgment::Criminal)).len());
+                sum.matches(&a.strict_add(b))
             }
             Self::Disjunction(clauses) => clauses
                 .iter()
