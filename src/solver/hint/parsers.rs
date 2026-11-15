@@ -7,7 +7,7 @@ use winnow::combinator::{
 };
 use winnow::error::{ParserError, StrContext};
 use winnow::token::{any, rest};
-use winnow::{Parser, Result};
+use winnow::{ModalResult, Parser};
 
 use crate::models::{Column, Direction, Judged, Judgment, Profession, Row};
 use crate::solver::hint::parsers::phrases::{
@@ -59,7 +59,7 @@ impl Sentence {
         Self::any.parse(hint).map_err(|e| anyhow!("{e:?}"))
     }
 
-    fn any(input: &mut &[&str]) -> Result<Self> {
+    fn any(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             alt((
                 terminated(Self::traits_are_neighbors_in_unit, eof),
@@ -92,7 +92,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn traits_are_neighbors_in_unit(input: &mut &[&str]) -> Result<Self> {
+    fn traits_are_neighbors_in_unit(input: &mut &[&str]) -> ModalResult<Self> {
         seq!(
             alt((
                 word("All").value(Some(BoundPair::Simple(Bound::AtLeast(1)))),
@@ -113,7 +113,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn has_most_traits(input: &mut &[&str]) -> Result<Self> {
+    fn has_most_traits(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             alt((
                 seq!(
@@ -159,7 +159,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn is_one_of_n_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
+    fn is_one_of_n_traits_in_unit(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             separated_pair(name_is, words(("one", "of")), bounded_judged_unit).map(
                 |(name, (bound, judgment, unit))| Self::IsOneOfNInUnit(unit, name, bound, judgment),
@@ -173,13 +173,13 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn is_one_of_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
+    fn is_one_of_traits_in_unit(input: &mut &[&str]) -> ModalResult<Self> {
         separated_pair(name_is, words(("one", "of", determiner)), judged_unit)
             .map(|(name, (judgment, unit))| Self::IsInUnit(unit, name, judgment))
             .parse_next(input)
     }
 
-    fn more_traits_in_unit_than_unit(input: &mut &[&str]) -> Result<Self> {
+    fn more_traits_in_unit_than_unit(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             seq!(
                 _: words(("There", "are")),
@@ -241,7 +241,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn unit_size(input: &mut &[&str]) -> Result<Self> {
+    fn unit_size(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             preceded(there_is, bounded_judged_unit)
                 .map(|(bound, judgment, unit)| (bound, judgment, unit)),
@@ -319,7 +319,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn only_one_person_in_unit_has_n_trait_neighbors(input: &mut &[&str]) -> Result<Self> {
+    fn only_one_person_in_unit_has_n_trait_neighbors(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             seq!(
                 alt((
@@ -354,7 +354,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn n_people_in_unit_have_n_trait_neighbors(input: &mut &[&str]) -> Result<Self> {
+    fn n_people_in_unit_have_n_trait_neighbors(input: &mut &[&str]) -> ModalResult<Self> {
         seq!(
             pair_bounded_profession,
             _: word(has_have),
@@ -381,7 +381,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn only_one_unit_in_series_has_exactly_n_traits(input: &mut &[&str]) -> Result<Self> {
+    fn only_one_unit_in_series_has_exactly_n_traits(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             seq!(
                 _: (opt(word("only")), word("one")),
@@ -408,7 +408,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn only_given_unit_has_exactly_n_traits(input: &mut &[&str]) -> Result<Self> {
+    fn only_given_unit_has_exactly_n_traits(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             seq!(
                 separated_pair(line, words(("is", "the", "only")), word(line_kind))
@@ -437,7 +437,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn unit_shares_n_out_of_n_traits_with_unit(input: &mut &[&str]) -> Result<Self> {
+    fn unit_shares_n_out_of_n_traits_with_unit(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             seq!(
                 _: there_is,
@@ -523,7 +523,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn units_share_n_traits(input: &mut &[&str]) -> Result<Self> {
+    fn units_share_n_traits(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             alt((
                 seq!(
@@ -623,7 +623,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn equal_number_of_traits_in_units(input: &mut &[&str]) -> Result<Self> {
+    fn equal_number_of_traits_in_units(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             seq!(
                 _: words(("There's", "an", "equal", "number", "of")),
@@ -651,7 +651,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn each_unit_in_series_has_n_traits(input: &mut &[&str]) -> Result<Self> {
+    fn each_unit_in_series_has_n_traits(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             seq!(
                 _: word("Each"),
@@ -687,7 +687,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn more_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
+    fn more_traits_in_unit(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             seq!(
                 _: words(("There", "are")),
@@ -713,7 +713,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn equal_traits_in_unit(input: &mut &[&str]) -> Result<Self> {
+    fn equal_traits_in_unit(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             seq!(
                 _: words(("There", "are", "as", "many")),
@@ -743,13 +743,13 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn has_trait(input: &mut &[&str]) -> Result<Self> {
+    fn has_trait(input: &mut &[&str]) -> ModalResult<Self> {
         separated_pair(word(raw_name), word("is"), judgment_predicate_singular)
             .map(|(name, judgment)| Self::HasTrait(name.into(), judgment))
             .parse_next(input)
     }
 
-    fn at_most_n_traits_in_neighbors_in_unit(input: &mut &[&str]) -> Result<Self> {
+    fn at_most_n_traits_in_neighbors_in_unit(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             seq!(
                 _: words(("No", "one")),
@@ -775,7 +775,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn total_number_of_traits_in_units(input: &mut &[&str]) -> Result<Self> {
+    fn total_number_of_traits_in_units(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             seq!(
                 _: words(("There", "are", "a", "total", "of")),
@@ -799,7 +799,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn all_traits_in_unit_are_in_unit(input: &mut &[&str]) -> Result<Self> {
+    fn all_traits_in_unit_are_in_unit(input: &mut &[&str]) -> ModalResult<Self> {
         seq!(
             word(any_all),
             judged_unit,
@@ -817,7 +817,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn if_then(input: &mut &[&str]) -> Result<Self> {
+    fn if_then(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             seq!(
                 _: word("If"),
@@ -846,7 +846,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn only_trait_in_series(input: &mut &[&str]) -> Result<Self> {
+    fn only_trait_in_series(input: &mut &[&str]) -> ModalResult<Self> {
         seq!(
             name_is,
             _: words(("the", "only")),
@@ -858,7 +858,7 @@ impl Sentence {
         .parse_next(input)
     }
 
-    fn traits_in_unit_have_trait_in_direction(input: &mut &[&str]) -> Result<Self> {
+    fn traits_in_unit_have_trait_in_direction(input: &mut &[&str]) -> ModalResult<Self> {
         seq!(
             bounded_judged_unit,
             _: word(has_have),
@@ -881,7 +881,7 @@ impl Sentence {
     }
 }
 
-fn unit_pair(input: &mut &[&str]) -> Result<[Unit; 2]> {
+fn unit_pair(input: &mut &[&str]) -> ModalResult<[Unit; 2]> {
     alt((
         preceded(word("in"), line_pair).map(|lines| lines.map(Unit::Line)),
         separated_pair(unit, word("and"), unit).map(<[Unit; 2]>::from),
@@ -889,7 +889,7 @@ fn unit_pair(input: &mut &[&str]) -> Result<[Unit; 2]> {
     .parse_next(input)
 }
 
-fn unit(input: &mut &[&str]) -> Result<Unit> {
+fn unit(input: &mut &[&str]) -> ModalResult<Unit> {
     alt((
         alt((
             words(("in", "total")).value(Unit::All),
@@ -921,7 +921,7 @@ fn unit(input: &mut &[&str]) -> Result<Unit> {
     .parse_next(input)
 }
 
-fn unit_subject(input: &mut &[&str]) -> Result<Unit> {
+fn unit_subject(input: &mut &[&str]) -> ModalResult<Unit> {
     alt((
         preceded(
             word(alt(("persons", "person"))),
@@ -938,7 +938,7 @@ fn unit_subject(input: &mut &[&str]) -> Result<Unit> {
     .parse_next(input)
 }
 
-fn judged_unit(input: &mut &[&str]) -> Result<(Judgment, Unit)> {
+fn judged_unit(input: &mut &[&str]) -> ModalResult<(Judgment, Unit)> {
     alt((
         (word(judgment_any), unit),
         seq!(
@@ -951,7 +951,7 @@ fn judged_unit(input: &mut &[&str]) -> Result<(Judgment, Unit)> {
     .parse_next(input)
 }
 
-fn pair_bounded_judged_unit(input: &mut &[&str]) -> Result<(BoundPair, Judgment, Unit)> {
+fn pair_bounded_judged_unit(input: &mut &[&str]) -> ModalResult<(BoundPair, Judgment, Unit)> {
     alt((
         seq!(
             bound,
@@ -994,7 +994,7 @@ fn pair_bounded_judged_unit(input: &mut &[&str]) -> Result<(BoundPair, Judgment,
     .parse_next(input)
 }
 
-fn bounded_judged_unit(input: &mut &[&str]) -> Result<(Bound, Judgment, Unit)> {
+fn bounded_judged_unit(input: &mut &[&str]) -> ModalResult<(Bound, Judgment, Unit)> {
     alt((
         (bound, word(judgment_any), unit),
         seq!(
@@ -1010,7 +1010,7 @@ fn bounded_judged_unit(input: &mut &[&str]) -> Result<(Bound, Judgment, Unit)> {
 
 // TODO include the optional determiners at the end of `bound_pair` and `bound` and remove ones
 // made redundant
-fn bound_pair(input: &mut &[&str]) -> Result<BoundPair> {
+fn bound_pair(input: &mut &[&str]) -> ModalResult<BoundPair> {
     alt((
         word("both").value(BoundPair::Subset {
             matching: Bound::Exact(2),
@@ -1052,7 +1052,7 @@ fn bound_pair(input: &mut &[&str]) -> Result<BoundPair> {
     .parse_next(input)
 }
 
-fn bound(input: &mut &[&str]) -> Result<Bound> {
+fn bound(input: &mut &[&str]) -> ModalResult<Bound> {
     alt((
         word("no").value(Bound::Exact(0)),
         terminated(word(number), words(("or", "more"))).map(Bound::AtLeast),
@@ -1072,7 +1072,7 @@ fn bound(input: &mut &[&str]) -> Result<Bound> {
     .parse_next(input)
 }
 
-fn number(input: &mut &str) -> Result<Number> {
+fn number(input: &mut &str) -> ModalResult<Number> {
     alt((
         dec_uint,
         "none".value(0),
@@ -1083,11 +1083,11 @@ fn number(input: &mut &str) -> Result<Number> {
     .parse_next(input)
 }
 
-fn parity(input: &mut &str) -> Result<Parity> {
+fn parity(input: &mut &str) -> ModalResult<Parity> {
     alt(("even".value(Parity::Even), "odd".value(Parity::Odd))).parse_next(input)
 }
 
-fn a_judgment(input: &mut &[&str]) -> Result<Judgment> {
+fn a_judgment(input: &mut &[&str]) -> ModalResult<Judgment> {
     alt((
         words(("an", "innocent")).value(Judgment::Innocent),
         words(("a", "criminal")).value(Judgment::Criminal),
@@ -1095,7 +1095,7 @@ fn a_judgment(input: &mut &[&str]) -> Result<Judgment> {
     .parse_next(input)
 }
 
-fn is_judgment_any(input: &mut &[&str]) -> Result<Judgment> {
+fn is_judgment_any(input: &mut &[&str]) -> ModalResult<Judgment> {
     alt((
         preceded(word("is"), judgment_predicate_singular),
         preceded(word("are"), word(judgment_adjective)),
@@ -1103,7 +1103,7 @@ fn is_judgment_any(input: &mut &[&str]) -> Result<Judgment> {
     .parse_next(input)
 }
 
-fn judgment_predicate_singular(input: &mut &[&str]) -> Result<Judgment> {
+fn judgment_predicate_singular(input: &mut &[&str]) -> ModalResult<Judgment> {
     alt((
         word("innocent").value(Judgment::Innocent),
         words(("a", "criminal")).value(Judgment::Criminal),
@@ -1113,7 +1113,7 @@ fn judgment_predicate_singular(input: &mut &[&str]) -> Result<Judgment> {
     .parse_next(input)
 }
 
-fn judgment_predicate_comma(input: &mut &[&str]) -> Result<Judgment> {
+fn judgment_predicate_comma(input: &mut &[&str]) -> ModalResult<Judgment> {
     alt((
         word_or_comma_terminated("innocent").value(Judgment::Innocent),
         (word("a"), word_or_comma_terminated("criminal")).value(Judgment::Criminal),
@@ -1123,11 +1123,11 @@ fn judgment_predicate_comma(input: &mut &[&str]) -> Result<Judgment> {
     .parse_next(input)
 }
 
-fn judgment_any(input: &mut &str) -> Result<Judgment> {
+fn judgment_any(input: &mut &str) -> ModalResult<Judgment> {
     alt((judgment_plural, judgment_singular)).parse_next(input)
 }
 
-fn judgment_plural(input: &mut &str) -> Result<Judgment> {
+fn judgment_plural(input: &mut &str) -> ModalResult<Judgment> {
     alt((
         "innocents".value(Judgment::Innocent),
         "criminals".value(Judgment::Criminal),
@@ -1137,7 +1137,7 @@ fn judgment_plural(input: &mut &str) -> Result<Judgment> {
 
 use judgment_adjective as judgment_singular;
 
-fn judgment_adjective(input: &mut &str) -> Result<Judgment> {
+fn judgment_adjective(input: &mut &str) -> ModalResult<Judgment> {
     alt((
         "innocent".value(Judgment::Innocent),
         "criminal".value(Judgment::Criminal),
@@ -1145,7 +1145,7 @@ fn judgment_adjective(input: &mut &str) -> Result<Judgment> {
     .parse_next(input)
 }
 
-fn name_possessive(input: &mut &str) -> Result<NameRecipe> {
+fn name_possessive(input: &mut &str) -> ModalResult<NameRecipe> {
     alt((
         "my".value(NameRecipe::Me),
         raw_name
@@ -1158,7 +1158,7 @@ fn name_possessive(input: &mut &str) -> Result<NameRecipe> {
     .parse_next(input)
 }
 
-fn name_has(input: &mut &[&str]) -> Result<NameRecipe> {
+fn name_has(input: &mut &[&str]) -> ModalResult<NameRecipe> {
     alt((
         words(("I", "have")).value(NameRecipe::Me),
         terminated(word(raw_name), word("has")).map(NameRecipe::from),
@@ -1166,7 +1166,7 @@ fn name_has(input: &mut &[&str]) -> Result<NameRecipe> {
     .parse_next(input)
 }
 
-fn name_doesnt_have(input: &mut &[&str]) -> Result<NameRecipe> {
+fn name_doesnt_have(input: &mut &[&str]) -> ModalResult<NameRecipe> {
     alt((
         words(("I", "don't", "have")).value(NameRecipe::Me),
         terminated(word(raw_name), words(("doesn't", "have"))).map(NameRecipe::from),
@@ -1174,7 +1174,7 @@ fn name_doesnt_have(input: &mut &[&str]) -> Result<NameRecipe> {
     .parse_next(input)
 }
 
-fn name_is(input: &mut &[&str]) -> Result<NameRecipe> {
+fn name_is(input: &mut &[&str]) -> ModalResult<NameRecipe> {
     alt((
         word("I'm").value(NameRecipe::Me),
         words(("I", "am")).value(NameRecipe::Me),
@@ -1183,7 +1183,7 @@ fn name_is(input: &mut &[&str]) -> Result<NameRecipe> {
     .parse_next(input)
 }
 
-fn is_name(input: &mut &[&str]) -> Result<NameRecipe> {
+fn is_name(input: &mut &[&str]) -> ModalResult<NameRecipe> {
     alt((
         words(("am", "I")).value(NameRecipe::Me),
         preceded(word("is"), word(raw_name)).map(NameRecipe::from),
@@ -1191,7 +1191,7 @@ fn is_name(input: &mut &[&str]) -> Result<NameRecipe> {
     .parse_next(input)
 }
 
-fn name_subject(input: &mut &str) -> Result<NameRecipe> {
+fn name_subject(input: &mut &str) -> ModalResult<NameRecipe> {
     raw_name
         .map(|name| {
             if name == "I" {
@@ -1203,7 +1203,7 @@ fn name_subject(input: &mut &str) -> Result<NameRecipe> {
         .parse_next(input)
 }
 
-fn name_object(input: &mut &str) -> Result<NameRecipe> {
+fn name_object(input: &mut &str) -> ModalResult<NameRecipe> {
     alt((
         raw_name.map(|name| {
             if name == "Me" {
@@ -1217,28 +1217,28 @@ fn name_object(input: &mut &str) -> Result<NameRecipe> {
     .parse_next(input)
 }
 
-fn raw_name<'input>(input: &mut &'input str) -> Result<&'input str> {
+fn raw_name<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
     rest.verify(|s: &str| s.chars().next().is_some_and(char::is_uppercase))
         .parse_next(input)
 }
 
-fn pronoun_object<'input>(input: &mut &'input str) -> Result<&'input str> {
+fn pronoun_object<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
     alt(("him", "her", "them", "me", "us")).parse_next(input)
 }
 
-fn pronoun_object_singular<'input>(input: &mut &'input str) -> Result<&'input str> {
+fn pronoun_object_singular<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
     alt(("him", "her", "them", "me")).parse_next(input)
 }
 
-fn pair_bounded_profession(input: &mut &[&str]) -> Result<(BoundPair, Profession)> {
+fn pair_bounded_profession(input: &mut &[&str]) -> ModalResult<(BoundPair, Profession)> {
     separated_pair(bound_pair, opt(word(determiner)), profession_any).parse_next(input)
 }
 
-fn pair_bounded_unit(input: &mut &[&str]) -> Result<(BoundPair, Unit)> {
+fn pair_bounded_unit(input: &mut &[&str]) -> ModalResult<(BoundPair, Unit)> {
     separated_pair(bound_pair, opt(word(determiner)), unit_subject).parse_next(input)
 }
 
-fn direction(input: &mut &[&str]) -> Result<Direction> {
+fn direction(input: &mut &[&str]) -> ModalResult<Direction> {
     alt((
         word("above").value(Direction::Above),
         word("below").value(Direction::Below),
@@ -1254,23 +1254,23 @@ fn direction(input: &mut &[&str]) -> Result<Direction> {
     .parse_next(input)
 }
 
-fn directly_direction(input: &mut &[&str]) -> Result<Direction> {
+fn directly_direction(input: &mut &[&str]) -> ModalResult<Direction> {
     preceded(word("directly"), direction).parse_next(input)
 }
 
-fn indefinite_article<'input>(input: &mut &'input str) -> Result<&'input str> {
+fn indefinite_article<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
     alt(("a", "an")).parse_next(input)
 }
 
-fn pronoun_possessive_singular<'input>(input: &mut &'input str) -> Result<&'input str> {
+fn pronoun_possessive_singular<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
     alt(("her", "his", "my", "their")).parse_next(input)
 }
 
-fn determiner<'input>(input: &mut &'input str) -> Result<&'input str> {
+fn determiner<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
     alt(("the", "us")).parse_next(input)
 }
 
-fn profession_any(input: &mut &[&str]) -> Result<Profession> {
+fn profession_any(input: &mut &[&str]) -> ModalResult<Profession> {
     alt((
         word(profession_plural),
         preceded(opt(word(indefinite_article)), word(profession_singular)),
@@ -1278,19 +1278,19 @@ fn profession_any(input: &mut &[&str]) -> Result<Profession> {
     .parse_next(input)
 }
 
-fn profession_singular(input: &mut &str) -> Result<Profession> {
+fn profession_singular(input: &mut &str) -> ModalResult<Profession> {
     rest.verify_map(Profession::from_singular).parse_next(input)
 }
 
-fn profession_plural(input: &mut &str) -> Result<Profession> {
+fn profession_plural(input: &mut &str) -> ModalResult<Profession> {
     rest.verify_map(Profession::from_plural).parse_next(input)
 }
 
-fn neighbor_any(input: &mut &str) -> Result<()> {
+fn neighbor_any(input: &mut &str) -> ModalResult<()> {
     alt(("neighbors", "neighbor")).void().parse_next(input)
 }
 
-fn not_neighbor_any(input: &mut &[&str]) -> Result<()> {
+fn not_neighbor_any(input: &mut &[&str]) -> ModalResult<()> {
     words((alt(("doesn't", "don't")), "neighbor"))
         .void()
         .parse_next(input)
@@ -1298,7 +1298,7 @@ fn not_neighbor_any(input: &mut &[&str]) -> Result<()> {
 
 fn there_is<'input, 'inner: 'input>(
     input: &mut &'input [&'inner str],
-) -> Result<&'input [&'inner str]> {
+) -> ModalResult<&'input [&'inner str]> {
     alt((
         words(("There", be_verb_third_person)).take(),
         word("There's").take(),
@@ -1306,13 +1306,13 @@ fn there_is<'input, 'inner: 'input>(
     .parse_next(input)
 }
 
-fn has_have<'input>(input: &mut &'input str) -> Result<&'input str> {
+fn has_have<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
     alt(("has", "have")).parse_next(input)
 }
 
 fn neighboring_verb<'input, 'inner: 'input>(
     input: &mut &'input [&'inner str],
-) -> Result<&'input [&'inner str]> {
+) -> ModalResult<&'input [&'inner str]> {
     alt((
         (opt(word("also")), word("neighbor")).take(),
         (word(be_verb_third_person), word("neighboring")).take(),
@@ -1322,7 +1322,7 @@ fn neighboring_verb<'input, 'inner: 'input>(
 
 fn neighboring_predicate<'input, 'inner: 'input>(
     input: &mut &'input [&'inner str],
-) -> Result<&'input [&'inner str]> {
+) -> ModalResult<&'input [&'inner str]> {
     alt((
         words(("who", "neighbors")).take(),
         words(("who", "neighbor")).take(),
@@ -1331,11 +1331,11 @@ fn neighboring_predicate<'input, 'inner: 'input>(
     .parse_next(input)
 }
 
-fn be_verb_third_person<'input>(input: &mut &'input str) -> Result<&'input str> {
+fn be_verb_third_person<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
     alt(("is", "are")).parse_next(input)
 }
 
-fn more_or_less(input: &mut &str) -> Result<MoreOrLess> {
+fn more_or_less(input: &mut &str) -> ModalResult<MoreOrLess> {
     alt((
         "more".value(MoreOrLess::More),
         "less".value(MoreOrLess::Less),
@@ -1344,11 +1344,11 @@ fn more_or_less(input: &mut &str) -> Result<MoreOrLess> {
     .parse_next(input)
 }
 
-fn any_all(input: &mut &str) -> Result<AnyAll> {
+fn any_all(input: &mut &str) -> ModalResult<AnyAll> {
     alt(("all".value(AnyAll::All), "any".value(AnyAll::Any))).parse_next(input)
 }
 
-fn disjoint_series(input: &mut &str) -> Result<DisjointSeries> {
+fn disjoint_series(input: &mut &str) -> ModalResult<DisjointSeries> {
     alt((
         line_kind.map(DisjointSeries::from),
         "profession".value(DisjointSeries::Profession),
@@ -1356,15 +1356,15 @@ fn disjoint_series(input: &mut &str) -> Result<DisjointSeries> {
     .parse_next(input)
 }
 
-fn line(input: &mut &[&str]) -> Result<LineRecipe> {
+fn line(input: &mut &[&str]) -> ModalResult<LineRecipe> {
     alt((row.map(LineRecipe::Row), column.map(LineRecipe::Column))).parse_next(input)
 }
 
-fn line_kind(input: &mut &str) -> Result<LineKind> {
+fn line_kind(input: &mut &str) -> ModalResult<LineKind> {
     alt(("row".value(LineKind::Row), "column".value(LineKind::Column))).parse_next(input)
 }
 
-fn line_pair(input: &mut &[&str]) -> Result<[LineRecipe; 2]> {
+fn line_pair(input: &mut &[&str]) -> ModalResult<[LineRecipe; 2]> {
     alt((
         preceded(word("rows"), pair(row_bare, "and"))
             .map(|rows| rows.map(RowRecipe::Explicit).map(LineRecipe::Row)),
@@ -1374,7 +1374,7 @@ fn line_pair(input: &mut &[&str]) -> Result<[LineRecipe; 2]> {
     .parse_next(input)
 }
 
-fn row(input: &mut &[&str]) -> Result<RowRecipe> {
+fn row(input: &mut &[&str]) -> ModalResult<RowRecipe> {
     alt((
         preceded(word("row"), word(row_bare)).map(RowRecipe::Explicit),
         words(("my", "row")).value(RowRecipe::Me),
@@ -1382,7 +1382,7 @@ fn row(input: &mut &[&str]) -> Result<RowRecipe> {
     .parse_next(input)
 }
 
-fn row_bare(input: &mut &str) -> Result<Row> {
+fn row_bare(input: &mut &str) -> ModalResult<Row> {
     dispatch!(any;
         '1' => empty.value(Row::One),
         '2' => empty.value(Row::Two),
@@ -1394,7 +1394,7 @@ fn row_bare(input: &mut &str) -> Result<Row> {
     .parse_next(input)
 }
 
-fn column(input: &mut &[&str]) -> Result<ColumnRecipe> {
+fn column(input: &mut &[&str]) -> ModalResult<ColumnRecipe> {
     alt((
         preceded(word("column"), word(column_bare)).map(ColumnRecipe::Explicit),
         words(("my", "column")).value(ColumnRecipe::Me),
@@ -1402,7 +1402,7 @@ fn column(input: &mut &[&str]) -> Result<ColumnRecipe> {
     .parse_next(input)
 }
 
-fn column_bare(input: &mut &str) -> Result<Column> {
+fn column_bare(input: &mut &str) -> ModalResult<Column> {
     dispatch!(any;
         'A' => empty.value(Column::A),
         'B' => empty.value(Column::B),

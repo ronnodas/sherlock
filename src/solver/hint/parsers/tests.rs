@@ -1,6 +1,5 @@
 use std::{assert_matches, fmt};
 
-use winnow::error::ContextError;
 use winnow::stream::{Stream, StreamIsPartial};
 
 use super::*;
@@ -1667,7 +1666,12 @@ fn sentence(input: &str, expected: &Sentence) {
 }
 
 /// helper for debugging sub parsers
-fn parser<I: Stream + StreamIsPartial, P: Parser<I, T, ContextError>, T: PartialEq + fmt::Debug>(
+fn parser<
+    I: Stream + StreamIsPartial,
+    P: Parser<I, T, E>,
+    T: PartialEq + fmt::Debug,
+    E: ParserError<I, Inner: ParserError<I> + fmt::Debug> + fmt::Debug,
+>(
     mut parser: P,
     input: I,
     expected: &T,
