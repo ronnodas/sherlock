@@ -197,15 +197,26 @@ impl Sentence {
             seq!(
                 _: words(("There", "are")),
                 word(more_or_less),
-                judged_unit,
-                _: (word("than"), opt(word(determiner))),
-                opt(word(judgment_any)),
-                unit
+                word(judgment_adjective),
+                word(profession_plural),
+                _: (word("than"), opt(word("us"))),
+                word(judgment_adjective),
+                word(profession_plural)
             )
-            .map(|(cmp, (judgment, left), judgment_right, right)| {
-                let left = left.judged(judgment);
-                let right = right.judged(judgment_right.unwrap_or(judgment));
+            .map(|(cmp, judgment_left, left, judgment_right, right)| {
+                let left = Unit::Profession(left).judged(judgment_left);
+                let right = Unit::Profession(right).judged(judgment_right);
                 (cmp, [left, right], None)
+            }),
+            seq!(
+                _: words(("There", "are")),
+                word(more_or_less),
+                judged_unit,
+                _: word("than"),
+                unit_prepositional
+            )
+            .map(|(cmp, (judgment, left), right)| {
+                (cmp, [left, right].map(|unit| unit.judged(judgment)), None)
             }),
             seq!(
                 name_has,
@@ -282,7 +293,7 @@ impl Sentence {
             alt((
                 seq!(
                     _: word("Everyone"),
-                    unit,
+                    unit_prepositional,
                     _: word("is"),
                     word(judgment_singular),
                 ),
@@ -307,7 +318,7 @@ impl Sentence {
             .map(|(unit, judgment)| (Bound::Exact(0), !judgment, unit)),
             seq!(
                 _: words(("Not", "everyone")),
-                unit,
+                unit_prepositional,
                 _: word("is"),
                 judgment_predicate_singular,
             )
@@ -323,7 +334,7 @@ impl Sentence {
         alt((
             seq!(
                 alt((
-                    preceded(words(("Only", "one", "person")), unit),
+                    preceded(words(("Only", "one", "person")), unit_prepositional),
                     pair_bounded_profession.verify_map(|(bound, profession)| {
                         if let BoundPair::Subset { matching: Bound::Exact(1), total } = bound {
                             Some(Unit::Profession(profession).bound(total))
@@ -341,7 +352,7 @@ impl Sentence {
             seq!(
                 name_is.map(Some),
                 _: words(("the", "only", alt(("one", "person")))),
-                unit,
+                unit_prepositional,
                 _: word("with"),
                 bound,
                 word(judgment_adjective),
@@ -557,7 +568,7 @@ impl Sentence {
                 bound_pair,
                 word(name_possessive),
                 _: word("neighbors"),
-                unit,
+                unit_prepositional,
                 is_judgment_any,
             )
             .map(|(bound_pair, name, unit, judgment)| {
@@ -568,7 +579,7 @@ impl Sentence {
                 bound,
                 word(judgment_adjective),
                 _: word(neighbor_any),
-                unit,
+                unit_prepositional,
             )
             .map(|(name, bound, judgment, unit)| {
                 ([Unit::Neighbor(name), unit], judgment, bound.into())
@@ -578,7 +589,7 @@ impl Sentence {
                 _: word("any"),
                 word(judgment_adjective),
                 _: word("neighbors"),
-                unit,
+                unit_prepositional,
             )
             .map(|(name, judgment, unit)| ([Unit::Neighbor(name), unit], judgment, 0.into())),
             seq!(
@@ -603,14 +614,14 @@ impl Sentence {
                 seq!(
                     _: word("All"),
                     word(profession_plural),
-                    unit,
+                    unit_prepositional,
                     _: word("are"),
                     word(judgment_adjective)
                 ),
                 seq!(
                     _: word("Each"),
                     word(profession_singular),
-                    unit,
+                    unit_prepositional,
                     _: word("is"),
                     judgment_predicate_singular
                 ),
@@ -693,7 +704,7 @@ impl Sentence {
                 _: words(("There", "are")),
                 word(more_or_less),
                 alt((
-                    (pair(judgment_plural, "than"), unit),
+                    (pair(judgment_plural, "than"), unit_prepositional),
                     (pair(judgment_adjective, "than"), word(profession_plural).map(Unit::Profession)),
                 )),
             )
@@ -718,7 +729,7 @@ impl Sentence {
             seq!(
                 _: words(("There", "are", "as", "many")),
                 pair(judgment_plural, "as"),
-                unit,
+                unit_prepositional,
             ),
             preceded(
                 words(("There's", "an", "equal", "number", "of")),
@@ -727,7 +738,7 @@ impl Sentence {
                         pair(judgment_adjective, "and"),
                         word(profession_plural).map(Unit::Profession),
                     ),
-                    (pair(judgment_plural, "and"), unit),
+                    (pair(judgment_plural, "and"), unit_prepositional),
                 )),
             ),
             seq!(
@@ -753,25 +764,23 @@ impl Sentence {
         alt((
             seq!(
                 _: words(("No", "one")),
-                unit,
+                unit_prepositional,
                 _: word("has"),
                 alt((
-                    preceded(words(("more", "than")), word(number).map(Bound::AtMost)),
-                    word("a").value(Bound::Exact(0)),
+                    seq!(_: words(("more", "than")), word(number).map(Bound::AtMost), word(judgment_adjective)),
+                    a_judgment.map(|judgment| (Bound::Exact(0), judgment)),
                 )),
-                word(judgment_adjective),
                 _: word(neighbor_any)
             ),
             seq!(
                 _: word("Everyone"),
-                unit,
+                unit_prepositional,
                 _: word("has"),
-                bound,
-                word(judgment_adjective),
+                (bound, word(judgment_adjective)),
                 _: word(neighbor_any),
             ),
         ))
-        .map(|(unit, bound, judgment)| Self::EachInUnitHasNNeighbors(unit, bound, judgment))
+        .map(|(unit, (bound, judgment))| Self::EachInUnitHasNNeighbors(unit, bound, judgment))
         .parse_next(input)
     }
 
@@ -884,39 +893,43 @@ impl Sentence {
 fn unit_pair(input: &mut &[&str]) -> ModalResult<[Unit; 2]> {
     alt((
         preceded(word("in"), line_pair).map(|lines| lines.map(Unit::Line)),
-        separated_pair(unit, word("and"), unit).map(<[Unit; 2]>::from),
+        separated_pair(unit_prepositional, word("and"), unit_prepositional).map(<[Unit; 2]>::from),
     ))
     .parse_next(input)
 }
 
 fn unit(input: &mut &[&str]) -> ModalResult<Unit> {
     alt((
-        alt((
-            words(("in", "total")).value(Unit::All),
-            words(("on", "the", "edges")).value(Unit::Edges),
-            words(("in", "a", "corner")).value(Unit::Corners),
-            words(("in", "the", "corners")).value(Unit::Corners),
-            preceded(words(("in", "between")), pair(name_object, "and")).map(Unit::Between),
-            preceded(word("in"), line.map(Unit::Line)),
-            (direction, word(name_object))
-                .map(|(direction, name)| Unit::Direction(direction, name)),
-            separated_pair(
-                directly_direction,
-                word(indefinite_article),
-                word(profession_singular),
-            )
-            .map(|(direction, profession)| Unit::Profession(profession).shift(direction)),
-            terminated(word(name_possessive), word(neighbor_any)).map(Unit::Neighbor),
-        )),
+        unit_prepositional,
+        terminated(word(name_possessive), word(neighbor_any)).map(Unit::Neighbor),
         delimited(
             words(("one", "of")),
             word(name_possessive),
             word("neighbors"),
         )
         .map(Unit::Neighbor),
-        preceded(neighboring_predicate, word(name_object)).map(Unit::Neighbor),
         preceded(word("not"), word(name_object)).map(Unit::NotName),
         profession_any.map(Unit::Profession),
+    ))
+    .parse_next(input)
+}
+
+fn unit_prepositional(input: &mut &[&str]) -> ModalResult<Unit> {
+    alt((
+        words(("in", "total")).value(Unit::All),
+        words(("on", "the", "edges")).value(Unit::Edges),
+        words(("in", "a", "corner")).value(Unit::Corners),
+        words(("in", "the", "corners")).value(Unit::Corners),
+        preceded(words(("in", "between")), pair(name_object, "and")).map(Unit::Between),
+        preceded(word("in"), line.map(Unit::Line)),
+        (direction, word(name_object)).map(|(direction, name)| Unit::Direction(direction, name)),
+        separated_pair(
+            directly_direction,
+            word(indefinite_article),
+            word(profession_singular),
+        )
+        .map(|(direction, profession)| Unit::Profession(profession).shift(direction)),
+        preceded(neighboring_predicate, word(name_object)).map(Unit::Neighbor),
     ))
     .parse_next(input)
 }
@@ -940,7 +953,8 @@ fn unit_subject(input: &mut &[&str]) -> ModalResult<Unit> {
 
 fn judged_unit(input: &mut &[&str]) -> ModalResult<(Judgment, Unit)> {
     alt((
-        (word(judgment_any), unit),
+        (word(judgment_any), unit_prepositional),
+        (word(judgment_any), profession_any.map(Unit::Profession)),
         seq!(
             word(name_possessive),
             word(judgment_adjective),
@@ -971,7 +985,7 @@ fn pair_bounded_judged_unit(input: &mut &[&str]) -> ModalResult<(BoundPair, Judg
             bound_pair,
             _: opt((word("of"), opt(word(determiner)))),
             word(judgment_any),
-            unit,
+            alt((unit_prepositional, profession_any.map(Unit::Profession))),
         ),
         seq!(
             _: words(("neither", "of")),
@@ -996,7 +1010,12 @@ fn pair_bounded_judged_unit(input: &mut &[&str]) -> ModalResult<(BoundPair, Judg
 
 fn bounded_judged_unit(input: &mut &[&str]) -> ModalResult<(Bound, Judgment, Unit)> {
     alt((
-        (bound, word(judgment_any), unit),
+        (bound, word(judgment_any), unit_prepositional),
+        (
+            bound,
+            word(judgment_any),
+            profession_any.map(Unit::Profession),
+        ),
         seq!(
             word(name_possessive),
             bound,
