@@ -45,6 +45,18 @@ impl From<&str> for Name {
     }
 }
 
+impl PartialEq<str> for Name {
+    fn eq(&self, other: &str) -> bool {
+        self.0.as_ref() == other
+    }
+}
+
+impl PartialEq<&str> for Name {
+    fn eq(&self, &other: &&str) -> bool {
+        self.0.as_ref() == other
+    }
+}
+
 // TODO Maybe should be `Rc<Str1>`, and always construct through `from_singular()`?
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(transparent)]

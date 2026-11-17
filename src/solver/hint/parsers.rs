@@ -9,7 +9,7 @@ use winnow::error::{ParserError, StrContext};
 use winnow::token::{any, rest};
 use winnow::{ModalResult, Parser};
 
-use crate::models::{Column, Direction, Judged, Judgment, Profession, Row};
+use crate::models::{Column, Direction, Judged, Judgment, Name, Profession, Row};
 use crate::solver::hint::parsers::phrases::{
     AnyAll, BoundPair, DisjointSeries, MoreOrLess, Series,
 };
@@ -759,7 +759,7 @@ impl Sentence {
 
     fn has_trait(input: &mut &[&str]) -> ModalResult<Self> {
         separated_pair(word(raw_name), word("is"), judgment_predicate_singular)
-            .map(|(name, judgment)| Self::HasTrait(name.into(), judgment))
+            .map(|(name, judgment)| Self::HasTrait(name, judgment))
             .parse_next(input)
     }
 
@@ -1161,12 +1161,16 @@ fn judgment_adjective(input: &mut &str) -> ModalResult<Judgment> {
 fn name_possessive(input: &mut &str) -> ModalResult<NameRecipe> {
     alt((
         "my".value(NameRecipe::Me),
-        raw_name
-            .verify_map(|s| {
-                s.strip_suffix("'s")
-                    .or_else(|| s.strip_suffix("'").filter(|name| name.ends_with('s')))
-            })
-            .map(|name| NameRecipe::Explicit(name.into())),
+        raw_name.verify_map(|name| {
+            name.as_str()
+                .strip_suffix("'s")
+                .or_else(|| {
+                    name.as_str()
+                        .strip_suffix("'")
+                        .filter(|name| name.ends_with('s'))
+                })
+                .map(|name| NameRecipe::Explicit(name.into()))
+        }),
     ))
     .parse_next(input)
 }
@@ -1174,7 +1178,7 @@ fn name_possessive(input: &mut &str) -> ModalResult<NameRecipe> {
 fn name_has(input: &mut &[&str]) -> ModalResult<NameRecipe> {
     alt((
         words(("I", "have")).value(NameRecipe::Me),
-        terminated(word(raw_name), word("has")).map(NameRecipe::from),
+        terminated(word(raw_name), word("has")).map(NameRecipe::Explicit),
     ))
     .parse_next(input)
 }
@@ -1182,7 +1186,7 @@ fn name_has(input: &mut &[&str]) -> ModalResult<NameRecipe> {
 fn name_doesnt_have(input: &mut &[&str]) -> ModalResult<NameRecipe> {
     alt((
         words(("I", "don't", "have")).value(NameRecipe::Me),
-        terminated(word(raw_name), words(("doesn't", "have"))).map(NameRecipe::from),
+        terminated(word(raw_name), words(("doesn't", "have"))).map(NameRecipe::Explicit),
     ))
     .parse_next(input)
 }
@@ -1191,7 +1195,7 @@ fn name_is(input: &mut &[&str]) -> ModalResult<NameRecipe> {
     alt((
         word("I'm").value(NameRecipe::Me),
         words(("I", "am")).value(NameRecipe::Me),
-        terminated(word(raw_name), word("is")).map(NameRecipe::from),
+        terminated(word(raw_name), word("is")).map(NameRecipe::Explicit),
     ))
     .parse_next(input)
 }
@@ -1199,7 +1203,7 @@ fn name_is(input: &mut &[&str]) -> ModalResult<NameRecipe> {
 fn is_name(input: &mut &[&str]) -> ModalResult<NameRecipe> {
     alt((
         words(("am", "I")).value(NameRecipe::Me),
-        preceded(word("is"), word(raw_name)).map(NameRecipe::from),
+        preceded(word("is"), word(raw_name)).map(NameRecipe::Explicit),
     ))
     .parse_next(input)
 }
@@ -1210,7 +1214,7 @@ fn name_subject(input: &mut &str) -> ModalResult<NameRecipe> {
             if name == "I" {
                 NameRecipe::Me
             } else {
-                NameRecipe::Explicit(name.into())
+                NameRecipe::Explicit(name)
             }
         })
         .parse_next(input)
@@ -1222,7 +1226,7 @@ fn name_object(input: &mut &str) -> ModalResult<NameRecipe> {
             if name == "Me" {
                 NameRecipe::Me
             } else {
-                NameRecipe::Explicit(name.into())
+                NameRecipe::Explicit(name)
             }
         }),
         "me".value(NameRecipe::Me),
@@ -1230,17 +1234,20 @@ fn name_object(input: &mut &str) -> ModalResult<NameRecipe> {
     .parse_next(input)
 }
 
-fn raw_name<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
+fn raw_name(input: &mut &str) -> ModalResult<Name> {
     rest.verify(|s: &str| s.chars().next().is_some_and(char::is_uppercase))
+        .map(Name::from)
         .parse_next(input)
 }
 
-fn pronoun_object<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
-    alt(("him", "her", "them", "me", "us")).parse_next(input)
+fn pronoun_object(input: &mut &str) -> ModalResult<()> {
+    alt(("him", "her", "them", "me", "us"))
+        .void()
+        .parse_next(input)
 }
 
-fn pronoun_object_singular<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
-    alt(("him", "her", "them", "me")).parse_next(input)
+fn pronoun_object_singular(input: &mut &str) -> ModalResult<()> {
+    alt(("him", "her", "them", "me")).void().parse_next(input)
 }
 
 fn direction(input: &mut &[&str]) -> ModalResult<Direction> {
@@ -1263,16 +1270,16 @@ fn directly_direction(input: &mut &[&str]) -> ModalResult<Direction> {
     preceded(word("directly"), direction).parse_next(input)
 }
 
-fn indefinite_article<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
-    alt(("a", "an")).parse_next(input)
+fn indefinite_article(input: &mut &str) -> ModalResult<()> {
+    alt(("a", "an")).void().parse_next(input)
 }
 
-fn pronoun_possessive_singular<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
-    alt(("her", "his", "my", "their")).parse_next(input)
+fn pronoun_possessive_singular(input: &mut &str) -> ModalResult<()> {
+    alt(("her", "his", "my", "their")).void().parse_next(input)
 }
 
-fn determiner<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
-    alt(("the", "us")).parse_next(input)
+fn determiner(input: &mut &str) -> ModalResult<()> {
+    alt(("the", "us")).void().parse_next(input)
 }
 
 fn profession_any(input: &mut &[&str]) -> ModalResult<Profession> {
@@ -1301,43 +1308,37 @@ fn not_neighbor_any(input: &mut &[&str]) -> ModalResult<()> {
         .parse_next(input)
 }
 
-fn there_is<'input, 'inner: 'input>(
-    input: &mut &'input [&'inner str],
-) -> ModalResult<&'input [&'inner str]> {
+fn there_is(input: &mut &[&str]) -> ModalResult<()> {
     alt((
-        words(("There", be_verb_third_person)).take(),
-        word("There's").take(),
+        words(("There", be_verb_third_person)).void(),
+        word("There's").void(),
     ))
     .parse_next(input)
 }
 
-fn has_have<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
-    alt(("has", "have")).parse_next(input)
+fn has_have(input: &mut &str) -> ModalResult<()> {
+    alt(("has", "have")).void().parse_next(input)
 }
 
-fn neighboring_verb<'input, 'inner: 'input>(
-    input: &mut &'input [&'inner str],
-) -> ModalResult<&'input [&'inner str]> {
+fn neighboring_verb(input: &mut &[&str]) -> ModalResult<()> {
     alt((
-        words(("also", "neighbor")).take(),
-        (word(be_verb_third_person), word("neighboring")).take(),
+        words(("also", "neighbor")).void(),
+        words((be_verb_third_person, "neighboring")).void(),
     ))
     .parse_next(input)
 }
 
-fn neighboring_predicate<'input, 'inner: 'input>(
-    input: &mut &'input [&'inner str],
-) -> ModalResult<&'input [&'inner str]> {
+fn neighboring_predicate(input: &mut &[&str]) -> ModalResult<()> {
     alt((
-        words(("who", "neighbors")).take(),
-        words(("who", "neighbor")).take(),
-        word("neighboring").take(),
+        words(("who", "neighbors")).void(),
+        words(("who", "neighbor")).void(),
+        word("neighboring").void(),
     ))
     .parse_next(input)
 }
 
-fn be_verb_third_person<'input>(input: &mut &'input str) -> ModalResult<&'input str> {
-    alt(("is", "are")).parse_next(input)
+fn be_verb_third_person(input: &mut &str) -> ModalResult<()> {
+    alt(("is", "are")).void().parse_next(input)
 }
 
 fn more_or_less(input: &mut &str) -> ModalResult<MoreOrLess> {
