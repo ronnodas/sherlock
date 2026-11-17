@@ -1218,6 +1218,18 @@ fn xia_2026_11_01() {
 }
 
 #[test]
+fn austin_2026_11_17() {
+    sentence(
+        "2 of the 3 mechs have an innocent directly to their left",
+        &Sentence::UnitSize(
+            Unit::profession("mech").bound(3).shift(Direction::Left),
+            Judgment::Innocent,
+            2.into(),
+        ),
+    );
+}
+
+#[test]
 fn diane_0cf47a07fe08() {
     sentence(
         "Xavi has more criminal neighbors than Ben",

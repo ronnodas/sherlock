@@ -268,8 +268,7 @@ impl Sentence {
                 unit_subject,
                 _: word(has_have),
                 a_judgment,
-                directly_direction,
-                _: word(pronoun_object)
+                direction_of_them
             )
             .map(|(bound, unit, judgment, direction)| {
                 let (bound, unit) = match bound {
@@ -1241,18 +1240,27 @@ fn pronoun_object_singular(input: &mut &str) -> ModalResult<()> {
     alt(("him", "her", "them", "me")).void().parse_next(input)
 }
 
+fn direction_of_them(input: &mut &[&str]) -> ModalResult<Direction> {
+    alt((
+        terminated(directly_direction, word(pronoun_object)),
+        preceded(words(("directly", "to", "their")), word(left_right)),
+    ))
+    .parse_next(input)
+}
+
 fn direction(input: &mut &[&str]) -> ModalResult<Direction> {
     alt((
         word("above").value(Direction::Above),
         word("below").value(Direction::Below),
-        delimited(
-            words(("to", "the")),
-            alt((
-                word("left").value(Direction::Left),
-                word("right").value(Direction::Right),
-            )),
-            opt(word("of")),
-        ),
+        delimited(words(("to", "the")), word(left_right), opt(word("of"))),
+    ))
+    .parse_next(input)
+}
+
+fn left_right(input: &mut &str) -> ModalResult<Direction> {
+    alt((
+        "left".value(Direction::Left),
+        "right".value(Direction::Right),
     ))
     .parse_next(input)
 }
