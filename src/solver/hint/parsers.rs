@@ -269,7 +269,7 @@ impl Sentence {
                 _: word(has_have),
                 a_judgment,
                 directly_direction,
-                _: opt(word(pronoun_object))
+                _: word(pronoun_object)
             )
             .map(|(bound, unit, judgment, direction)| {
                 let (bound, unit) = match bound {
@@ -397,7 +397,7 @@ impl Sentence {
     fn only_one_unit_in_series_has_exactly_n_traits(input: &mut &[&str]) -> ModalResult<Self> {
         alt((
             seq!(
-                _: (opt(word("only")), word("one")),
+                _: (opt(word("Only")), word("one")),
                 word(line_kind).map(Series::Line),
                 _: word("has"),
                 bound,
@@ -647,7 +647,7 @@ impl Sentence {
             seq!(
                 _: words(("There", "are", "as", "many")),
                 judged_unit,
-                _: (word("as"), opt(words(("there", "are"))), opt(word("us"))),
+                _: (words(("as", "there", "are")), opt(word("us"))),
                 judged_unit,
             )
             .verify_map(|((judgment_a, a), (judgment_b, b))| {
@@ -1070,7 +1070,7 @@ fn bound(input: &mut &[&str]) -> ModalResult<Bound> {
         word("no").value(Bound::Exact(0)),
         terminated(word(number), words(("or", "more"))).map(Bound::AtLeast),
         delimited(
-            opt(word(alt(("exactly", "only")))),
+            alt((word("exactly").void(), word("only").void(), empty)),
             word(number).map(Bound::Exact),
             opt(word("of")),
         ),
@@ -1319,7 +1319,7 @@ fn neighboring_verb<'input, 'inner: 'input>(
     input: &mut &'input [&'inner str],
 ) -> ModalResult<&'input [&'inner str]> {
     alt((
-        (opt(word("also")), word("neighbor")).take(),
+        words(("also", "neighbor")).take(),
         (word(be_verb_third_person), word("neighboring")).take(),
     ))
     .parse_next(input)
