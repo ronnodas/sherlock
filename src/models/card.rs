@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::HintText;
 
+// TODO https://github.com/olson-sean-k/mitsein/pull/64
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(transparent)]
 pub(crate) struct Name(Rc<str>);
@@ -18,6 +19,13 @@ pub(crate) struct Name(Rc<str>);
 impl Name {
     pub(crate) fn as_str(&self) -> &str {
         &self.0
+    }
+
+    pub(crate) fn strip_possessive(&self) -> Option<Self> {
+        self.0
+            .strip_suffix("'s")
+            .or_else(|| self.0.strip_suffix("'").filter(|name| name.ends_with('s')))
+            .map(Self::from)
     }
 }
 
@@ -57,7 +65,7 @@ impl PartialEq<&str> for Name {
     }
 }
 
-// TODO Maybe should be `Rc<Str1>`, and always construct through `from_singular()`?
+// TODO https://github.com/olson-sean-k/mitsein/pull/64
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(transparent)]
 pub(crate) struct Profession(Rc<str>);

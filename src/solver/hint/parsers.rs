@@ -1161,16 +1161,7 @@ fn judgment_adjective(input: &mut &str) -> ModalResult<Judgment> {
 fn name_possessive(input: &mut &str) -> ModalResult<NameRecipe> {
     alt((
         "my".value(NameRecipe::Me),
-        raw_name.verify_map(|name| {
-            name.as_str()
-                .strip_suffix("'s")
-                .or_else(|| {
-                    name.as_str()
-                        .strip_suffix("'")
-                        .filter(|name| name.ends_with('s'))
-                })
-                .map(|name| NameRecipe::Explicit(name.into()))
-        }),
+        raw_name.verify_map(|name| name.strip_possessive().map(NameRecipe::Explicit)),
     ))
     .parse_next(input)
 }

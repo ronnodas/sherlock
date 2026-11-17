@@ -7,7 +7,10 @@ use select::document::Document;
 use select::node::Node;
 use select::predicate::{self, Name, Predicate};
 
-use crate::models::{CardBack, CardFront, Difficulty, Judgment, MaybeHint, Metadata, PuzzleId};
+use crate::models::{
+    CardBack, CardFront, Difficulty, Judgment, MaybeHint, Metadata, Name as NameString, Profession,
+    PuzzleId,
+};
 
 pub(crate) fn parse_card(node: &Node<'_>) -> Result<(CardFront, Option<CardBack>, bool)> {
     let node = node
@@ -31,8 +34,8 @@ pub(crate) fn parse_card(node: &Node<'_>) -> Result<(CardFront, Option<CardBack>
         node.expect_children(Div.and(Class(ClassName::CardFront)))
     }
     .context("inside a `.card`")?;
-    let name = parse_name(card)?.into();
-    let profession = parse_profession(card)?.into();
+    let name = parse_name(card)?;
+    let profession = parse_profession(card)?;
     let back = status
         .map(|judgment| parse_back(card, judgment))
         .transpose()?;
@@ -129,16 +132,16 @@ fn parse_hint(card: Node<'_>) -> Result<String> {
     Ok(hint.text().trim().to_owned())
 }
 
-fn parse_profession(card: Node<'_>) -> Result<String> {
+fn parse_profession(card: Node<'_>) -> Result<Profession> {
     let profession = card
         .unique_child(Paragraph.and(Class(ClassName::Profession)))
         .with_context(|| {
             format!("`.card-{{back,front}}` should have a unique `p .profession`: {card:?}")
         })?;
-    Ok(profession.text().trim().to_owned())
+    Ok(profession.text().trim().to_owned().into())
 }
 
-fn parse_name(card: Node<'_>) -> Result<String> {
+fn parse_name(card: Node<'_>) -> Result<NameString> {
     let [name] = card
         .expect_children(Div.and(Class(ClassName::Name)))
         .context("`.card-{back,front}` should have a unique `div .name`")?;
@@ -146,7 +149,7 @@ fn parse_name(card: Node<'_>) -> Result<String> {
         .unique_child(H3.and(Class(ClassName::Name)))
         .context("`div .name` should have a unique `h3 .name`")?
         .text();
-    Ok(css_capitalize_single_word(&name))
+    Ok(css_capitalize_single_word(&name).into())
 }
 
 /// emulating `text-transform: capitalize`
